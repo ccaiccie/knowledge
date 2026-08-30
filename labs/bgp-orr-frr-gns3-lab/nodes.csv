@@ -1,0 +1,6 @@
+name,role,x,y
+RR,route-reflector,0,-240
+E1,egress-a,-350,0
+E2,egress-b,350,0
+C1,client-west,-350,280
+C2,client-east,350,280
