@@ -110,7 +110,7 @@ flowchart TB
 ```text
 bgp-orr-frr-gns3-lab/
 ├── nodes.csv                         # Names, roles, diagram coordinates
-├── links.csv                         # GNS3 port map and labels
+├── links.csv                         # GNS3 Docker adapter map and labels
 ├── topology.mmd                      # Standalone Mermaid source
 ├── configs/
 │   ├── common/                       # E1, E2, C1, C2 FRR configurations
@@ -135,6 +135,10 @@ exit-address-family
 ```
 
 FRR documents `addpath-tx-all-paths` as transmitting all known paths to a peer. It is intentionally configured only toward the two clients, not toward E1 or E2.
+
+### Docker adapter mapping
+
+In `links.csv`, `a_adapter` and `b_adapter` are Docker adapter indices, not port numbers within one adapter. A GNS3 Docker node exposes one Ethernet port per adapter: adapter `0` / port `0` is Linux `eth0`, adapter `1` / port `0` is `eth1`, and so on. The GNS3 creator sends `adapter_number=N` and `port_number=0`; this is why the FRR interface names match the CSV.
 
 ## Build the image
 
@@ -255,7 +259,7 @@ vtysh -c 'show ip route 10.255.0.1'
 
 **Success:** All directly connected OSPF neighbors are Full, and every node can route to RR's loopback.
 
-**Failure means:** BGP sessions sourced from loopbacks cannot establish. Check the `links.csv` port map, interface addresses, and whether `ospfd` is enabled.
+**Failure means:** BGP sessions sourced from loopbacks cannot establish. Check the `links.csv` adapter map, interface addresses, and whether `ospfd` is enabled.
 
 ### 2. Verify iBGP sessions
 
