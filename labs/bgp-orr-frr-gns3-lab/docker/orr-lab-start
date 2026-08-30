@@ -15,14 +15,25 @@ chmod 0640 /etc/frr/frr.conf /etc/frr/daemons
 
 # FRR's stock Docker command keeps watchfrr in the foreground, which is ideal
 # for a service container but leaves a GNS3 Telnet console attached only to
-# logs.  Start it in the background, wait for its VTY sockets, then keep an
-# interactive FRR CLI at the console.  If a user exits vtysh, reopen it rather
-# than terminating the Docker node.
+# logs. Start it in the background, wait for all required VTY sockets, then
+# keep an interactive FRR CLI at the console. If a user exits vtysh, reopen it
+# rather than terminating the Docker node.
 /usr/lib/frr/docker-start &
 frr_start_pid=$!
+
+daemons_ready() {
+    vtysh -c 'show version' >/dev/null 2>&1 \
+        && vtysh -c 'show ip ospf' >/dev/null 2>&1 \
+        && vtysh -c 'show bgp ipv4 unicast summary' >/dev/null 2>&1
+}
+
+config_loaded() {
+    vtysh -c 'show running-config' 2>/dev/null | grep -Fq 'router bgp 65000'
+}
+
 attempt=0
 while [ "$attempt" -lt 100 ]; do
-    if vtysh -c 'show version' >/dev/null 2>&1; then
+    if daemons_ready; then
         break
     fi
     if ! kill -0 "$frr_start_pid" 2>/dev/null; then
@@ -33,8 +44,37 @@ while [ "$attempt" -lt 100 ]; do
     sleep 0.1
 done
 
-if ! vtysh -c 'show version' >/dev/null 2>&1; then
-    echo "FRR VTY is not ready after 10 seconds; opening a shell for diagnosis" >&2
+if ! daemons_ready; then
+    echo "FRR daemons are not ready after 10 seconds; opening a shell for diagnosis" >&2
+    exec /bin/bash
+fi
+
+# watchfrr normally boot-loads /etc/frr/frr.conf. Do not present a seemingly
+# healthy GNS3 console if that load was partial: wait for this lab's BGP stanza
+# and retry the documented vtysh boot load once only if it is absent.
+attempt=0
+while [ "$attempt" -lt 150 ]; do
+    if config_loaded; then
+        break
+    fi
+    if ! kill -0 "$frr_start_pid" 2>/dev/null; then
+        echo "FRR startup process exited before the lab configuration loaded" >&2
+        exec /bin/bash
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.1
+done
+
+if ! config_loaded; then
+    echo "FRR did not load the complete lab configuration; retrying once with vtysh -b" >&2
+    if ! vtysh -b; then
+        echo "The retry failed; opening a shell for diagnosis" >&2
+        exec /bin/bash
+    fi
+fi
+
+if ! config_loaded; then
+    echo "FRR is reachable but router bgp 65000 is absent from the running configuration" >&2
     exec /bin/bash
 fi
 
