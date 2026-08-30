@@ -1,0 +1,7 @@
+# Minimal daemon set for this lab.  The image start script launches enabled daemons.
+zebra=yes
+bgpd=yes
+ospfd=yes
+staticd=yes
+mgmtd=yes
+vtysh_enable=yes
