@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="610" viewBox="0 0 960 610" role="img" aria-labelledby="title description">
+  <title id="title">FRR BGP route-reflector and ADD-PATH lab topology</title>
+  <desc id="description">One central route reflector, two egress routers, and two clients. Link labels are OSPF costs.</desc>
+  <rect width="960" height="610" fill="#f8fafc"/>
+  <text x="480" y="42" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#0f172a">BGP RR path-hiding and ADD-PATH lab</text>
+  <text x="480" y="71" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" fill="#475569">All devices are in AS 65000; link labels are OSPF costs</text>
+
+  <g stroke="#64748b" stroke-width="3" fill="none">
+    <line x1="480" y1="158" x2="265" y2="268"/>
+    <line x1="480" y1="158" x2="695" y2="268"/>
+    <line x1="250" y1="326" x2="250" y2="431"/>
+    <line x1="710" y1="326" x2="710" y2="431"/>
+    <line x1="292" y1="311" x2="668" y2="445"/>
+    <line x1="668" y1="311" x2="292" y2="445"/>
+  </g>
+
+  <g font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="#334155">
+    <text x="345" y="196">10</text>
+    <text x="603" y="196">100</text>
+    <text x="266" y="387">10</text>
+    <text x="727" y="387">10</text>
+    <text x="438" y="370">100</text>
+    <text x="509" y="370">100</text>
+  </g>
+
+  <g font-family="Arial, sans-serif">
+    <g>
+      <rect x="370" y="97" width="220" height="62" rx="12" fill="#0f766e"/>
+      <text x="480" y="124" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">RR</text>
+      <text x="480" y="146" text-anchor="middle" font-size="15" fill="#ccfbf1">10.255.0.1</text>
+    </g>
+    <g>
+      <rect x="140" y="265" width="220" height="62" rx="12" fill="#1d4ed8"/>
+      <text x="250" y="292" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">E1: egress A</text>
+      <text x="250" y="314" text-anchor="middle" font-size="15" fill="#dbeafe">10.255.0.11</text>
+    </g>
+    <g>
+      <rect x="600" y="265" width="220" height="62" rx="12" fill="#1d4ed8"/>
+      <text x="710" y="292" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">E2: egress B</text>
+      <text x="710" y="314" text-anchor="middle" font-size="15" fill="#dbeafe">10.255.0.12</text>
+    </g>
+    <g>
+      <rect x="140" y="432" width="220" height="62" rx="12" fill="#7c3aed"/>
+      <text x="250" y="459" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">C1: west client</text>
+      <text x="250" y="481" text-anchor="middle" font-size="15" fill="#ede9fe">10.255.0.21</text>
+    </g>
+    <g>
+      <rect x="600" y="432" width="220" height="62" rx="12" fill="#7c3aed"/>
+      <text x="710" y="459" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">C2: east client</text>
+      <text x="710" y="481" text-anchor="middle" font-size="15" fill="#ede9fe">10.255.0.22</text>
+    </g>
+  </g>
+
+  <text x="480" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#334155">RR is closer to E1; C1 is closer to E1; C2 is closer to E2.</text>
+  <text x="480" y="578" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#334155">The standard scenario hides E2 from C2. The ADD-PATH scenario makes both exits visible.</text>
+</svg>
