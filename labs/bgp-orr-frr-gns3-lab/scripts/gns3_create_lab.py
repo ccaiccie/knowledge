@@ -21,7 +21,7 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 
 LAB_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_IMAGE = "orr-frr:10.7.0"
+DEFAULT_IMAGE = "orr-frr:10.7.0-r3"
 DEFAULT_START_COMMAND = "/usr/local/bin/orr-lab-start"
 
 
