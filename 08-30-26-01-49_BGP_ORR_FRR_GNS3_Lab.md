@@ -156,6 +156,10 @@ The startup helper consumes two generated environment variables:
 
 This avoids a host-volume path dependency and means each GNS3-created Docker node carries its own configuration. It also avoids creating or modifying a global GNS3 template.
 
+### GNS3 console behavior
+
+After startup logs finish, the GNS3 **Telnet console** opens directly to the FRR `vtysh` prompt (for example, `E1#`). This is expected to take a few seconds while `watchfrr` starts the daemons. The image also includes `/etc/frr/vtysh.conf`, so the console should not show a missing-`vtysh.conf` warning. If you type `exit`, the console opens `vtysh` again instead of stopping the Docker node.
+
 ## Create the GNS3 project
 
 ### Baseline: demonstrate route-reflector path hiding
