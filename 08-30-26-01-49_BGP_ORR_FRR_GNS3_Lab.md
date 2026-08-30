@@ -25,6 +25,7 @@ This reproduces the *outcome* of ORR—client-appropriate egress selection—but
 - [RFC 9107 — BGP Optimal Route Reflection](https://www.rfc-editor.org/rfc/rfc9107.html)
 - [RFC 7911 — Advertisement of Multiple Paths in BGP](https://www.rfc-editor.org/rfc/rfc7911.html)
 - [FRR BGP documentation](https://docs.frrouting.org/en/latest/bgp.html)
+- [FRR 10.7 VTY shell and integrated-config documentation](https://docs.frrouting.org/en/stable-10.7/vtysh.html)
 - [FRR Docker image build documentation](https://docs.frrouting.org/projects/dev-guide/en/latest/building-docker.html)
 - [GNS3 v2 controller API endpoints](https://gns3-server.readthedocs.io/en/stable/endpoints.html)
 - [GNS3 project API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/project/projects.html), [node API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/node/projectsprojectidnodes.html), and [link API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/link/projectsprojectidlinks.html)
@@ -37,7 +38,7 @@ This reproduces the *outcome* of ORR—client-appropriate egress selection—but
 - At least 5 Docker nodes and 6 Ethernet links of lab capacity.
 - OSPF and BGP enabled in the FRR container. The bundled Docker entrypoint writes the intended `frr.conf` and `daemons` before starting FRR.
 
-The bundle pins its base to `quay.io/frrouting/frr:10.7.0` through the included Dockerfile. The local GNS3 node image is named `orr-frr:10.7.0` so that the API script does not depend on a GNS3 global template.
+The bundle pins its base to `quay.io/frrouting/frr:10.7.0` through the included Dockerfile. The fixed local GNS3 node image is named `orr-frr:10.7.0-r3`; the revisioned tag prevents a newly created project from silently reusing an older broken lab image.
 
 ## Lab topology
 
@@ -119,7 +120,8 @@ bgp-orr-frr-gns3-lab/
 ├── docker/
 │   ├── Dockerfile
 │   ├── daemons
-│   └── orr-lab-start
+│   ├── orr-lab-start
+│   └── vtysh.conf
 └── scripts/
     ├── build-image.sh
     └── gns3_create_lab.py
@@ -149,6 +151,8 @@ chmod +x docker/orr-lab-start scripts/build-image.sh scripts/gns3_create_lab.py
 ./scripts/build-image.sh
 ```
 
+The build creates `orr-frr:10.7.0-r3` and deliberately uses `--no-cache`. Create a **new** GNS3 project after rebuilding: GNS3 nodes receive their base64-encoded configuration when the project is created, so rebuilding the image does not repair an already-created Docker node.
+
 The startup helper consumes two generated environment variables:
 
 - `FRR_CONFIG_B64`: the node-specific `/etc/frr/frr.conf`.
@@ -158,7 +162,7 @@ This avoids a host-volume path dependency and means each GNS3-created Docker nod
 
 ### GNS3 console behavior
 
-After startup logs finish, the GNS3 **Telnet console** opens directly to the FRR `vtysh` prompt (for example, `E1#`). This is expected to take a few seconds while `watchfrr` starts the daemons. The image also includes `/etc/frr/vtysh.conf`, so the console should not show a missing-`vtysh.conf` warning. If you type `exit`, the console opens `vtysh` again instead of stopping the Docker node.
+After startup logs finish, the GNS3 **Telnet console** opens directly to the FRR `vtysh` prompt (for example, `E1#`). This is expected to take a few seconds while `watchfrr` starts the daemons. The image includes `/etc/frr/vtysh.conf`, where the vtysh-only `service integrated-vtysh-config` setting belongs. Before opening the CLI, the startup helper verifies that `router bgp 65000` reached the running configuration and retries `vtysh -b` once if it did not. If you type `exit`, the console opens `vtysh` again instead of stopping the Docker node.
 
 ## Create the GNS3 project
 
@@ -219,7 +223,7 @@ python3 scripts/gns3_create_lab.py --scenario addpath --dry-run
 
 ### OSPF underlay
 
-Every physical link is configured as OSPF point-to-point. The loopback is advertised in OSPF, while `passive-interface default` prevents unwanted neighbor attempts on it. The physical links are explicitly made non-passive.
+Every physical link is configured as OSPF point-to-point. The loopback is advertised in OSPF, while `passive-interface default` prevents unwanted neighbor attempts on it. Each physical interface has `no ip ospf passive`, the current VRF-aware FRR form that overrides that default and allows adjacencies.
 
 The key condition is the next-hop cost ranking:
 
@@ -330,11 +334,28 @@ This separates BGP path visibility from next-hop reachability: ADD-PATH may keep
 
 ### Docker node exits immediately
 
-**Check:** Build `orr-frr:10.7.0` on the same Docker compute as the node, and inspect the node console.
+**Check:** Build `orr-frr:10.7.0-r3` on the same Docker compute as the node, and inspect the node console.
 
 **Likely cause:** The image is missing, or the start command cannot find `/usr/local/bin/orr-lab-start`.
 
 **Next action:** Run `./scripts/build-image.sh` on that compute. Do not substitute the upstream image directly unless you also supply an equivalent configuration bootstrap mechanism.
+
+### `show running-config` contains only interfaces and addresses
+
+**Symptom:** The RR (or another router) has interface descriptions and IP addresses but is missing `router ospf`, interface OSPF commands, and `router bgp 65000`.
+
+**Cause:** That is a partial FRR startup configuration load, not an expected minimal RR configuration. Earlier versions of this bundle could start without `/etc/frr/vtysh.conf` and used FRR's deprecated global `no passive-interface` syntax. The fixed image installs `vtysh.conf`, keeps its vtysh-only setting out of `frr.conf`, uses `no ip ospf passive` on each transit interface, and verifies that BGP loaded before presenting the prompt.
+
+**Next action:** Rebuild with `./scripts/build-image.sh`, delete the affected GNS3 project, and run `gns3_create_lab.py` again. On the new RR console, verify:
+
+```cli
+show running-config | include router ospf
+show running-config | include router bgp
+show ip ospf neighbor
+show bgp ipv4 unicast summary
+```
+
+The first two commands must show `router ospf` and `router bgp 65000`; do not proceed to the ORR/ADD-PATH comparison until they do.
 
 ### OSPF works, but BGP sessions stay Active or Idle
 
@@ -402,9 +423,10 @@ If you need to practice true ORR configuration, use a platform with documented n
 1. [RFC 9107 — BGP Optimal Route Reflection](https://www.rfc-editor.org/rfc/rfc9107.html)
 2. [RFC 7911 — Advertisement of Multiple Paths in BGP](https://www.rfc-editor.org/rfc/rfc7911.html)
 3. [FRR BGP documentation](https://docs.frrouting.org/en/latest/bgp.html)
-4. [FRR 10.7.0 release](https://github.com/FRRouting/frr/releases/tag/frr-10.7.0)
-5. [FRR Docker build documentation](https://docs.frrouting.org/projects/dev-guide/en/latest/building-docker.html)
-6. [GNS3 v2 controller endpoint index](https://gns3-server.readthedocs.io/en/stable/endpoints.html)
-7. [GNS3 create-project API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/project/projects.html)
-8. [GNS3 create-node API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/node/projectsprojectidnodes.html)
-9. [GNS3 create-link API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/link/projectsprojectidlinks.html)
+4. [FRR 10.7 VTY shell and integrated-config documentation](https://docs.frrouting.org/en/stable-10.7/vtysh.html)
+5. [FRR 10.7.0 release](https://github.com/FRRouting/frr/releases/tag/frr-10.7.0)
+6. [FRR Docker build documentation](https://docs.frrouting.org/projects/dev-guide/en/latest/building-docker.html)
+7. [GNS3 v2 controller endpoint index](https://gns3-server.readthedocs.io/en/stable/endpoints.html)
+8. [GNS3 create-project API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/project/projects.html)
+9. [GNS3 create-node API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/node/projectsprojectidnodes.html)
+10. [GNS3 create-link API](https://gns3-server.readthedocs.io/en/stable/api/v2/controller/link/projectsprojectidlinks.html)
