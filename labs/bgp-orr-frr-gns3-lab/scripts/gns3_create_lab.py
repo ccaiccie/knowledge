@@ -108,12 +108,37 @@ def encode_environment(config: str, daemons: str) -> str:
     return f"FRR_CONFIG_B64={config_b64}\nFRR_DAEMONS_B64={daemons_b64}"
 
 
+def endpoint_adapter(link: dict[str, str], endpoint: str) -> int:
+    """Return a Docker adapter index from the current or legacy CSV column.
+
+    A GNS3 Docker node has one Ethernet port (port 0) on each adapter.  The
+    `a_adapter`/`b_adapter` columns therefore identify both the GNS3 adapter
+    and the Linux interface number (`ethN`).  Accepting the old `*_port`
+    spelling makes an already-downloaded links.csv work with this fixed script.
+    """
+
+    for field in (f"{endpoint}_adapter", f"{endpoint}_port"):
+        value = link.get(field)
+        if value and value.strip():
+            try:
+                adapter = int(value)
+            except ValueError as error:
+                raise ValueError(f"{field} must be an integer, got {value!r}") from error
+            if adapter < 0:
+                raise ValueError(f"{field} must be zero or greater, got {adapter}")
+            return adapter
+    raise ValueError(
+        f"Link {link.get('a', '?')!r}-{link.get('b', '?')!r} is missing "
+        f"{endpoint}_adapter."
+    )
+
+
 def adapter_counts(links: list[dict[str, str]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for link in links:
-        for endpoint, field in (("a", "a_port"), ("b", "b_port")):
+        for endpoint in ("a", "b"):
             node = link[endpoint]
-            needed = int(link[field]) + 1
+            needed = endpoint_adapter(link, endpoint) + 1
             counts[node] = max(counts.get(node, 0), needed)
     return counts
 
@@ -175,6 +200,22 @@ def create_nodes(
             payload=payload,
             expected=(201,),
         )
+        expected_ports = {
+            (adapter_number, 0)
+            for adapter_number in range(int(payload["properties"]["adapters"]))
+        }
+        actual_ports = {
+            (int(port["adapter_number"]), int(port["port_number"]))
+            for port in node.get("ports", [])
+        }
+        missing_ports = expected_ports - actual_ports
+        if missing_ports:
+            expected = ", ".join(f"{adapter}/0" for adapter, _ in sorted(expected_ports))
+            actual = ", ".join(f"{adapter}/{port}" for adapter, port in sorted(actual_ports))
+            raise Gns3ApiError(
+                f"Node {payload['name']} did not expose the expected Docker ports "
+                f"({expected}); GNS3 returned ({actual or 'none'})."
+            )
         node_ids[payload["name"]] = node["node_id"]
         print(f"Created {payload['name']}: {node['node_id']}")
     return node_ids
@@ -187,18 +228,20 @@ def create_links(
     node_ids: dict[str, str],
 ) -> None:
     for link in links:
+        a_adapter = endpoint_adapter(link, "a")
+        b_adapter = endpoint_adapter(link, "b")
         payload = {
             "nodes": [
                 {
                     "node_id": node_ids[link["a"]],
-                    "adapter_number": 0,
-                    "port_number": int(link["a_port"]),
+                    "adapter_number": a_adapter,
+                    "port_number": 0,
                     "label": {"text": link["label"]},
                 },
                 {
                     "node_id": node_ids[link["b"]],
-                    "adapter_number": 0,
-                    "port_number": int(link["b_port"]),
+                    "adapter_number": b_adapter,
+                    "port_number": 0,
                 },
             ]
         }
@@ -208,7 +251,10 @@ def create_links(
             payload=payload,
             expected=(201,),
         )
-        print(f"Linked {link['a']} eth{link['a_port']} to {link['b']} eth{link['b_port']}")
+        print(
+            f"Linked {link['a']} adapter {a_adapter} (eth{a_adapter}) to "
+            f"{link['b']} adapter {b_adapter} (eth{b_adapter})"
+        )
 
 
 def start_nodes(client: Gns3Client, project_id: str, node_ids: dict[str, str]) -> None:
