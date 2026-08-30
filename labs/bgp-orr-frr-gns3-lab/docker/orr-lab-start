@@ -1,0 +1,16 @@
+#!/bin/sh
+# Bootstrap a per-node FRR configuration supplied by the GNS3 API as base64.
+set -eu
+
+if [ -z "${FRR_CONFIG_B64:-}" ] || [ -z "${FRR_DAEMONS_B64:-}" ]; then
+    echo "FRR_CONFIG_B64 and FRR_DAEMONS_B64 must be set" >&2
+    exit 64
+fi
+
+umask 022
+printf '%s' "$FRR_CONFIG_B64" | base64 -d > /etc/frr/frr.conf
+printf '%s' "$FRR_DAEMONS_B64" | base64 -d > /etc/frr/daemons
+chown frr:frr /etc/frr/frr.conf /etc/frr/daemons
+chmod 0640 /etc/frr/frr.conf /etc/frr/daemons
+
+exec /usr/lib/frr/docker-start
