@@ -13,4 +13,32 @@ printf '%s' "$FRR_DAEMONS_B64" | base64 -d > /etc/frr/daemons
 chown frr:frr /etc/frr/frr.conf /etc/frr/daemons
 chmod 0640 /etc/frr/frr.conf /etc/frr/daemons
 
-exec /usr/lib/frr/docker-start
+# FRR's stock Docker command keeps watchfrr in the foreground, which is ideal
+# for a service container but leaves a GNS3 Telnet console attached only to
+# logs.  Start it in the background, wait for its VTY sockets, then keep an
+# interactive FRR CLI at the console.  If a user exits vtysh, reopen it rather
+# than terminating the Docker node.
+/usr/lib/frr/docker-start &
+frr_start_pid=$!
+attempt=0
+while [ "$attempt" -lt 100 ]; do
+    if vtysh -c 'show version' >/dev/null 2>&1; then
+        break
+    fi
+    if ! kill -0 "$frr_start_pid" 2>/dev/null; then
+        echo "FRR startup process exited before VTY became available" >&2
+        exec /bin/bash
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.1
+done
+
+if ! vtysh -c 'show version' >/dev/null 2>&1; then
+    echo "FRR VTY is not ready after 10 seconds; opening a shell for diagnosis" >&2
+    exec /bin/bash
+fi
+
+while :; do
+    vtysh
+    sleep 0.2
+done
