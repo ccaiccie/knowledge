@@ -1,0 +1,7 @@
+a,a_port,b,b_port,label
+RR,0,E1,0,RR-E1 cost 10
+RR,1,E2,0,RR-E2 cost 100
+E1,1,C1,0,E1-C1 cost 10
+E1,2,C2,0,E1-C2 cost 100
+E2,1,C1,1,E2-C1 cost 100
+E2,2,C2,1,E2-C2 cost 10
