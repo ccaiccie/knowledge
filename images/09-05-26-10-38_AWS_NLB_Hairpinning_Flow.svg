@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <style>
+    .box { fill: white; stroke: #333; stroke-width: 2; }
+    .dash { fill: white; stroke: #333; stroke-width: 2; stroke-dasharray: 8 6; }
+    .t { font-family: Arial, Helvetica, sans-serif; fill: #111; }
+    .title { font-size: 26px; font-weight: 700; }
+    .h { font-size: 18px; font-weight: 700; }
+    .b { font-size: 16px; }
+    .s { font-size: 14px; }
+    .line { stroke: #333; stroke-width: 2.5; fill: none; marker-end: url(#arrow); color: #333; }
+    .hair { stroke: #333; stroke-width: 2.5; fill: none; stroke-dasharray: 8 6; marker-end: url(#arrow); color: #333; }
+  </style>
+
+  <text class="t title" x="700" y="42" text-anchor="middle">AWS NLB Hairpinning: Client-IP Preservation vs Proxy Protocol v2</text>
+
+  <rect class="box" x="70" y="160" rx="14" ry="14" width="190" height="95"/>
+  <text class="t h" x="165" y="195" text-anchor="middle">Original Client</text>
+  <text class="t b" x="165" y="225" text-anchor="middle">192.0.2.50</text>
+
+  <polygon class="box" points="610,150 820,150 875,210 820,270 610,270 555,210"/>
+  <text class="t h" x="715" y="198" text-anchor="middle">Internal NLB</text>
+  <text class="t b" x="715" y="226" text-anchor="middle">Network Load Balancer</text>
+
+  <rect class="box" x="1080" y="100" rx="14" ry="14" width="250" height="135"/>
+  <text class="t h" x="1205" y="135" text-anchor="middle">Proxy-A / Target</text>
+  <text class="t b" x="1205" y="164" text-anchor="middle">10.0.1.10</text>
+  <text class="t s" x="1205" y="196" text-anchor="middle">Also calls the same NLB</text>
+
+  <rect class="box" x="1080" y="315" rx="14" ry="14" width="250" height="105"/>
+  <text class="t h" x="1205" y="353" text-anchor="middle">Proxy-B / Target</text>
+  <text class="t b" x="1205" y="384" text-anchor="middle">10.0.2.10</text>
+
+  <path class="line" d="M260,207 L555,207"/>
+  <text class="t s" x="400" y="190" text-anchor="middle">TCP request</text>
+
+  <path class="line" d="M875,190 L1080,165"/>
+  <text class="t s" x="980" y="150" text-anchor="middle">target selection</text>
+
+  <path class="line" d="M875,232 L1080,360"/>
+  <text class="t s" x="980" y="300" text-anchor="middle">target selection</text>
+
+  <path class="hair" d="M1080,125 L950,80 L715,80 L715,150"/>
+  <text class="t s" x="880" y="68" text-anchor="middle">Hairpin call: Proxy-A → same NLB</text>
+
+  <rect class="dash" x="75" y="505" rx="14" ry="14" width="560" height="220"/>
+  <text class="t h" x="355" y="540" text-anchor="middle">BAD: client-IP preservation enabled</text>
+  <text class="t b" x="105" y="580">If Proxy-A calls the NLB and the NLB selects Proxy-A again:</text>
+  <text class="t b" x="105" y="615">SRC = 10.0.1.10</text>
+  <text class="t b" x="105" y="645">DST = 10.0.1.10</text>
+  <text class="t b" x="105" y="685">AWS NAT loopback / hairpinning is unsupported in this mode.</text>
+
+  <rect class="box" x="760" y="505" rx="14" ry="14" width="565" height="220"/>
+  <text class="t h" x="1042" y="540" text-anchor="middle">GOOD: disable preservation + use PPv2</text>
+  <text class="t b" x="790" y="580">1. Disable client-IP preservation.</text>
+  <text class="t b" x="790" y="612">2. Target sees an NLB private IP as the network-layer source.</text>
+  <text class="t b" x="790" y="644">3. Enable Proxy Protocol v2 after the target can parse it.</text>
+  <text class="t b" x="790" y="676">4. Read original client IP/port from PPv2 metadata.</text>
+
+  <text class="t h" x="715" y="452" text-anchor="middle">PPv2 moves client identity into metadata instead of relying on the IP header.</text>
+</svg>
