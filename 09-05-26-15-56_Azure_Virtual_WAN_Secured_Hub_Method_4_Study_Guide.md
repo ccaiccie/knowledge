@@ -1,0 +1,532 @@
+# Method 4 — Azure Virtual WAN Secured Hub with Azure Firewall or Integrated NVA
+
+> Deep study guide for centralized inspection in **Azure Virtual WAN (vWAN)** using a **secured virtual hub**, with either **Azure Firewall** or a **supported Network Virtual Appliance (NVA)** integrated directly into the virtual hub.
+
+## Source URLs
+
+- https://learn.microsoft.com/en-us/azure/firewall-manager/secured-virtual-hub
+- https://learn.microsoft.com/en-us/azure/firewall-manager/secure-cloud-network
+- https://learn.microsoft.com/en-us/azure/virtual-wan/routing-deep-dive
+- https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
+- https://learn.microsoft.com/en-us/azure/virtual-wan/howto-firewall
+- https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
+- https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
+- https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
+- https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
+
+---
+
+## 1. What this method is
+
+**Source information:** Azure Virtual WAN is a Microsoft-managed global transit architecture. A **secured virtual hub** is a Virtual WAN hub with an integrated security provider. Azure Firewall can be deployed directly into the managed hub. Microsoft also supports a limited set of third-party NVAs engineered and validated specifically for deployment inside a Virtual WAN hub.
+
+The key operational difference from a customer-managed hub VNet is that you do **not** own the hub subnet layout and you do not place arbitrary VMs inside it. Microsoft operates the virtual hub router. VNet, VPN, ExpressRoute, and supported integrated-NVA connections exchange routes with that routing fabric. **Routing Intent** and **Routing Policies** can steer private and Internet traffic through the selected security provider without requiring the classic per-spoke UDR model.
+
+**Additional explanation:** Treat the vHub as a managed transit router plus gateway fabric. The firewall/NVA is a service-insertion point attached to that routing fabric. Instead of building a route-server + load-balancer + firewall chain yourself, you tell the vHub which traffic class must be inspected.
+
+## 2. High-level topology
+
+![Azure Virtual WAN secured hub architecture](images/09-05-26-15-56_azure_vwan_architecture.svg)
+
+[Editable draw.io version](images/09-05-26-15-56_azure_vwan_architecture.drawio)
+
+**What this image shows:** Spoke VNets, branches, and Internet destinations converge on the managed vHub. Routing Intent steers selected traffic through Azure Firewall or a supported integrated NVA.
+
+**What matters:** A normal VM-based NVA in an arbitrary connected VNet is a different architecture and does not automatically receive integrated vHub routing behavior.
+
+**What to verify:** Virtual WAN type is **Standard**, the security provider is healthy, and the required Private Traffic / Internet Traffic policies are enabled.
+
+## 3. Azure Firewall versus integrated NVA
+
+| Area | Azure Firewall in secured hub | Supported integrated NVA in vHub |
+|---|---|---|
+| Deployment | Native Microsoft service | Third-party managed application built for vWAN |
+| Placement | Directly in vHub | Directly in vHub |
+| Routing integration | Native Routing Intent | Integrated with vHub router; vendor capability dependent |
+| HA | Platform managed | Azure + partner integrated HA model |
+| SD-WAN termination | No | Some partner appliances support SD-WAN |
+| NGFW features | Azure Firewall Standard/Premium | Vendor-specific |
+| Lifecycle | Azure service lifecycle | Partner-specific |
+| Internet DNAT | Azure Firewall DNAT | Supported only on specific integrated offers/features |
+| Licensing | Azure service pricing | Azure infrastructure + vendor entitlement/Marketplace plan |
+
+**Caveat:** “NVA in Azure” does not mean “NVA supported in a Virtual WAN hub.” Direct vHub deployment is restricted to approved partner offers.
+
+## 4. Routing Intent — the key mechanism
+
+Routing Intent tells Virtual WAN which security provider must receive a traffic class. The two central policies are:
+
+1. **Private Traffic** — VNet and branch/private prefixes.
+2. **Internet Traffic** — Internet/default-route traffic.
+
+When these policies are enabled, the hub router changes forwarding behavior so traffic reaches the firewall/NVA before the final destination.
+
+### Why this differs from classic UDR service insertion
+
+In a traditional hub VNet, each spoke often needs a UDR whose next hop is Azure Firewall or an NVA. You must manually account for gateway propagation, route symmetry, load balancers, and return paths.
+
+In a Virtual WAN secured hub, the **vHub router is the control point**. Connected VNet and branch routes are learned by the hub; Routing Intent changes how they are forwarded; and Virtual WAN programs/advertises the resulting route behavior toward connected networks.
+
+## 5. Control-plane route programming
+
+![Routing Intent control plane](images/09-05-26-15-56_azure_vwan_routing-control-plane.svg)
+
+[Editable draw.io version](images/09-05-26-15-56_azure_vwan_routing-control-plane.drawio)
+
+**What this image shows:** Spoke and branch prefixes enter the vHub routing system. Associations, propagations, and Routing Intent determine effective forwarding and what connected networks learn.
+
+**What matters:** The firewall does **not** log in to every spoke and edit a route table. The Virtual WAN control plane owns the hub route programming.
+
+**What to verify:** Inspect **Effective Routes** for the hub and VNet connections. Check route origin, next-hop type, and whether the expected default/private routes follow the secured-hub path.
+
+## 6. Detailed packet flow — Spoke A to Spoke B
+
+Example:
+
+- Spoke A: `10.10.0.0/16`
+- VM-A: `10.10.1.4`
+- Spoke B: `10.20.0.0/16`
+- VM-B: `10.20.1.4`
+- Private Traffic policy: enabled
+- Security provider: Azure Firewall or supported integrated NVA
+
+![Spoke-to-spoke flow](images/09-05-26-15-56_azure_vwan_spoke-to-spoke-flow.svg)
+
+[Editable draw.io version](images/09-05-26-15-56_azure_vwan_spoke-to-spoke-flow.drawio)
+
+**What this image shows:** The vHub receives the packet, applies the Private Traffic routing policy, inserts the security provider, then performs the onward lookup to Spoke B.
+
+**What matters:** Stateful inspection requires the return direction to traverse the same logical state domain.
+
+**What to verify:** Firewall logs should show the expected source/destination and both directions; there should be no alternate UDR or branch route that bypasses inspection.
+
+### Forward path
+
+1. VM-A sends a packet to `10.20.1.4`.
+2. Spoke A routing forwards the destination through its Virtual WAN VNet connection.
+3. The packet enters the vHub routing fabric.
+4. The vHub identifies `10.20.0.0/16` as private traffic.
+5. The Private Traffic policy selects the firewall/NVA as service next hop.
+6. The security provider evaluates network/application policy, threat controls, logging, and NAT where applicable.
+7. If allowed, the packet returns to the vHub forwarding fabric.
+8. The vHub resolves `10.20.0.0/16` through the Spoke B connection.
+9. The packet enters Spoke B and reaches VM-B.
+
+### Return path
+
+1. VM-B replies to `10.10.1.4`.
+2. The reply enters the vHub.
+3. Private Traffic policy again inserts the security provider.
+4. The firewall matches the stateful session/policy.
+5. The vHub forwards the packet to Spoke A.
+6. VM-A receives the reply.
+
+### NAT caveat
+
+For private-to-private traffic, unnecessary SNAT makes troubleshooting and source-based policy harder. Azure Firewall NAT behavior depends on destination classification and the configured private IP ranges. If the enterprise uses non-RFC1918 space internally, validate how those ranges are classified and add them where required.
+
+## 7. Branch to spoke flow
+
+Assume a branch advertises `10.50.0.0/16` over site-to-site VPN, ExpressRoute, or a supported SD-WAN NVA.
+
+1. The branch sends traffic to a spoke prefix.
+2. The VPN/ER/SD-WAN connection lands in the vHub.
+3. The vHub resolves the destination.
+4. Private Traffic routing policy inserts the firewall/NVA.
+5. The security provider allows or denies the session.
+6. The vHub forwards the permitted packet to the spoke VNet connection.
+7. The return direction follows the corresponding secured path toward the branch.
+
+This same transit model is what makes Virtual WAN useful for branch-to-VNet, VNet-to-branch, branch-to-branch, VNet-to-VNet, and multi-region connectivity.
+
+## 8. Multi-region inter-hub inspection
+
+![Inter-hub branch flow](images/09-05-26-15-56_azure_vwan_interhub-branch-flow.svg)
+
+[Editable draw.io version](images/09-05-26-15-56_azure_vwan_interhub-branch-flow.drawio)
+
+**What this image shows:** A branch connected to Hub 1 reaches a workload behind Hub 2 while secured routing is applied.
+
+**What matters:** Having a firewall in each hub does not by itself guarantee inter-hub inspection. Microsoft documents the need for Routing Intent and the **Inter-hub** setting when private inter-hub traffic must traverse the security solution.
+
+**What to verify:** In each affected hub, confirm Private Traffic policy and Inter-hub behavior, then inspect effective routes on both sides.
+
+## 9. Internet egress
+
+When **Internet Traffic → Azure Firewall/NVA** is enabled:
+
+1. A workload sends traffic to an Internet destination.
+2. The effective default route directs the traffic to the secured vHub path.
+3. The vHub forwards it to the firewall/NVA.
+4. Security policy is evaluated.
+5. SNAT is typically applied for public egress as appropriate.
+6. The packet exits through the security provider.
+7. Return traffic reaches the same service and is matched to state.
+8. The vHub forwards it back to the source spoke.
+
+### Internet security on VNet connections
+
+The VNet connection’s Internet security setting controls whether the secured default-route behavior is advertised/applied to the spoke. Always verify the effective `0.0.0.0/0`; otherwise a workload may continue to use a direct Azure system route to the Internet.
+
+## 10. Internet inbound / DNAT
+
+### Azure Firewall
+
+Azure Firewall can publish workloads through DNAT rules subject to Azure Firewall capabilities and policy.
+
+### Integrated NVA
+
+Microsoft documents an Internet Inbound/DNAT integration for only specific supported NVA offers. Do not assume all integrated NVAs support this capability. The current Microsoft documentation also places requirements on the public IPs used for DNAT, including regional alignment with the NVA resource.
+
+**Design rule:** Validate Internet inbound as a separate feature from east-west/private inspection.
+
+## 11. Private Endpoint inspection
+
+Private Endpoints can introduce very specific routing behavior. For secured Virtual WAN designs:
+
+- enable the required network policies on the private-endpoint subnet;
+- ensure the secured route is preferred;
+- with Azure Firewall, add private endpoint prefixes to the secured private-traffic configuration where Microsoft documents it as necessary;
+- verify DNS returns the private endpoint IP;
+- inspect source effective routes and firewall logs.
+
+When troubleshooting, examine DNS first, then the source NIC route, then the PE subnet network-policy setting, then firewall visibility and return routing.
+
+## 12. Step-by-step configuration — Azure Firewall secured hub
+
+### Prerequisites
+
+- Azure Virtual WAN **Standard**.
+- One or more Virtual Hubs.
+- Non-overlapping address plan.
+- Appropriate RBAC.
+- Firewall Policy design.
+- VPN/ExpressRoute gateways if branch connectivity is required.
+
+### Step 1 — Create/select the Virtual WAN
+
+1. Open **Virtual WANs**.
+2. Create or select the required Virtual WAN.
+3. Ensure **Type = Standard**.
+
+### Step 2 — Create the virtual hub
+
+1. Under the Virtual WAN, open **Hubs**.
+2. Create the hub in the target region.
+3. Allocate the hub address space.
+4. Add VPN and/or ExpressRoute gateways when required.
+
+### Step 3 — Deploy Azure Firewall into the hub
+
+1. Open **Network Security** / Firewall Manager or the Virtual WAN hub security workflow.
+2. Create/convert the hub to a secured hub.
+3. Deploy Azure Firewall.
+4. Select Standard or Premium according to security requirements.
+5. Associate an Azure Firewall Policy.
+
+Microsoft notes an important availability-zone caveat: when upgrading an existing hub through some portal/Firewall Manager paths, you cannot choose Azure Firewall Availability Zones. Microsoft recommends the PowerShell upgrade procedure when you need to specify zones during an upgrade. Also, when zones are available, Microsoft recommends aligning the firewall deployment with the hub’s resiliency model by selecting all available zones.
+
+### Step 4 — Connect spoke VNets
+
+1. Virtual WAN → **Virtual network connections**.
+2. Add each spoke.
+3. Select the correct hub.
+4. Review route-table association and propagation.
+5. Review **Internet security**.
+6. Save.
+
+### Step 5 — Configure Routing Intent
+
+In the hub **Security configuration**:
+
+1. **Internet traffic** → select Azure Firewall when Internet egress inspection is required.
+2. **Private traffic** → **Send via Azure Firewall**.
+3. **Inter-hub** → enable where hub-to-hub / branch-to-branch inspection is required.
+4. Add non-RFC1918 corporate prefixes under **Private Traffic Prefixes** when they are intended to be treated as private.
+5. Save and wait for route programming to converge. Microsoft’s tutorial notes that route-table updates can take a few minutes.
+
+### Step 6 — Configure Firewall Policy
+
+At minimum define:
+
+- east-west allow rules;
+- branch-to-spoke rules;
+- Internet application/network rules;
+- DNS dependencies;
+- DNAT where publishing services;
+- logging/diagnostics;
+- Premium controls such as IDPS/TLS inspection where licensed and required.
+
+### Step 7 — Validate before production
+
+Check:
+
+- vHub effective routes;
+- VNet connection effective routes;
+- VM NIC effective routes;
+- branch BGP tables;
+- firewall logs;
+- test sessions in both directions.
+
+## 13. Step-by-step configuration — supported integrated NVA
+
+The exact workflow is vendor-specific, but the architecture is consistent:
+
+1. Confirm the appliance is on Microsoft’s current supported Virtual WAN NVA partner list.
+2. Deploy the vendor’s **managed application** from Azure Marketplace.
+3. Select the Virtual WAN and target hub.
+4. Select the vendor’s required NVA infrastructure/scale units.
+5. Complete licensing/bootstrap in the vendor orchestrator.
+6. Confirm the NVA integrates/peers with the vHub router.
+7. Configure Routing Intent for the traffic classes that the offer supports.
+8. If it also provides SD-WAN, terminate branch overlays and validate branch route exchange into the vHub.
+9. Build vendor firewall policy.
+10. Test HA, upgrade behavior, and convergence.
+
+**Licensing caveat:** Azure consumption and vendor licensing are separate. Depending on the offer, the vendor may use PAYG, Marketplace subscription, or BYOL. Verify the current Marketplace plan and support entitlement.
+
+## 14. Does the NVA need to be in the hub?
+
+For **this method**, yes: to get integrated Virtual WAN NVA behavior, use one of the supported NVAs deployed directly into the Virtual WAN hub.
+
+A generic pair of firewall VMs in a connected VNet can still inspect traffic, but that becomes a different service-insertion architecture. It commonly involves custom Virtual WAN routes, static routes, load balancers, and/or Azure Route Server depending on the design.
+
+Keep these two designs separate in your mental model:
+
+1. **Integrated NVA in the vHub** — supported managed application with direct Virtual WAN routing integration.
+2. **NVA in a connected VNet** — customer-managed routing/service insertion.
+
+## 15. Route tables, association, propagation, and labels
+
+A Virtual WAN hub has routing objects that determine what routes a connection uses and where its learned routes are advertised.
+
+- **Association** — which hub route table a connection uses for lookup.
+- **Propagation** — which route table(s) receive routes learned from that connection.
+- **Labels** — logical grouping of route tables across hubs.
+- **Default route table** — commonly used for general transit.
+
+Routing Intent adds a security-steering layer to this model. When building a secured hub, treat Routing Intent as the primary service-insertion mechanism rather than attempting to recreate the same behavior with a collection of custom route tables.
+
+Microsoft’s Zero Trust guidance specifically warns that custom Virtual WAN route tables should not be treated as a substitute for Routing Intent and security policies.
+
+## 16. Common bypass mistakes
+
+### UDR on a spoke overrides the secured path
+
+A user with permission to associate a route table to a subnet can create a route that bypasses the firewall.
+
+**Mitigation:** Restrict RBAC for route-table creation/association. Microsoft calls this out as a security concern in its Virtual WAN Zero Trust guidance.
+
+### Internet security not enabled
+
+The workload can continue using a direct Internet route.
+
+**Mitigation:** Validate the VNet connection setting and the effective `0.0.0.0/0`.
+
+### Inter-hub inspection assumed but not configured
+
+Native vWAN hub-to-hub transit can carry private traffic without the inspection path you expected.
+
+**Mitigation:** Enable Routing Intent/Private Traffic plus Inter-hub behavior.
+
+### Non-RFC1918 corporate ranges are not classified as private
+
+**Mitigation:** Add those prefixes explicitly under Private Traffic Prefixes.
+
+### Unsupported NVA selected
+
+A normal Marketplace firewall cannot simply be dropped into the managed vHub.
+
+**Mitigation:** Use the current Microsoft supported-NVA list.
+
+## 17. Asymmetric routing
+
+Stateful inspection depends on forward and return traffic crossing the same state domain. Asymmetry can be introduced by:
+
+- spoke UDR bypasses;
+- branch direct/private WAN alternatives;
+- inconsistent BGP advertisement/preference;
+- Routing Intent enabled in only one hub;
+- inter-hub inspection disabled;
+- Internet return traffic using a different ingress path;
+- SD-WAN overlay decisions that differ from vHub routing.
+
+### Practical verification
+
+For one test flow record:
+
+- source/destination IP;
+- source/destination port;
+- protocol;
+- firewall instance/session ID;
+- branch path;
+- vHub path;
+- effective route in each direction.
+
+If the firewall sees the SYN but no SYN-ACK, inspect the destination return route immediately.
+
+## 18. High availability and failure behavior
+
+### Azure Firewall
+
+Availability is platform-managed. Do not model it as two ordinary firewall VMs behind your own load balancer.
+
+### Integrated NVA
+
+Microsoft describes integrated NVAs as Availability Zone aware and highly available, but exact lifecycle, state synchronization, and upgrade behavior are partner-specific.
+
+### Failure test plan
+
+Measure:
+
+1. session impact;
+2. next-hop/route change;
+3. convergence time;
+4. branch tunnel failover;
+5. state synchronization;
+6. long-lived TCP survival;
+7. logging continuity.
+
+Do not equate “HA” with guaranteed stateful session preservation unless the vendor explicitly documents it.
+
+## 19. Monitoring and verification
+
+### Hub
+
+Check provisioning state, Routing Intent status, security provider health, effective routes, origin, and next-hop type.
+
+### Spoke VM/NIC
+
+Check effective routes, especially `0.0.0.0/0`, the remote private prefix, and any unexpected UDR.
+
+### Azure Firewall
+
+Use Azure Monitor and firewall diagnostics for network/application rule logs, threat intelligence, and Premium features where applicable.
+
+### Branch
+
+Check BGP received/advertised routes, active tunnel/circuit, path preference, and overlap.
+
+### NVA
+
+Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA status, dataplane utilization, and overlay tunnel tools.
+
+## 20. Troubleshooting by symptom
+
+### Spoke A cannot reach Spoke B
+
+**Where:** source NIC effective routes → vHub effective routes → firewall logs.
+
+**Test:** confirm the destination prefix is learned and the secured path is selected.
+
+**Success:** the route exists and the firewall sees both directions.
+
+**Failure means:** route propagation, policy, bypass, or return-path problem.
+
+**Next action:** inspect VNet connection association/propagation and Routing Intent.
+
+### Branch reaches the hub but not the spoke
+
+**Where:** branch BGP and vHub effective routes.
+
+**Test:** confirm the branch learns the spoke prefix and the vHub learns the branch prefix.
+
+**Failure means:** gateway/BGP propagation, route filtering, overlap, or route-table association problem.
+
+### Internet works but bypasses firewall
+
+**Where:** workload NIC effective routes.
+
+**Test:** inspect `0.0.0.0/0`.
+
+**Failure means:** Internet security/default-route programming is absent or overridden.
+
+### Firewall sees outbound SYN only
+
+**Where:** destination effective route + firewall session table.
+
+**Test:** trace the return route.
+
+**Failure means:** asymmetry is likely.
+
+### Inter-region traffic bypasses inspection
+
+**Where:** both hub Security configuration blades.
+
+**Test:** check Private Traffic and Inter-hub.
+
+**Failure means:** native hub-to-hub transit is being used without the intended service insertion.
+
+### Private Endpoint bypasses inspection
+
+**Where:** DNS, PE subnet network policies, source effective route, firewall logs.
+
+**Test:** confirm the PE route does not override the intended secured route.
+
+## 21. Important Microsoft caveats and limits
+
+- Virtual WAN must be **Standard** for the secured-hub architecture described here.
+- Only supported integrated third-party NVA offers can be deployed directly inside a vHub.
+- Routing Intent is required when you need secured inter-hub and branch-to-branch traffic behavior.
+- If internal networks use public IP ranges, add them to **Private Traffic Prefixes**.
+- Microsoft documents that secured-hub Azure Firewall supports up to **80 public IP addresses** in standard deployments; a Bring Your Own Public IP preview can raise the documented limit to **250**. Validate current limits before production design.
+- Microsoft’s tutorial states a new secured hub can take up to about **30 minutes** to create and route-table changes can take a few minutes to apply.
+- When upgrading an existing hub through portal/Firewall Manager paths, Availability Zone selection for Azure Firewall has limitations; use the documented PowerShell method when zone selection is required.
+- NVA DNAT/Internet Inbound is not universal; Microsoft currently restricts it to specific integrated offers.
+- Private Endpoint inspection has additional subnet/network-policy and route considerations.
+- Custom Virtual WAN route tables should not be treated as a substitute for Routing Intent when the requirement is secured traffic steering.
+
+## 22. Design checklist
+
+- [ ] Virtual WAN is Standard.
+- [ ] Required regional hubs exist and are sized appropriately.
+- [ ] Azure Firewall or supported integrated NVA is healthy.
+- [ ] Private Traffic policy enabled.
+- [ ] Internet Traffic policy enabled where required.
+- [ ] Inter-hub inspection enabled where required.
+- [ ] Non-RFC1918 enterprise private prefixes are explicitly classified.
+- [ ] VNet connection association/propagation is correct.
+- [ ] Internet security enabled where required.
+- [ ] No spoke UDR bypass exists.
+- [ ] Branch BGP advertisements are symmetrical and non-overlapping.
+- [ ] Firewall policy permits required east-west/north-south traffic.
+- [ ] NAT behavior is understood.
+- [ ] Private Endpoint behavior is validated.
+- [ ] NVA feature support, licensing, and support entitlement are confirmed.
+- [ ] Failover/state behavior is tested.
+- [ ] Logging/monitoring is enabled.
+
+## 23. When to choose this method
+
+Choose Virtual WAN secured hub when you need managed large-scale branch/VNet transit, multi-region hub connectivity, a Microsoft-managed transit control plane, centralized security insertion without maintaining UDRs on every spoke, and unified VPN/ExpressRoute/SD-WAN/VNet connectivity.
+
+Prefer a customer-managed hub VNet when you require arbitrary appliances not supported in vHub, exact subnet/route control, or custom service chains that Virtual WAN Routing Intent does not expose.
+
+## 24. Source information, explanation, and inference
+
+**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, and Private Endpoint inspection requirements.
+
+**Additional explanation:** The packet walks and control-plane diagrams in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → stateful inspection → second lookup → egress → symmetric return.
+
+**Reasonable inference:** Exact convergence, session preservation, and scale of a third-party integrated NVA depend on the vendor implementation, selected scale units, topology, and active traffic. Test those rather than assuming them from the generic Virtual WAN architecture.
+
+## Sources
+
+1. Microsoft Learn — What is a secured virtual hub?  
+   https://learn.microsoft.com/en-us/azure/firewall-manager/secured-virtual-hub
+2. Microsoft Learn — Secure your virtual hub using Azure Firewall Manager  
+   https://learn.microsoft.com/en-us/azure/firewall-manager/secure-cloud-network
+3. Microsoft Learn — Virtual WAN routing deep dive  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/routing-deep-dive
+4. Microsoft Learn — About NVAs in a Virtual WAN hub  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
+5. Microsoft Learn — Configure Azure Firewall in a Virtual WAN hub  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/howto-firewall
+6. Microsoft Learn — Apply Zero Trust principles to Azure Virtual WAN  
+   https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
+7. Microsoft Learn — Configure Destination NAT for NVA in the hub  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
+8. Microsoft Learn — Azure Virtual WAN network topology  
+   https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
+9. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
+   https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
