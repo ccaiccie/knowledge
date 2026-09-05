@@ -1,1 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0L0 6L7 3z" fill="#2471a3"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#17365d}.n{fill:#eaf3fb;stroke:#2471a3;stroke-width:2}.e{stroke:#2471a3;stroke-width:3;marker-end:url(#a)}</style><text x="40" y="48" font-size="26" font-weight="700">Gateway Load Balancer transparent insertion</text><rect class="n" x="40" y="160" width="180" height="80" rx="14"/><text x="130.0" y="206" text-anchor="middle" font-size="16">Internet</text><rect class="n" x="275" y="160" width="180" height="80" rx="14"/><text x="365.0" y="206" text-anchor="middle" font-size="16">Public LB / PIP</text><rect class="n" x="510" y="160" width="180" height="80" rx="14"/><text x="600.0" y="206" text-anchor="middle" font-size="16">Gateway LB</text><rect class="n" x="745" y="160" width="180" height="80" rx="14"/><text x="835.0" y="206" text-anchor="middle" font-size="16">NVA Pool</text><rect class="n" x="980" y="160" width="180" height="80" rx="14"/><text x="1070.0" y="206" text-anchor="middle" font-size="16">Application</text><line class="e" x1="220" y1="200" x2="275" y2="200"/><line class="e" x1="455" y1="200" x2="510" y2="200"/><line class="e" x1="690" y1="200" x2="745" y2="200"/><line class="e" x1="925" y1="200" x2="980" y2="200"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+
+<defs>
+  <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#0078D4"/>
+  </marker>
+  <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#107C10"/>
+  </marker>
+  <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#CA5010"/>
+  </marker>
+  <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5C2D91"/>
+  </marker>
+  <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#D13438"/>
+  </marker>
+  <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.18"/>
+  </filter>
+  <style>
+    .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill: #14314A; }
+    .subtitle { font: 400 15px 'Segoe UI', Arial, sans-serif; fill: #4A4A4A; }
+    .label { font: 600 16px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .small { font: 400 13px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .tiny { font: 400 12px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .legend { font: 600 13px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+  </style>
+</defs>
+<text x="30" y="40" class="title" text-anchor="start">Gateway Load Balancer transparent service insertion</text>
+<text x="30" y="64" class="subtitle" text-anchor="start">Chained public endpoint sends traffic transparently through a firewall/NVA pool before it reaches the application tier.</text>
+<g filter="url(#shadow)"><ellipse cx="87.6" cy="292.25" rx="27.2" ry="17.099999999999998" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="118.2" cy="279.9" rx="30.599999999999998" ry="20.9" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="148.8" cy="287.5" rx="28.900000000000002" ry="18.05" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="77.4" y="289.4" width="85.0" height="19.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="125.0" y="328.35" class="label" text-anchor="middle">Internet clients</text>
+<rect x="250" y="150" width="1270" height="560" rx="22" fill="#F8FBFF" stroke="#0078D4" stroke-width="3" stroke-dasharray="7 5"/>
+<text x="885" y="185" class="label" text-anchor="middle">Ingress VNet / application edge</text>
+<rect x="300" y="260" width="220" height="120" rx="16" fill="#F3F8FF" stroke="#0078D4" stroke-width="2" filter="url(#shadow)" class=""/>
+<text x="410" y="290" class="label" text-anchor="middle">Public frontend</text>
+<text x="410" y="320" class="small" text-anchor="middle">Application Gateway / Public Load Balancer / Public IP</text>
+<rect x="600" y="260" width="220" height="120" rx="16" fill="#EAF7EA" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M648.4,302.0 h123.20000000000002 M648.4,320.0 h123.20000000000002 M648.4,338.0 h123.20000000000002" stroke="#4C8B00" stroke-width="5" stroke-linecap="round"/><path d="M670.4,293.6 l-10,10 l10,10" fill="none" stroke="#4C8B00" stroke-width="3"/><path d="M749.6,293.6 l10,10 l-10,10" fill="none" stroke="#4C8B00" stroke-width="3"/><text x="710.0" y="400" class="small" text-anchor="middle">Gateway Load Balancer</text>
+<rect x="900" y="210" width="260" height="230" rx="14" fill="#F8FCFF" stroke="#7FBA00" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="1030" y="235" class="label" text-anchor="middle">Transparent NVA pool</text>
+<rect x="935" y="285" width="110" height="60" rx="16" fill="#ECF8D9" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M957.0,307.8 h66.0 M957.0,318.0 h66.0 M957.0,328.2 h66.0" stroke="#4C8B00" stroke-width="4" stroke-linecap="round"/><circle cx="1023.0" cy="300.0" r="9" fill="#7FBA00"/><text x="990.0" y="365" class="small" text-anchor="middle">NVA-A</text>
+<rect x="1015" y="360" width="110" height="60" rx="16" fill="#ECF8D9" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M1037.0,382.8 h66.0 M1037.0,393.0 h66.0 M1037.0,403.2 h66.0" stroke="#4C8B00" stroke-width="4" stroke-linecap="round"/><circle cx="1103.0" cy="375.0" r="9" fill="#7FBA00"/><text x="1070.0" y="440" class="small" text-anchor="middle">NVA-B</text>
+<rect x="1230" y="240" width="210" height="170" rx="14" fill="#F8FCFF" stroke="#50B0F9" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="1335" y="265" class="label" text-anchor="middle">Application subnet</text>
+<rect x="1290" y="315" width="90" height="55" rx="10" fill="white" stroke="#50B0F9" stroke-width="2" filter="url(#shadow)" class=""/>
+<rect x="1306.2" y="326.0" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="1306.2" y="339.75" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="1306.2" y="353.5" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><text x="1335.0" y="390" class="small" text-anchor="middle">App servers</text>
+<polyline points="210,285 300,285" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="520,285 600,285" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="820,285 900,315" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="1160,315 1230,315" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="1335,370 1335,520 1030,520 1030,420" fill="none" stroke="#CA5010" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+<polyline points="1030,420 1030,600 710,600 710,380" fill="none" stroke="#CA5010" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+<polyline points="710,380 710,650 410,650 410,380" fill="none" stroke="#CA5010" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+<polyline points="410,380 410,730 210,730 210,335" fill="none" stroke="#CA5010" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+<circle cx="555" cy="285" r="14" fill="white" stroke="#0078D4" stroke-width="3"/><text x="555" y="290" class="legend" text-anchor="middle">1</text>
+<text x="555" y="250" class="tiny" text-anchor="middle">Forward path</text>
+<circle cx="1120" cy="520" r="14" fill="white" stroke="#CA5010" stroke-width="3"/><text x="1120" y="525" class="legend" text-anchor="middle">2</text>
+<text x="1120" y="555" class="tiny" text-anchor="middle">Return path remains symmetric</text>
+<rect x="1180" y="40" width="340" height="86" rx="14" fill="white" stroke="#A0B3C4" stroke-width="1.5" filter="url(#shadow)" class=""/>
+<text x="1198" y="64" class="label" text-anchor="start">Legend</text>
+<line x1="1198" y1="88" x2="1250" y2="88" stroke="#0078D4" stroke-width="4" /><text x="1262" y="93" class="small" text-anchor="start">Forward client request path</text>
+<line x1="1198" y1="116" x2="1250" y2="116" stroke="#CA5010" stroke-width="4" /><text x="1262" y="121" class="small" text-anchor="start">Return path via same chain</text>
+</svg>
