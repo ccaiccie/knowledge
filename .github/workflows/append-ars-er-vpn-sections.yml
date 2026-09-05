@@ -1,4 +1,4 @@
-name: Append ARS ExpressRoute VPN sections
+name: Finalize ARS ExpressRoute VPN update
 on:
   push:
     paths:
@@ -6,32 +6,27 @@ on:
 permissions:
   contents: write
 jobs:
-  update-guide:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Append detailed ExpressRoute and VPN Gateway sections
+      - name: Refresh README description
         shell: bash
         run: |
           python <<'PY'
           from pathlib import Path
-          p = Path('09-05-26-13-55_Azure_Route_Server_Third_Party_NVA_Dynamic_Service_Insertion_Study_Guide.md')
+          p = Path('README.md')
           text = p.read_text()
-          if '## 22. ExpressRoute + Route Server + NVA in detail' not in text:
-              appendix = Path('.github/ars-er-vpn-appendix.md').read_text().rstrip()
-              text = text.replace('**Updated:** 2026-09-05 — expanded with NVA placement, route injection, and detailed hub/spoke peering requirements  ', '**Updated:** 2026-09-05 — expanded with NVA placement, route injection, hub/spoke peering, ExpressRoute, and VPN Gateway integration  ')
-              anchor = '- https://learn.microsoft.com/en-us/azure/route-server/expressroute-vpn-support\n'
-              extras = ('- https://learn.microsoft.com/en-us/azure/route-server/about-dual-homed-network\n'
-                        '- https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-bgp-overview\n'
-                        '- https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-highlyavailable\n')
-              text = text.replace(anchor, anchor + extras)
-              text = text.replace('\n## Sources\n', '\n' + appendix + '\n\n---\n\n## Sources\n', 1)
+          old = "Deep dive into Azure Route Server as the BGP control plane for third-party firewall/SD-WAN NVA service insertion. Covers effective-route and UDR interaction, same-VNet route limitations, dynamically injected default/private routes, spoke-to-spoke East-West inspection, internet egress, ExpressRoute/VPN branch-to-branch exchange, routing preference, active/active ECMP and active/standby AS-path design, stateful symmetry/SNAT, route maps, limits, CLI deployment, verification, failover, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams."
+          new = "Deep dive into Azure Route Server as the BGP control plane for third-party firewall/SD-WAN NVA service insertion. Covers effective-route and UDR interaction, hub/spoke peering requirements, dynamic route injection, same-VNet limitations, East-West and internet inspection, and detailed ExpressRoute and VPN Gateway integration including exact gateway termination points, branch-to-branch route exchange, hybrid route preference, inspection-bypass caveats, active-active VPN requirements, stateful symmetry, verification, and troubleshooting, with matching SVG and editable draw.io diagrams."
+          if old in text:
+              text = text.replace(old, new)
               p.write_text(text)
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add 09-05-26-13-55_Azure_Route_Server_Third_Party_NVA_Dynamic_Service_Insertion_Study_Guide.md
-          git diff --cached --quiet || git commit -m "Expand Azure Route Server ExpressRoute and VPN Gateway integration"
+          git add README.md
+          git diff --cached --quiet || git commit -m "Update README for Route Server ExpressRoute and VPN coverage"
           git push
