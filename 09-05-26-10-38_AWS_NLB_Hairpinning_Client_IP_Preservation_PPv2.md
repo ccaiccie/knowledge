@@ -3,6 +3,7 @@
 > **Primary source:** https://docs.aws.amazon.com/elasticloadbalancing/latest/network/load-balancer-target-groups.html  
 > **Supporting source:** https://docs.aws.amazon.com/elasticloadbalancing/latest/network/load-balancer-troubleshooting.html  
 > **Target-group attributes:** https://docs.aws.amazon.com/elasticloadbalancing/latest/network/edit-target-group-attributes.html
+> **Diagram bundle:** Each Mermaid topology in this guide has a matching transparent SVG and editable draw.io source under `images/`.
 
 ## The exam question in plain English
 
