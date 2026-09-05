@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Virtual WAN Secured Hub with Azure Firewall or Integrated NVA — Method 4 Study Guide](09-05-26-15-56_Azure_Virtual_WAN_Secured_Hub_Method_4_Study_Guide.md)
+Deep dive into Virtual WAN secured hubs for centralized firewall inspection. Covers Azure Firewall versus supported hub-integrated NVAs, Routing Intent and Private/Internet traffic policies, route association/propagation, spoke-to-spoke and branch-to-spoke packet walks, inter-hub inspection, Internet egress/DNAT, Private Endpoint caveats, HA/asymmetry, verification, troubleshooting, and configuration steps, with matching SVG and editable draw.io diagrams.
+
 ### [Azure Route Server + Third-Party NVA for Dynamic Service Insertion — Comprehensive Study Guide](09-05-26-13-55_Azure_Route_Server_Third_Party_NVA_Dynamic_Service_Insertion_Study_Guide.md)
 Deep dive into Azure Route Server as the BGP control plane for third-party firewall/SD-WAN NVA service insertion. Covers effective-route and UDR interaction, hub/spoke peering requirements, dynamic route injection, same-VNet limitations, East-West and internet inspection, and detailed ExpressRoute and VPN Gateway integration including exact gateway termination points, branch-to-branch route exchange, hybrid route preference, inspection-bypass caveats, active-active VPN requirements, stateful symmetry, verification, and troubleshooting, with matching SVG and editable draw.io diagrams.
 
