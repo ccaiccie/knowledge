@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#445"/></marker></defs>
+<rect width="1200" height="620" fill="white" fill-opacity="0"/>
+<text x="600" y="45" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700">DNSSEC Chain of Trust</text>
+<g font-family="Arial">
+<rect x="55" y="105" rx="18" width="230" height="120" fill="#eef3ff" stroke="#345" stroke-width="2"/>
+<text x="170" y="145" text-anchor="middle" font-size="20" font-weight="700">Validating Resolver</text>
+<text x="170" y="178" text-anchor="middle" font-size="16">Configured root</text><text x="170" y="202" text-anchor="middle" font-size="16">trust anchor</text>
+<rect x="365" y="105" rx="18" width="230" height="120" fill="#fff4dc" stroke="#765" stroke-width="2"/>
+<text x="480" y="145" text-anchor="middle" font-size="20" font-weight="700">Root Zone (.)</text>
+<text x="480" y="180" text-anchor="middle" font-size="16">DNSKEY + RRSIG</text>
+<rect x="675" y="105" rx="18" width="230" height="120" fill="#eaf8ea" stroke="#365" stroke-width="2"/>
+<text x="790" y="145" text-anchor="middle" font-size="20" font-weight="700">Parent / TLD (.com)</text>
+<text x="790" y="180" text-anchor="middle" font-size="16">DS for example.com</text>
+<rect x="955" y="105" rx="18" width="200" height="120" fill="#f9e9f0" stroke="#635" stroke-width="2"/>
+<text x="1055" y="145" text-anchor="middle" font-size="20" font-weight="700">Child Zone</text>
+<text x="1055" y="180" text-anchor="middle" font-size="16">DNSKEY RRset</text>
+<line x1="285" y1="165" x2="355" y2="165" stroke="#445" stroke-width="3" marker-end="url(#a)"/>
+<line x1="595" y1="165" x2="665" y2="165" stroke="#445" stroke-width="3" marker-end="url(#a)"/>
+<line x1="905" y1="165" x2="945" y2="165" stroke="#445" stroke-width="3" marker-end="url(#a)"/>
+<text x="325" y="145" text-anchor="middle" font-size="13">trust</text><text x="635" y="145" text-anchor="middle" font-size="13">validate</text><text x="925" y="145" text-anchor="middle" font-size="13">DS→key</text>
+<rect x="370" y="335" rx="18" width="460" height="155" fill="#eef8ff" stroke="#357" stroke-width="2"/>
+<text x="600" y="377" text-anchor="middle" font-size="22" font-weight="700">Signed RRset</text>
+<text x="600" y="413" text-anchor="middle" font-size="18">www.example.com A 192.0.2.10</text>
+<text x="600" y="447" text-anchor="middle" font-size="18">RRSIG(A) verified by trusted child DNSKEY</text>
+<line x1="1055" y1="225" x2="810" y2="340" stroke="#445" stroke-width="3" marker-end="url(#a)"/>
+<text x="955" y="295" text-anchor="middle" font-size="14">valid key verifies signature</text>
+<text x="600" y="555" text-anchor="middle" font-size="17">Root trust anchor → parent delegation → child DNSKEY → RRSIG → authenticated DNS data</text>
+</g></svg>
