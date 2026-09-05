@@ -1,0 +1,23 @@
+<mxfile host="app.diagrams.net" modified="2026-09-05T23:05:00.000Z" agent="ChatGPT" version="24.7.17">
+<diagram id="multi-region" name="Multi-Region">
+<mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000">
+<root>
+<mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="wan" value="One Standard Virtual WAN&#xa;(global logical container)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#64748b;fontSize=18;fontStyle=1" vertex="1" parent="1"><mxGeometry x="40" y="60" width="1520" height="760" as="geometry"/></mxCell>
+<mxCell id="west" value="West US Region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=15" vertex="1" parent="1"><mxGeometry x="90" y="160" width="420" height="560" as="geometry"/></mxCell>
+<mxCell id="westhub" value="Virtual Hub West&#xa;Regional vHub router&#xa;VPN / ER gateways&#xa;Azure Firewall or integrated NVA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef2ff;strokeColor=#4f46e5;fontSize=15" vertex="1" parent="1"><mxGeometry x="170" y="260" width="260" height="170" as="geometry"/></mxCell>
+<mxCell id="westspoke" value="Spoke W1&#xa;10.10.0.0/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ecfdf5;strokeColor=#059669;fontSize=14" vertex="1" parent="1"><mxGeometry x="120" y="520" width="150" height="90" as="geometry"/></mxCell>
+<mxCell id="westbranch" value="Branch West&#xa;VPN / ER" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=14" vertex="1" parent="1"><mxGeometry x="320" y="520" width="150" height="90" as="geometry"/></mxCell>
+<mxCell id="backbone" value="Microsoft Global Network&#xa;Automatic vHub-to-vHub connectivity&#xa;No customer hub-to-hub VPN or Global VNet Peering" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f4f6;strokeColor=#374151;fontSize=15" vertex="1" parent="1"><mxGeometry x="610" y="280" width="380" height="130" as="geometry"/></mxCell>
+<mxCell id="east" value="East US Region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=15" vertex="1" parent="1"><mxGeometry x="1090" y="160" width="420" height="560" as="geometry"/></mxCell>
+<mxCell id="easthub" value="Virtual Hub East&#xa;Regional vHub router&#xa;VPN / ER gateways&#xa;Azure Firewall or integrated NVA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef2ff;strokeColor=#4f46e5;fontSize=15" vertex="1" parent="1"><mxGeometry x="1170" y="260" width="260" height="170" as="geometry"/></mxCell>
+<mxCell id="eastspoke" value="Spoke E1&#xa;10.20.0.0/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ecfdf5;strokeColor=#059669;fontSize=14" vertex="1" parent="1"><mxGeometry x="1120" y="520" width="150" height="90" as="geometry"/></mxCell>
+<mxCell id="eastbranch" value="Branch East&#xa;VPN / ER" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=14" vertex="1" parent="1"><mxGeometry x="1320" y="520" width="150" height="90" as="geometry"/></mxCell>
+<mxCell id="e1" value="automatic inter-hub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1" edge="1" parent="1" source="westhub" target="backbone"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e2" value="automatic inter-hub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1" edge="1" parent="1" source="backbone" target="easthub"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3" value="VNet connection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1" edge="1" parent="1" source="westspoke" target="westhub"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e4" value="VPN / ER" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1" edge="1" parent="1" source="westbranch" target="westhub"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e5" value="VNet connection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1" edge="1" parent="1" source="eastspoke" target="easthub"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e6" value="VPN / ER" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1" edge="1" parent="1" source="eastbranch" target="easthub"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel>
+</diagram></mxfile>
