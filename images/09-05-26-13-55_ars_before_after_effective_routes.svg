@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<defs>
+<marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker>
+<marker id="c" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/></marker>
+<style>
+.t{font:700 30px Segoe UI,Arial;fill:#0f172a} .s{font:400 16px Segoe UI,Arial;fill:#475569}
+.bt{font:700 18px Segoe UI,Arial;fill:#0f172a} .bs{font:400 14px Segoe UI,Arial;fill:#334155}
+.al{font:600 13px Segoe UI,Arial;fill:#1d4ed8} .note{font:400 13px Segoe UI,Arial;fill:#7c2d12}
+</style></defs><rect width="100%" height="100%" fill="white"/>
+<text x="40" y="48" class="t">Before and After: What Actually Changes in the Spoke</text><text x="40" y="78" class="s">The Azure route-table resource can remain empty while the VM NIC&#x27;s effective routing changes dynamically.</text>
+<rect x="60" y="170" width="360" height="220" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="76" y="198" class="bt">BEFORE NVA advertises 0/0</text><text x="76" y="225" class="bs">Route-table resource: empty</text><text x="76" y="245" class="bs">NIC effective routes include:</text><text x="76" y="265" class="bs">10.20.0.0/16 → VNet/peering</text><text x="76" y="285" class="bs">0.0.0.0/0 → Internet</text><text x="76" y="305" class="bs">Internet traffic exits normally</text>
+<rect x="560" y="170" width="360" height="220" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="576" y="198" class="bt">NVA sends BGP UPDATE</text><text x="576" y="225" class="bs">NLRI: 0.0.0.0/0</text><text x="576" y="245" class="bs">AS_PATH: 65001</text><text x="576" y="265" class="bs">Route Server learns it</text><text x="576" y="285" class="bs">ARS propagates to eligible spoke</text>
+<rect x="1060" y="170" width="360" height="260" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="1076" y="198" class="bt">AFTER propagation</text><text x="1076" y="225" class="bs">Route-table resource: still empty</text><text x="1076" y="245" class="bs">NIC effective routes now include:</text><text x="1076" y="265" class="bs">0.0.0.0/0 → VirtualAppliance/NVA</text><text x="1076" y="285" class="bs">Azure selects BGP 0/0 over system 0/0</text><text x="1076" y="305" class="bs">Packet goes to NVA</text>
+<rect x="1060" y="520" width="360" height="150" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="1076" y="548" class="bt">If a UDR 0/0 also exists</text><text x="1076" y="575" class="bs">Same-prefix UDR normally wins over BGP</text><text x="1076" y="595" class="bs">NIC effective route reflects UDR winner</text><text x="1076" y="615" class="bs">BGP route still exists in control plane</text>
+<path d="M 420 280 L 560 280" stroke="#2563eb" stroke-width="4" fill="none" marker-end="url(#a)"/><text x="490.0" y="272.0" text-anchor="middle" class="al">NVA announces</text>
+<path d="M 920 280 L 1060 280" stroke="#2563eb" stroke-width="4" fill="none" marker-end="url(#a)"/><text x="990.0" y="272.0" text-anchor="middle" class="al">ARS programs route</text>
+<path d="M 1240 520 L 1240 430" stroke="#2563eb" stroke-width="4" fill="none" stroke-dasharray="8 6" marker-end="url(#c)"/><text x="1240.0" y="467.0" text-anchor="middle" class="al">UDR can override</text>
+<rect x="40" y="790" width="1420" height="80" rx="12" fill="#fff7ed" stroke="#f59e0b"/><text x="58" y="820" class="note">A route table resource is an administrative container for UDRs. Effective routes are the merged forwarding result seen by the VM NIC.</text><text x="58" y="842" class="note">For the same prefix length, UDR commonly beats BGP; longest-prefix match still applies before source preference.</text>
+</svg>
