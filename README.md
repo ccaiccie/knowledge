@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Firewall Inspection Methods — Comprehensive Architecture and Operations Study Guide](09-05-26-12-41_Azure_Firewall_Inspection_Methods_Comprehensive_Study_Guide.md)
+Exhaustive Azure firewall-inspection architecture guide covering customer-managed hub/spoke with Azure Firewall or third-party NGFWs, Virtual WAN secured hubs and integrated NVAs, Routing Intent, Route Server/BGP, Standard Load Balancer HA Ports, Gateway Load Balancer chaining, forced tunneling, WAF layering, Private Endpoint inspection, double inspection, routing symmetry, NAT/DNS, HA/failover, verification, and troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [Azure ExpressRoute Global Reach — Comprehensive Study Guide](09-04-26-18-22_Azure_ExpressRoute_Global_Reach_Study_Guide.md)
 Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service between on-premises networks connected by separate ExpressRoute circuits. Covers BGP and private-peering behavior, `/29` IPv4 and `/125` IPv6 connection addressing, Premium requirements for cross-geopolitical connections, same- and cross-subscription configuration, route and connection limits, throughput, failover, route-policy interaction with MPLS/SD-WAN/VPN paths, firewall and asymmetric-routing considerations, verification, and symptom-based troubleshooting.
 
