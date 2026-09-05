@@ -75,6 +75,18 @@ This is why AWS states that **NAT loopback is not supported when client-IP prese
 
 ## The correct design
 
+![AWS NLB hairpinning flow](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow.svg)
+
+[Open or edit the draw.io source](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow.drawio)
+
+**What this image shows:** A registered proxy target can also initiate a connection to the same internal NLB. The dashed return path illustrates the hairpin/NAT-loopback case where the NLB can select that same proxy as the destination.
+
+**What matters:** With client-IP preservation enabled, the self-hairpin case is unsupported. The recommended design is to disable client-IP preservation and, when the application still requires the original client identity, carry that information in the Proxy Protocol v2 header.
+
+**What to verify:** Confirm `preserve_client_ip.enabled=false`, confirm `proxy_protocol_v2.enabled=true` only after the backend listener supports PPv2, and test from a registered target through the NLB to prove the exact hairpin path works.
+
+### Mermaid version
+
 ```mermaid
 flowchart LR
     C[Original client<br/>192.0.2.50]
