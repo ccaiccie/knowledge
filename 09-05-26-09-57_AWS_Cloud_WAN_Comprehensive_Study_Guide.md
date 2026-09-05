@@ -2,7 +2,8 @@
 
 > **Topic:** AWS Cloud WAN  
 > **Generated:** 2026-09-05  
-> **Scope:** Architecture, core network policy, segmentation, routing, Direct Connect, VPN/Connect, service insertion, routing policy, packet flow, configuration, verification, scale, pricing, and troubleshooting.
+> **Updated:** 2026-09-05 — expanded AWS networking acronyms and terms inline for easier reading  
+> **Scope:** Architecture, Core Network Policy, segmentation, routing, Direct Connect, VPN/Connect, service insertion, Routing Policy, packet flow, configuration, verification, scale, pricing, and troubleshooting.
 
 ## Supplied and supporting URLs
 
@@ -27,58 +28,98 @@
 
 ---
 
+## Quick acronym and term glossary
+
+Use this table whenever an AWS Cloud WAN acronym appears later in the guide.
+
+| Term | Meaning |
+|---|---|
+| **AWS Cloud WAN** | AWS managed global Layer 3 WAN service. |
+| **WAN (Wide Area Network)** | A network connecting geographically separated sites, data centers, branches, or cloud Regions. |
+| **VPC (Virtual Private Cloud)** | An isolated virtual network inside AWS. |
+| **CNE (Core Network Edge)** | The AWS-managed **regional router** for a Cloud WAN Core Network. Each enabled Cloud WAN Region has a CNE. |
+| **CNP (Core Network Policy)** | The JSON policy that defines Cloud WAN Regions, segments, attachment classification, sharing, routing, and service insertion. |
+| **Segment** | A Cloud WAN Layer 3 routing domain, similar in concept to a VRF. |
+| **VRF (Virtual Routing and Forwarding)** | A logically separate routing table/routing domain on a router. |
+| **Attachment** | The logical connection that joins a VPC, VPN, Direct Connect gateway, TGW route table, or SD-WAN resource to Cloud WAN. |
+| **NFG (Network Function Group)** | A logical group of firewall or other network-function attachments used for service insertion. |
+| **TGW (Transit Gateway)** | AWS regional Layer 3 transit hub for VPCs, VPNs, and Direct Connect. |
+| **DX (Direct Connect)** | AWS dedicated private connectivity between a customer/on-premises network and AWS. |
+| **DXGW (Direct Connect Gateway)** | AWS routing construct that connects Direct Connect virtual interfaces to supported AWS routing services such as Cloud WAN. |
+| **VIF (Virtual Interface)** | Logical Direct Connect interface carrying BGP and customer routes. A Transit VIF is used with a Direct Connect Gateway. |
+| **BGP (Border Gateway Protocol)** | Dynamic routing protocol used to exchange IP prefixes and path attributes. |
+| **ASN (Autonomous System Number)** | Number identifying a BGP autonomous routing domain. |
+| **VPN (Virtual Private Network)** | Encrypted tunnel used to connect networks over an untrusted transport such as the Internet. |
+| **IPsec (Internet Protocol Security)** | Protocol suite used to encrypt and authenticate IP traffic; commonly used by Site-to-Site VPN. |
+| **SD-WAN (Software-Defined Wide Area Network)** | Centrally controlled WAN architecture that can steer application traffic over multiple transports. |
+| **GRE (Generic Routing Encapsulation)** | Tunneling protocol used by traditional Connect peers. |
+| **GWLB (Gateway Load Balancer)** | AWS service that transparently distributes flows across virtual network/security appliances. |
+| **ANFW (AWS Network Firewall)** | AWS managed stateful network firewall service. |
+| **ECMP (Equal-Cost Multi-Path)** | Forwarding across multiple routes with equal routing cost. |
+| **NAT (Network Address Translation)** | Translation of source or destination IP addresses, often used for Internet egress. |
+| **CIDR (Classless Inter-Domain Routing)** | Prefix notation such as `10.0.0.0/16`. |
+| **NACL (Network Access Control List)** | Stateless subnet-level packet filtering in a VPC. |
+| **NVA (Network Virtual Appliance)** | A virtual router, firewall, IDS/IPS, or similar networking appliance. |
+| **MTU (Maximum Transmission Unit)** | Largest packet size that can traverse a link/path without fragmentation. |
+| **MSS (Maximum Segment Size)** | Maximum TCP payload size advertised by an endpoint. |
+| **PMTUD (Path MTU Discovery)** | Process endpoints use to discover the smallest MTU along a path. |
+| **HA (High Availability)** | Redundant design intended to keep service available after a component or path failure. |
+
+---
+
 ## Overview
 
-**AWS Cloud WAN** is AWS's managed, policy-driven Wide Area Network service for interconnecting Amazon Virtual Private Clouds (VPCs), branch sites, data centers, virtual private networks (VPNs), software-defined WAN (SD-WAN) appliances, AWS Transit Gateways, and AWS Direct Connect gateways through a centrally managed global routing fabric.
+**AWS Cloud WAN** is AWS's managed, policy-driven **WAN (Wide Area Network)** service for interconnecting **VPCs (Virtual Private Clouds)**, branch sites, data centers, **VPNs (Virtual Private Networks)**, **SD-WAN (Software-Defined Wide Area Network)** appliances, **TGWs (Transit Gateways)**, and **DXGWs (Direct Connect Gateways)** through a centrally managed global Layer 3 routing fabric.
 
-The important mental model is:
+The most important mental model is:
 
-- **AWS Network Manager** is the management and visualization plane.
-- A **Global Network** is the top-level logical container.
-- A **Core Network** is the AWS-managed routed WAN fabric inside that global network.
-- A **Core Network Edge (CNE)** is the Regional routing endpoint created and managed by AWS.
-- A **Segment** is a globally consistent Layer 3 routing domain, conceptually similar to a Virtual Routing and Forwarding (VRF) instance.
-- An **Attachment** connects a VPC, VPN, Connect/SD-WAN resource, Transit Gateway route table, or Direct Connect gateway to the core network.
-- A **Core Network Policy (CNP)** declaratively defines Regions, segments, attachment classification, sharing, static routing, service insertion, and advanced routing behavior.
-- **Routing Policies** add route filtering, summarization, BGP path manipulation, and community-based controls.
+- **AWS Network Manager** — the management and visualization plane.
+- **Global Network** — the top-level logical container in Network Manager.
+- **Core Network** — the AWS-managed global Layer 3 WAN fabric.
+- **CNE (Core Network Edge)** — the AWS-managed **regional routing node** inside Cloud WAN. Think of a CNE as the Cloud WAN router for one AWS Region.
+- **Segment** — a separate global Layer 3 routing domain, similar to a **VRF (Virtual Routing and Forwarding)**.
+- **Attachment** — the connection that joins a VPC, VPN, Connect/SD-WAN resource, TGW route table, or DXGW to Cloud WAN.
+- **CNP (Core Network Policy)** — the versioned JSON blueprint that defines Regions, segments, attachment policies, sharing, routing behavior, and service insertion.
+- **Routing Policy** — advanced route filtering and BGP policy controlling which routes are accepted, advertised, summarized, or modified.
+- **NFG (Network Function Group)** — a collection of firewall or network-appliance attachments used when Cloud WAN must steer traffic through inspection.
 
-Cloud WAN is fundamentally a **Layer 3 routed service**. It does not stretch Ethernet broadcast domains between Regions or sites. The service exchanges IP reachability and forwards packets according to route tables generated from the core network policy and learned dynamic routes.
+Cloud WAN is fundamentally a **Layer 3 routed service**. It does not stretch Ethernet broadcast domains between Regions or sites. It exchanges IP reachability and forwards packets according to Cloud WAN routing tables and learned dynamic routes.
 
 ---
 
 ## Why Cloud WAN exists
 
-A large enterprise often starts with separate networking constructs:
+A large enterprise often grows into multiple separate AWS networking constructs:
 
-- Transit Gateway per Region
-- Transit Gateway peering
-- Direct Connect gateways
+- a **TGW (Transit Gateway)** in each Region
+- TGW peering
+- **DXGWs (Direct Connect Gateways)**
 - Site-to-Site VPN
 - SD-WAN appliances
 - VPC peering
-- route tables
+- many independent route tables
 - inspection VPCs
-- independent regional routing policies
+- separate regional routing policies
 
-That works, but the operational burden grows quickly.
+That model can work, but operational complexity increases rapidly.
 
-Cloud WAN addresses this by allowing the network architect to express intent:
+Cloud WAN allows the architect to describe intent centrally:
 
 ```text
-Create production, development, shared-services, and hybrid routing domains.
+Create Production, Development, Shared Services, and Hybrid routing domains.
 
 Attach workloads by tags.
 
-Make shared services reachable from production and development.
+Allow Production and Development to reach Shared Services.
 
-Keep production and development isolated from one another.
+Keep Production and Development isolated from each other.
 
-Send selected traffic through inspection.
+Force selected traffic through centralized inspection.
 
-Create the required CNEs and inter-Region connectivity automatically.
+Create Regional Cloud WAN routing nodes and inter-Region connectivity automatically.
 ```
 
-Cloud WAN then implements that policy across the AWS backbone.
+Cloud WAN then implements the routing intent across the AWS backbone.
 
 ---
 
@@ -90,156 +131,160 @@ Cloud WAN then implements that policy across the AWS backbone.
 
 **What this image shows**
 
-The AWS diagram shows AWS Network Manager containing a Global Network and Cloud WAN Core Network. Multiple AWS Regions contain Core Network Edges, while Development, Production, and Shared segments span the global core. VPC, VPN, and SD-WAN attachments connect into those routing domains.
+The AWS diagram shows AWS Network Manager containing a Global Network and a Cloud WAN Core Network. Multiple AWS Regions contain **CNEs (Core Network Edges)**, while Development, Production, and Shared segments span the global core. VPC, VPN, and SD-WAN attachments connect into those routing domains.
 
 **What matters**
 
-The colored segment bars should be thought of as **logical Layer 3 routing domains**, not physical pipes. A segment can span several CNEs in multiple Regions. AWS builds the inter-CNE connectivity.
+The colored segment bars are logical Layer 3 routing domains, not physical links. A segment can exist on multiple CNEs in multiple AWS Regions. AWS creates and manages the inter-CNE connectivity.
 
 **What to verify**
 
-Verify that:
-- every desired Region exists as a CNE,
-- each attachment is associated with the intended segment,
-- segment sharing is intentional,
-- route propagation and policy behavior match the intended isolation model.
+- every required Region has a CNE
+- every attachment is associated with the intended segment
+- segment sharing is intentional
+- route propagation matches the desired isolation model
 
 ### Logical topology
 
 ```mermaid
 flowchart LR
     subgraph GN["AWS Network Manager - Global Network"]
-      subgraph CN["AWS Cloud WAN Core Network"]
-        subgraph E1["us-east-1 CNE"]
-          P1["Production"]
-          D1["Development"]
-          H1["Hybrid"]
+      subgraph CN["Cloud WAN Core Network"]
+        subgraph E1["us-east-1 CNE (Core Network Edge)"]
+          P1["Production Segment"]
+          D1["Development Segment"]
+          H1["Hybrid Segment"]
         end
 
-        subgraph E2["us-west-2 CNE"]
-          P2["Production"]
-          D2["Development"]
-          H2["Hybrid"]
-        end
-
-        subgraph E3["eu-west-1 CNE"]
-          P3["Production"]
-          D3["Development"]
-          H3["Hybrid"]
+        subgraph E2["us-west-2 CNE (Core Network Edge)"]
+          P2["Production Segment"]
+          D2["Development Segment"]
+          H2["Hybrid Segment"]
         end
 
         E1 <-- AWS global backbone --> E2
-        E2 <-- AWS global backbone --> E3
-        E1 <-- AWS global backbone --> E3
       end
     end
 
     VPC1["Production VPC"] --> P1
     VPC2["Development VPC"] --> D2
-    DX["Direct Connect Gateway"] --> H1
-    VPN["Site-to-Site VPN"] --> H3
+    DX["DXGW (Direct Connect Gateway)"] --> H1
+    VPN["Site-to-Site VPN"] --> H2
 ```
 
 ### Control plane versus data plane
 
 | Plane | Responsibility |
 |---|---|
-| Management plane | Network Manager, APIs, CLI, policy versions, visualization |
-| Control plane | Policy evaluation, segment membership, route propagation, BGP route learning, CNE route calculation |
-| Data plane | Packet forwarding through local CNE, AWS backbone, remote CNE, and destination attachment |
+| **Management plane** | Network Manager, APIs, CLI, policy versions, topology visualization |
+| **Control plane** | CNP evaluation, segment membership, route propagation, BGP route learning, CNE route calculation |
+| **Data plane** | Actual packet forwarding through a local CNE, the AWS backbone, a remote CNE, and the destination attachment |
 
-The **core network policy is control-plane intent**. It does not process packets itself. It causes AWS to create and modify the routing state that the CNEs use to forward packets.
+The **CNP (Core Network Policy)** is control-plane intent. It does not process packets itself. AWS uses it to build the routing state that the CNEs use to forward packets.
 
 ---
 
 ## Core concepts
 
-## Global Network
+### Global Network (top-level Network Manager container)
 
-A Global Network is the top-level container in Network Manager. It can contain Cloud WAN resources and registered Transit Gateway-related resources.
+A **Global Network** is the top-level container in AWS Network Manager. It is primarily an organizational, management, and monitoring construct.
 
-A Global Network is primarily an organizational and monitoring construct.
+### Core Network (AWS-managed global Layer 3 fabric)
 
-## Core Network
+The **Core Network** is the AWS-managed Layer 3 WAN fabric inside the Global Network.
 
-The Core Network is the AWS-managed Layer 3 WAN fabric.
+A Global Network can have one associated Cloud WAN Core Network.
 
-Each Global Network can have only one associated Cloud WAN core network.
+### CNE (Core Network Edge — the regional Cloud WAN router)
 
-## Core Network Edge
+A **CNE (Core Network Edge)** is the regional routing point for AWS Cloud WAN.
 
-A CNE is the Regional routing point for Cloud WAN.
+The simplest way to remember it is:
 
-When you add a Region to the core network policy, AWS creates a CNE in that Region.
+> **CNE = the AWS-managed Cloud WAN router for one AWS Region.**
+
+When an AWS Region is added to the Core Network Policy, AWS creates a CNE for that Region.
 
 Important characteristics:
 
-- one CNE per Region per core network
-- attachments connect to a CNE
-- CNEs are fully meshed across enabled Regions
+- one CNE per enabled Region per Core Network
+- attachments connect into a CNE
+- CNEs exchange routes across the Cloud WAN core
 - inter-CNE traffic travels over the AWS global backbone
-- CNE behavior inherits many Transit Gateway characteristics
-- the CNE is managed by AWS rather than configured as a normal customer-owned Transit Gateway
+- the CNE performs Layer 3 routing for Cloud WAN segments in that Region
+- AWS manages the CNE; you do not log into it like a customer router
 
-## Segment
-
-A segment is a dedicated routing domain.
-
-Think of it as similar to a global VRF:
+A useful comparison is:
 
 ```text
-Production segment
-  us-east-1 route table
-  us-west-2 route table
-  eu-west-1 route table
+Traditional enterprise WAN:
+Branch -> CE router -> Provider PE router -> WAN -> Provider PE router -> Branch
 
-Development segment
-  us-east-1 route table
-  us-west-2 route table
-  eu-west-1 route table
+AWS Cloud WAN:
+VPC/Site -> Attachment -> CNE -> AWS backbone -> CNE -> Attachment -> VPC/Site
 ```
 
-By default, attachments in one segment do not automatically communicate with attachments in another segment.
+### Segment (Cloud WAN routing domain, similar to a VRF)
 
-Segments are useful for:
+A **segment** is a dedicated Layer 3 routing domain.
+
+Conceptually, it is similar to a **VRF (Virtual Routing and Forwarding)** on an enterprise router.
+
+Example:
+
+```text
+Production Segment
+  us-east-1 CNE routing table
+  us-west-2 CNE routing table
+  eu-west-1 CNE routing table
+
+Development Segment
+  us-east-1 CNE routing table
+  us-west-2 CNE routing table
+  eu-west-1 CNE routing table
+```
+
+Segments are commonly used for:
 
 - Production
 - Development
 - PCI
-- Shared services
-- Partners
+- Shared Services
 - Corporate
+- Partners
 - Guest
 - IoT
 - Hybrid/on-premises
-- Acquisitions
 - regulated business units
 
-## Attachment
+By default, separate segments represent separate routing domains. Cross-segment reachability is controlled by policy.
 
-An attachment brings a resource into Cloud WAN.
+### Attachment (connection from a resource into Cloud WAN)
 
-AWS Cloud WAN supports attachment types including:
+An **attachment** brings a resource into Cloud WAN.
 
-- VPC
-- Site-to-Site VPN
-- Connect
-- Tunnel-less Connect
-- Transit Gateway route table
-- Direct Connect gateway
+Common attachment types include:
+
+- VPC attachment
+- Site-to-Site VPN attachment
+- Connect attachment
+- Tunnel-less Connect attachment
+- TGW route table attachment
+- DXGW attachment
 
 An attachment is associated with either:
 
 - a segment, or
-- a Network Function Group
+- an **NFG (Network Function Group)**
 
 It cannot be simultaneously associated with both.
 
-## Core Network Policy
+### CNP (Core Network Policy — the Cloud WAN JSON blueprint)
 
-The policy is a versioned JSON document that describes the desired global network.
+The **CNP (Core Network Policy)** is the versioned JSON document describing the desired global network.
 
-Major sections include:
+Important policy sections can include:
 
 ```text
 version
@@ -252,7 +297,7 @@ routing-policies
 attachment-routing-policy-rules
 ```
 
-The service turns that document into actual routing configuration.
+AWS converts this declarative policy into actual routing behavior.
 
 ---
 
@@ -265,7 +310,7 @@ Cloud WAN is not an Ethernet extension service.
 It does not provide:
 
 - VLAN stretching
-- MAC learning across CNEs
+- MAC learning across Regions
 - STP propagation
 - broadcast-domain extension
 - native Layer 2 pseudowires
@@ -274,18 +319,16 @@ It does not provide:
 
 Cloud WAN provides routed IP connectivity.
 
-Routes can come from:
+Routes can originate from:
 
 - VPC CIDRs
 - BGP over Site-to-Site VPN
-- BGP over Direct Connect gateway attachments
+- BGP through Direct Connect gateway attachments
 - BGP over Connect attachments
-- Transit Gateway route table attachments
-- static routes in the core network policy
+- TGW route table attachments
+- static routes in the Core Network Policy
 - segment sharing
-- service insertion-generated forwarding behavior
-
-IPv4 and IPv6 are supported.
+- service insertion behavior
 
 ---
 
@@ -293,52 +336,40 @@ IPv4 and IPv6 are supported.
 
 Cloud WAN policies are versioned.
 
-A safe workflow is:
-
 ```mermaid
 flowchart LR
-    A["Current LIVE policy"] --> B["Create new policy version"]
+    A["Current LIVE CNP"] --> B["Create new policy version"]
     B --> C["Generate change set"]
-    C --> D["Review additions / modifications / deletions"]
+    C --> D["Review additions / changes / deletions"]
     D --> E["Execute change set"]
-    E --> F["New LIVE policy"]
-    F --> G["Monitor routes and traffic"]
-    G -->|Problem| H["Restore prior policy version"]
+    E --> F["New LIVE CNP"]
+    F --> G["Verify routes and traffic"]
+    G -->|Problem| H["Restore previous policy version"]
 ```
 
-Operationally, this is important because a network policy change can affect multiple Regions and many attachments at once.
+Recommended operational practice:
 
-### Recommended practice
-
-For large environments, maintain:
-
-- a development/test Cloud WAN
-- policy JSON in Git
-- peer review
-- automated JSON validation
-- documented rollback policy version
-- pre/post route snapshots
+- store CNP JSON in Git
+- peer-review network policy changes
+- validate JSON automatically
+- review Cloud WAN change sets before execution
+- capture pre/post route state
+- document a rollback policy version
 
 ---
 
-## Example core network policy
+## Example Core Network Policy
 
-The following is an **illustrative Cloud WAN policy pattern**. Adapt the values and validate them against the current AWS policy schema before production use.
+The following is an illustrative Cloud WAN policy pattern. Validate values against the current AWS schema before production use.
 
 ```json
 {
   "version": "2021.12",
   "core-network-configuration": {
-    "asn-ranges": [
-      "64512-65534"
-    ],
+    "asn-ranges": ["64512-65534"],
     "edge-locations": [
-      {
-        "location": "us-east-1"
-      },
-      {
-        "location": "us-west-2"
-      }
+      {"location": "us-east-1"},
+      {"location": "us-west-2"}
     ]
   },
   "segments": [
@@ -363,10 +394,7 @@ The following is an **illustrative Cloud WAN policy pattern**. Adapt the values 
       "action": "share",
       "mode": "attachment-route",
       "segment": "shared",
-      "share-with": [
-        "production",
-        "development"
-      ]
+      "share-with": ["production", "development"]
     }
   ],
   "attachment-policies": [
@@ -374,10 +402,7 @@ The following is an **illustrative Cloud WAN policy pattern**. Adapt the values 
       "rule-number": 100,
       "condition-logic": "and",
       "conditions": [
-        {
-          "type": "tag-exists",
-          "key": "Environment"
-        },
+        {"type": "tag-exists", "key": "Environment"},
         {
           "type": "tag-value",
           "key": "Environment",
@@ -394,29 +419,32 @@ The following is an **illustrative Cloud WAN policy pattern**. Adapt the values 
 }
 ```
 
-### Critical attachment-policy behavior
+### Attachment Policy behavior
 
-Attachment policies are processed in rule-number order.
+An **Attachment Policy** determines where an attachment belongs.
 
-The first matching rule is used.
-
-That means rule order is equivalent to an access-control policy:
+Example question it answers:
 
 ```text
-100 highly specific rule
-200 less specific rule
-300 catch-all rule
+This VPC attachment has tag Environment=production.
+Which Cloud WAN segment should it join?
 ```
 
-A broad rule placed first can accidentally classify attachments into the wrong segment.
+Rules are processed in rule-number order. The first matching rule is used.
 
-Also note that Cloud WAN evaluates **tags on the attachment**, not simply the tags on the attached VPC resource.
+```text
+100 = highly specific rule
+200 = less specific rule
+300 = catch-all rule
+```
+
+A broad rule placed first can accidentally classify an attachment into the wrong segment.
+
+Also remember: Cloud WAN evaluates tags on the **attachment**, not merely tags on the attached VPC.
 
 ---
 
 ## Segmentation design
-
-### Example
 
 ```mermaid
 flowchart TB
@@ -431,76 +459,73 @@ flowchart TB
 
     PROD -. isolated .- DEV
     DEV -. isolated .- HYBRID
-    PROD -. policy controlled .- HYBRID
 ```
 
-A common model is:
+A common enterprise design is:
 
 | Segment | Purpose | Typical connectivity |
 |---|---|---|
-| Production | Production VPCs | Shared + controlled hybrid |
-| Development | Dev/test VPCs | Shared, optionally Internet |
-| Shared | DNS, AD, tooling, proxies | Shared into selected segments |
+| Production | Production VPCs | Shared Services + controlled hybrid connectivity |
+| Development | Dev/test VPCs | Shared Services, optional Internet |
+| Shared | DNS, AD, monitoring, tooling | Shared into approved segments |
 | Hybrid | Data centers and branches | Shared with approved application segments |
-| Inspection | Firewall appliances | Used as Network Function Group rather than normal workload segment |
+| Inspection | Firewall/security services | Commonly represented through an NFG rather than an ordinary workload segment |
 
 ### Isolation
 
 A segment can be configured as isolated.
 
-Isolation is especially important for **same-segment service insertion**. Without isolation, attachments in a segment could communicate directly and bypass the inspection path.
+Isolation is especially important for same-segment service insertion. Without isolation, attachments in the same segment may be able to communicate directly instead of traversing the inspection path.
 
 ---
 
 ## VPC attachments
 
-When creating a VPC attachment, you select one subnet from each Availability Zone that should participate.
+A **VPC attachment** connects a VPC to a Cloud WAN CNE.
 
-Those subnets are attachment subnets for the CNE.
+When creating the attachment, select one subnet from each Availability Zone that should participate.
 
 Important considerations:
 
-- Select one subnet per AZ.
-- Other subnets in the same AZ can route through the attachment.
-- Local Zone subnets cannot be selected as Cloud WAN VPC attachment subnets.
-- Route tables in the VPC still need routes pointing toward the Cloud WAN attachment.
-- Security groups and Network ACLs remain relevant.
-- Appliance mode is important for stateful inspection VPCs.
+- select one attachment subnet per AZ
+- other subnets in the same AZ can route through the attachment
+- VPC route tables still need routes toward Cloud WAN
+- Security Groups still apply
+- NACLs still apply
+- appliance mode is important for stateful inspection designs
 
-### Example VPC routing concept
+### Example VPC route concept
 
 ```text
 Application subnet route table
 
 10.0.0.0/16     local
-0.0.0.0/0       Cloud WAN / transit attachment path
-10.0.0.0/8      Cloud WAN attachment
+10.0.0.0/8      Cloud WAN attachment path
+0.0.0.0/0       local or centralized egress design
 ```
 
-Exact routing depends on whether you are sending all traffic, corporate RFC1918 space, or specific remote prefixes through Cloud WAN.
+The exact routing depends on whether Cloud WAN carries all traffic, only enterprise RFC1918 prefixes, or selected destinations.
 
 ---
 
-## Packet flow: VPC to VPC in different Regions
+## Packet flow: VPC to VPC across Regions
 
 Assume:
 
 ```text
-VPC-A 10.10.0.0/16
-Region us-east-1
-Production segment
+VPC-A: 10.10.0.0/16
+Region: us-east-1
+Segment: Production
 
-VPC-B 10.20.0.0/16
-Region us-west-2
-Production segment
+VPC-B: 10.20.0.0/16
+Region: us-west-2
+Segment: Production
 ```
-
-### Forward direction
 
 ```mermaid
 flowchart LR
     H1["EC2 10.10.1.10"] --> RT1["VPC-A route table"]
-    RT1 --> A1["VPC attachment"]
+    RT1 --> A1["VPC-A attachment"]
     A1 --> C1["us-east-1 CNE"]
     C1 --> C2["us-west-2 CNE"]
     C2 --> A2["VPC-B attachment"]
@@ -508,45 +533,50 @@ flowchart LR
     RT2 --> H2["EC2 10.20.1.20"]
 ```
 
-1. The source host sends the packet to its VPC router.
-2. The VPC route table selects the Cloud WAN path for `10.20.0.0/16`.
-3. The local CNE performs a segment route lookup.
-4. The destination route points to the remote CNE.
-5. The packet crosses the AWS global backbone.
-6. The remote CNE forwards to VPC-B attachment.
-7. VPC-B routes the packet to the destination subnet.
-8. Security groups/NACLs must permit the flow.
+Flow:
 
-The return path performs the reverse sequence.
+1. EC2 sends the packet to the VPC router.
+2. The VPC route table points the destination prefix toward Cloud WAN.
+3. The VPC attachment delivers the packet to the local **CNE (Core Network Edge)**.
+4. The CNE performs a route lookup in the Production segment.
+5. The route points toward the remote CNE.
+6. Traffic crosses the AWS global backbone.
+7. The remote CNE forwards to the destination VPC attachment.
+8. The destination VPC route table forwards to the target subnet.
+9. Security Groups and NACLs must permit the traffic.
+10. The return path must have valid routing back to the source.
 
 ---
 
-## Direct Connect integration
+## Direct Connect (DX) integration
 
-Modern Cloud WAN supports **native Direct Connect gateway attachments**.
+Modern Cloud WAN supports native **DXGW (Direct Connect Gateway)** attachments.
 
-This is a significant improvement over older architectures that required:
+Older designs often required:
 
 ```text
+On-premises
+   |
 Direct Connect
-    |
+   |
 Transit VIF
-    |
-Direct Connect Gateway
-    |
-Transit Gateway
-    |
+   |
+DXGW
+   |
+TGW
+   |
 Cloud WAN peering
 ```
 
-Modern architecture:
+A modern native design can be:
 
 ```mermaid
 flowchart LR
-    DC["On-premises router"] <-- BGP --> VIF["Transit VIF"]
-    VIF --> DXGW["Direct Connect Gateway"]
-    DXGW --> CW["Cloud WAN CNE / Segment"]
-    CW --> VPC["VPC attachments"]
+    DC["On-premises router"] <-- BGP --> VIF["Transit VIF (Virtual Interface)"]
+    VIF --> DXGW["DXGW (Direct Connect Gateway)"]
+    DXGW --> CNE["Cloud WAN CNE"]
+    CNE --> SEG["Hybrid Segment"]
+    SEG --> VPC["AWS VPC attachments"]
 ```
 
 ### Direct Connect route propagation
@@ -555,46 +585,39 @@ Inbound:
 
 ```text
 On-premises BGP
-   -> Transit VIF
-   -> Direct Connect Gateway
-   -> Cloud WAN Direct Connect attachment
-   -> associated CNE segment route tables
-   -> other Regions in the same segment
+ -> Transit VIF
+ -> DXGW
+ -> Cloud WAN Direct Connect attachment
+ -> CNE segment route table
+ -> other CNEs/Regions as policy permits
 ```
 
 Outbound:
 
 ```text
-VPC/other segment routes
-   -> local CNE
-   -> Direct Connect gateway attachment
-   -> Direct Connect Gateway
-   -> Transit VIF
-   -> on-premises BGP router
+VPC or other attachment route
+ -> CNE
+ -> Direct Connect attachment
+ -> DXGW
+ -> Transit VIF
+ -> on-premises BGP router
 ```
 
-The native integration dynamically propagates routes in both directions.
+Key points:
 
-### Key design points
-
-- A Direct Connect gateway can be associated with only one Cloud WAN segment.
-- Multiple Direct Connect gateways can attach to the same segment.
-- Different Direct Connect gateways can be associated with different segments.
-- A Direct Connect attachment can be associated with all CNEs or a subset.
-- Associating all CNEs where the segment exists generally produces simpler, more optimal routing.
-- AS_PATH information is retained toward on-premises, improving route visibility.
-- MED is non-transitive and Direct Connect gateway behavior must be considered when designing path selection.
-- Direct Connect BGP communities affect Direct Connect routing behavior but do not automatically control Cloud WAN core routing behavior.
+- a DXGW attachment is associated with a Cloud WAN segment
+- multiple DXGWs can connect to the same segment
+- different DXGWs can connect to different segments
+- BGP path information matters for primary/backup routing
+- Cloud WAN Routing Policy can further control route propagation
 
 ---
 
-## Site-to-Site VPN
+## Site-to-Site VPN (Virtual Private Network)
 
-Cloud WAN can directly attach Site-to-Site VPN connectivity.
+Cloud WAN can directly attach AWS Site-to-Site VPN connections.
 
-Dynamic routing with BGP is generally preferable for highly available designs because the CNE can learn and withdraw routes based on tunnel/BGP state.
-
-### VPN packet path
+For highly available designs, dynamic routing with **BGP (Border Gateway Protocol)** is generally preferred because routes can be learned and withdrawn dynamically as tunnel state changes.
 
 ```text
 Branch router
@@ -610,175 +633,118 @@ Segment routing
 Destination attachment
 ```
 
-Cloud WAN supports ECMP across eligible dynamically routed VPN paths.
-
-Static-routing VPNs do not provide the same ECMP capability.
+Dynamically routed VPN paths can participate in ECMP where AWS supports it.
 
 ---
 
-## Connect and SD-WAN
+## Connect and SD-WAN (Software-Defined Wide Area Network)
 
-Cloud WAN Connect is intended for integrating software-defined WAN and network virtual appliances.
+Cloud WAN Connect is designed for third-party routers, SD-WAN platforms, and network virtual appliances.
 
 Connect can use:
 
 - GRE-based Connect peers
-- Tunnel-less Connect, where supported
+- Tunnel-less Connect where supported
+- BGP for route exchange
 
-BGP is used to exchange prefixes.
-
-Common use cases:
+Common integrations include:
 
 - Cisco SD-WAN
 - Fortinet Secure SD-WAN
-- Palo Alto Networks SD-WAN/NVA designs
-- branch aggregation
-- third-party virtual routers
-- cloud transit appliances
+- Palo Alto Networks virtual appliances
+- branch aggregation routers
+- third-party routing/security appliances
 
-Cloud WAN handles global transport while the SD-WAN platform can continue to handle application policy, SLA steering, branch overlay functions, and security policies.
+Cloud WAN can provide the global AWS transport while the SD-WAN platform continues to provide application steering, branch policy, SLA logic, and security functions.
 
 ---
 
-## Transit Gateway interoperability
+## Transit Gateway (TGW) interoperability
 
-Cloud WAN can peer with Transit Gateway.
+Cloud WAN and TGW can coexist.
 
 This is useful when:
 
-- migrating existing TGW networks into Cloud WAN
-- keeping regional TGWs for services that depend on them
+- migrating an existing TGW estate into Cloud WAN
+- preserving regional TGWs for legacy resources
 - extending TGW route-table segmentation into Cloud WAN
-- connecting legacy architectures
-
-A Cloud WAN CNE and Transit Gateway peer in the same Region.
-
-Transit Gateway route table attachments can then map TGW routing domains to Cloud WAN segments.
-
-### Migration model
+- connecting existing regional designs during a phased migration
 
 ```mermaid
 flowchart LR
-    VPC["Existing VPCs"] --> TGW["Transit Gateway"]
-    TGW --> PEER["TGW-CNE Peering"]
-    PEER --> CW["Cloud WAN"]
-    CW --> NEW["New Cloud WAN VPCs"]
+    VPC["Existing VPCs"] --> TGW["TGW (Transit Gateway)"]
+    TGW --> PEER["TGW-CNE peering"]
+    PEER --> CNE["Cloud WAN CNE"]
+    CNE --> NEW["New Cloud WAN attachments"]
 ```
 
-This allows gradual migration rather than a big-bang cutover.
+This allows gradual migration rather than requiring a big-bang cutover.
 
 ---
 
-## Service insertion
+## Service insertion (steering traffic through firewalls/network appliances)
 
 Cloud WAN service insertion allows traffic to be redirected through centralized network/security functions.
 
 Examples:
 
-- AWS Network Firewall
-- Gateway Load Balancer
-- third-party NGFW
-- IDS/IPS
-- inspection appliances
+- **ANFW (AWS Network Firewall)**
+- **GWLB (Gateway Load Balancer)**
+- third-party NGFWs
+- IDS/IPS appliances
+- inspection VPCs
 - routing/security NVAs
 
-The major construct is the **Network Function Group (NFG)**.
+The key construct is the **NFG (Network Function Group)**.
 
-### Concept
+### NFG (Network Function Group)
+
+An NFG is a logical group of Cloud WAN attachments that contain network functions such as firewalls.
 
 ```mermaid
 flowchart LR
     PROD["Production Segment"] --> CNE["Cloud WAN CNE"]
-    CNE --> NFG["Network Function Group"]
-    NFG --> INSPECT["Inspection VPC / Firewall"]
-    INSPECT --> NFG
+    CNE --> NFG["NFG (Network Function Group)"]
+    NFG --> FW["Inspection VPC / Firewall"]
+    FW --> NFG
     NFG --> HYBRID["Hybrid Segment"]
 ```
 
-A Network Function Group is a collection of Cloud WAN attachments containing network functions.
+Important considerations:
 
-### Restrictions and behavior
+- an attachment belongs to a segment or an NFG, not both
+- inspection VPCs may require appliance mode for stateful path symmetry
+- isolated mode is important for same-segment service insertion
+- service insertion can steer same-Region and cross-Region traffic
+- NFG placement influences latency and inter-Region cost
 
-Important AWS-documented considerations include:
+### `send-via`
 
-- an attachment can belong to a segment or NFG, not both
-- only one attachment per NFG per Region
-- appliance mode must be enabled for an inspection VPC when required for flow symmetry
-- isolated mode is required for same-segment service insertion
-- static routes are not automatically propagated into NFG route tables
-- service insertion can steer same-segment or cross-segment flows
-- the capability works for same-Region and cross-Region traffic
-- routing views can display expected blackhole defaults in some service insertion scenarios even while steering is functioning as intended
-
----
-
-## `send-via`, `send-to`, and inspection paths
-
-Service insertion actions determine where traffic is redirected.
-
-Conceptually:
-
-### Send-via
-
-Traffic between segments is forced through an NFG.
+`send-via` forces traffic between selected segments through an NFG.
 
 ```text
 Production
-   -> Inspection NFG
-   -> Hybrid
+ -> Inspection NFG
+ -> Hybrid
 ```
 
-### Send-to
+### `send-to`
 
-Traffic is sent toward a network function group for a defined destination/use case such as centralized egress.
+`send-to` redirects traffic toward an NFG for a defined use case such as centralized egress.
 
 ### Edge override
 
-In a multi-Region topology, not every Region may contain an inspection VPC.
+If inspection exists in selected Regions only, an edge override can influence which inspection Region is used.
 
-Cloud WAN can otherwise select a remote inspection edge according to its internal ordered behavior.
-
-`edge-override` allows you to specify the desired inspection Region for selected source edge locations.
-
-Example concept:
-
-```json
-{
-  "action": "send-via",
-  "segment": "Production",
-  "mode": "single-hop",
-  "when-sent-to": {
-    "segments": [
-      "Hybrid"
-    ]
-  },
-  "via": {
-    "network-function-groups": [
-      "InspectionNFG"
-    ],
-    "with-edge-overrides": [
-      {
-        "edge-sets": [
-          [
-            "us-west-2"
-          ]
-        ],
-        "use-edge-location": "us-west-1"
-      }
-    ]
-  }
-}
-```
-
-This can reduce tromboning, latency, and unnecessary inter-Region transfer.
+This helps avoid unnecessary traffic tromboning and reduces latency/inter-Region data transfer.
 
 ---
 
 ## Stateful firewall symmetry
 
-Stateful firewalls require the forward and reverse directions of a session to pass through compatible firewall state.
+Stateful firewalls expect both directions of a session to traverse compatible state.
 
-### Bad path
+Bad example:
 
 ```text
 Forward:
@@ -788,60 +754,58 @@ Return:
 VPC-B -> Firewall-B -> VPC-A
 ```
 
-If Firewall-B does not have synchronized session state, the return packet may be dropped.
+If Firewall-B does not share Firewall-A's session state, the return traffic can be dropped.
 
-### Better path
+Preferred design:
 
 ```text
 Forward:
-VPC-A -> Inspection VPC us-west-1 -> VPC-B
+VPC-A -> Inspection stack -> VPC-B
 
 Return:
-VPC-B -> Inspection VPC us-west-1 -> VPC-A
+VPC-B -> Same inspection path -> VPC-A
 ```
 
-Cloud WAN service insertion plus appliance mode is designed to help preserve deterministic steering for these stateful flows.
+Cloud WAN service insertion and appliance mode help support deterministic stateful forwarding.
 
 ---
 
-## Routing Policy
+## Routing Policy (advanced route filtering and BGP policy)
 
-Cloud WAN Routing Policy adds fine-grained route control.
+A Cloud WAN **Routing Policy** is different from an **Attachment Policy**.
 
-This is different from basic segment attachment policy.
+### Attachment Policy
 
-### Attachment policy
-
-Determines:
+Answers:
 
 ```text
-Which segment does this attachment join?
+Which segment or NFG should this attachment join?
 ```
 
-### Routing policy
+### Routing Policy
 
-Determines:
+Answers:
 
 ```text
-Which routes are accepted, rejected, summarized, advertised, or preferred?
+Which routes should be accepted?
+Which routes should be dropped?
+Which prefixes should be summarized?
+How should BGP path attributes be modified?
+Which routes should be advertised toward a specific attachment or Region?
 ```
 
-This separation is important.
-
-### Routing Policy capabilities
-
-AWS documents support for:
+Routing Policy can provide fine-grained control such as:
 
 - route filtering
 - route summarization
 - path preference
 - BGP communities
-- LOCAL_PREF-related behavior
+- LOCAL_PREF-related policy
 - AS_PATH manipulation
 - MED manipulation
 - route control across attachments
-- route control across segment shares
-- route control across CNE-to-CNE Region propagation
+- route control across segment sharing
+- route control between CNEs/Regions
 
 Routing policies are directional:
 
@@ -850,7 +814,7 @@ inbound
 outbound
 ```
 
-### Routing policy pipeline
+### Routing-policy pipeline
 
 ```mermaid
 flowchart LR
@@ -862,159 +826,60 @@ flowchart LR
     B --> I
 ```
 
-### Why it matters
+### Example: overlapping prefix filter
 
-Previously, architects often needed extra virtual routers or complicated segmentation simply to control route distribution.
-
-Routing Policy allows network-level controls such as:
+Suppose a VPC exposes:
 
 ```text
-Block an overlapping VPC prefix.
-Advertise only an aggregate to on-premises.
-Prefer one VPN site for a default route.
-Apply AS_PATH prepending toward selected peers.
-Use BGP communities for classification.
-Prevent selected routes from crossing Regions.
+10.0.0.0/16
+10.1.0.0/16
 ```
 
-### Version requirement
+but `10.0.0.0/16` overlaps an enterprise network.
 
-AWS introduced Routing Policy with the newer Cloud WAN policy schema. AWS's launch guidance identifies policy version `2025.11` as the required version for this capability.
-
-Always verify your active policy version before attempting to configure Routing Policies.
-
----
-
-## Routing policy example: overlapping prefix filter
-
-Scenario:
-
-```text
-VPC A primary CIDR:   10.0.0.0/16
-VPC A secondary CIDR: 10.1.0.0/16
-
-Another network already uses 10.0.0.0/16.
-```
-
-Goal:
-
-```text
-Drop 10.0.0.0/16
-Allow 10.1.0.0/16
-```
-
-Conceptual inbound policy:
+Conceptual policy:
 
 ```text
 IF prefix == 10.0.0.0/16
 THEN drop
 
-ELSE permit normal propagation
+ELSE allow normal propagation
 ```
 
-This prevents overlapping prefixes from contaminating the segment routing domain.
+This prevents an overlapping prefix from contaminating the wider routing domain.
 
----
+### BGP traffic engineering
 
-## BGP traffic engineering
+Routing Policy can support traditional BGP traffic-engineering concepts.
 
-With Routing Policy, Cloud WAN can participate in more traditional enterprise WAN traffic engineering.
-
-Examples:
-
-### Local preference
-
-Use a higher preference for the preferred route.
+**LOCAL_PREF (Local Preference)**
 
 ```text
-Primary path  -> higher local preference
-Backup path   -> lower local preference
+Preferred path -> higher LOCAL_PREF
+Backup path    -> lower LOCAL_PREF
 ```
 
-### AS_PATH prepending
-
-Make one advertisement less attractive externally.
+**AS_PATH prepending**
 
 ```text
-Primary:
+Primary advertisement:
 64512 65010
 
-Backup:
+Backup advertisement:
 64512 64512 64512 65010
 ```
 
-### MED
+The longer AS_PATH is typically less preferred by remote BGP routers, all else being equal.
 
-Can influence preferred ingress when compared under appropriate BGP conditions.
+**MED (Multi-Exit Discriminator)** can influence ingress preference under the BGP comparison rules where MED is evaluated.
 
-Remember that MED is non-transitive, so its usefulness depends on where it is evaluated.
-
-### Communities
-
-Communities are labels attached to BGP routes.
-
-They can be used for:
-
-- classification
-- filtering
-- policy selection
-- route preference
-- downstream automation
-
-Support varies by attachment type and feature. Confirm current AWS documentation before relying on a community at a specific boundary.
+**BGP communities** are route labels that can be used for classification, filtering, and downstream policy.
 
 ---
 
-## Route evaluation considerations
+## Shared Services design
 
-For every packet, think in two stages:
-
-```text
-1. Is a route present in the Cloud WAN segment route table?
-2. If multiple routes exist, which route wins?
-```
-
-Then separately validate:
-
-```text
-3. Is the VPC route table correct?
-4. Is the remote/on-prem route correct?
-5. Is security policy allowing the packet?
-```
-
-A route can exist in Cloud WAN and traffic can still fail because the source VPC never sends traffic toward the attachment.
-
----
-
-## Centralized Internet egress
-
-Cloud WAN can support centralized egress architectures.
-
-Example:
-
-```mermaid
-flowchart LR
-    AP["Asia-Pacific workload VPCs"] --> CWA["Cloud WAN"]
-    CWA --> SG["Singapore Inspection VPC"]
-    SG --> NAT["NAT Gateway / egress"]
-    NAT --> NET["Internet"]
-```
-
-A global enterprise may define:
-
-- Singapore for APAC
-- Frankfurt for Europe
-- N. Virginia for North America
-
-Routing Policy can help keep Internet-bound traffic within the intended geographic egress architecture.
-
----
-
-## Shared services
-
-Shared Services is one of the most useful segment designs.
-
-Typical services:
+A Shared Services segment commonly contains:
 
 - Active Directory
 - DNS
@@ -1023,75 +888,62 @@ Typical services:
 - logging
 - monitoring
 - package repositories
-- vulnerability scanning
-- management jump hosts
-- proxy services
+- vulnerability scanners
+- management hosts
+- proxies
 
-Example:
+Common intent:
 
 ```text
 Production  ----\
 Development -----+--> Shared Services
-Corporate  ------/
+Hybrid      -----/
 ```
 
-The goal is normally **spoke-to-shared reachability without spoke-to-spoke reachability**.
-
-Be careful that segment sharing does not unintentionally create transitive reachability between otherwise isolated domains.
+The goal is usually spoke-to-shared reachability without automatically permitting all spokes to communicate with each other.
 
 ---
 
 ## Multi-account operation
 
-Cloud WAN can be shared using AWS Resource Access Manager.
+Cloud WAN can be shared across AWS accounts using **AWS RAM (Resource Access Manager)**.
 
-The core network owner controls:
-
-- core network
-- policy
-- segment definitions
-- policy execution
-- network-wide routing behavior
-
-Attachment owners can create and manage attachments within their permissions.
-
-This enables a central networking team to own the WAN while application teams own VPCs.
-
-A recommended enterprise pattern is:
+A common enterprise ownership model is:
 
 ```text
-Network account
-    Cloud WAN core network
-    centralized policy
-    security/inspection
+Central Network Account
+  Cloud WAN Core Network
+  CNP
+  segmentation
+  inspection architecture
 
-Application account A
-    production VPC attachments
+Production Account
+  Production VPC attachments
 
-Application account B
-    development VPC attachments
+Development Account
+  Development VPC attachments
 
-Shared services account
-    DNS / identity / tooling
+Shared Services Account
+  DNS / identity / monitoring VPCs
 ```
+
+The central networking team controls the WAN policy while application teams retain ownership of their VPC resources.
 
 ---
 
 ## Home Region
 
-Cloud WAN Network Manager uses a home Region for aggregated management and topology information.
+AWS Network Manager uses a home Region for aggregated management/topology information.
 
-AWS documentation currently identifies **US West (Oregon), `us-west-2`**, as the Cloud WAN home Region.
+AWS documentation identifies **US West (Oregon), `us-west-2`**, as the Cloud WAN home Region.
 
-The home Region is not the same thing as the data-plane location of every packet.
-
-Your data-plane CNEs can operate in many AWS Regions.
+The home Region is a management concept. It does not mean every packet traverses `us-west-2`.
 
 ---
 
 ## AWS CLI workflow
 
-AWS CLI v2 exposes Cloud WAN under the `networkmanager` namespace.
+AWS CLI v2 exposes Cloud WAN through the `networkmanager` command namespace.
 
 Useful commands include:
 
@@ -1112,11 +964,7 @@ aws networkmanager get-route-analysis
 aws networkmanager list-core-network-policy-versions
 ```
 
-### Put a policy
-
-The exact parameters depend on your core network ID and JSON file.
-
-Typical workflow:
+### Put a Core Network Policy
 
 ```cli
 aws networkmanager put-core-network-policy \
@@ -1124,9 +972,12 @@ aws networkmanager put-core-network-policy \
   --policy-document file://cloudwan-policy.json
 ```
 
-Then inspect the generated change set before applying.
+Where:
 
-### Inspect policy
+- `<CORE_NETWORK_ID>` = the ID of the Cloud WAN Core Network
+- `cloudwan-policy.json` = your local CNP JSON file
+
+### Inspect the active policy
 
 ```cli
 aws networkmanager get-core-network-policy \
@@ -1142,115 +993,38 @@ aws networkmanager get-network-routes \
   --edge-location <AWS_REGION>
 ```
 
-Use this to determine:
-
-- whether a prefix exists,
-- route type,
-- destination attachment,
-- edge location,
-- blackhole state where relevant.
-
-Do not diagnose Cloud WAN only from the VPC route table. The CNE segment route table is equally important.
+Use this to verify whether a prefix exists in a particular segment and CNE.
 
 ---
 
 ## Console configuration workflow
 
-### 1. Create or open Global Network
-
-In the AWS console:
-
-1. Open **Network Manager**.
+1. Open **AWS Network Manager**.
 2. Under **Connectivity**, choose **Cloud WAN**.
 3. Open the desired **Global network**.
-4. Open **Core network**.
-
-### 2. Create policy version
-
-1. Choose **Policy versions**.
-2. Choose **Create policy version**.
-3. Select **Visual editor** or **JSON**.
-
-### 3. Configure network
-
-Define:
-
-- ASN ranges
-- edge locations / AWS Regions
-- inside CIDRs when required for Connect-related designs
-
-### 4. Configure segments
-
-Create logical routing domains.
-
-For each segment, decide:
-
-- attachment acceptance
-- isolation
-- Regions
-- sharing behavior
-
-### 5. Configure attachment policies
-
-Create tag-based classification rules.
-
-Verify rule order carefully.
-
-### 6. Configure optional service insertion
-
-Create:
-
-- Network Function Group
-- NFG attachment policy
-- service insertion segment action
-
-### 7. Configure optional Routing Policies
-
-If using advanced routing:
-
-- ensure policy schema supports Routing Policy
-- create routing policy
-- create ordered match/action rules
-- create attachment routing policy associations/labels as required
-
-### 8. Generate and review changes
-
-Do not immediately execute large changes.
-
-Review:
-
-- additions
-- deletions
-- changed segment associations
-- route impacts
-- CNE additions/removals
-
-### 9. Apply
-
-Execute the generated change set.
-
-### 10. Verify
-
-Check:
-
-- policy execution status
-- attachment state
-- segment association
-- route tables
-- BGP on hybrid devices
-- application path
-- CloudWatch telemetry
+4. Open the **Core network**.
+5. Choose **Policy versions**.
+6. Create a new policy version.
+7. Configure **edge locations** (AWS Regions that need CNEs).
+8. Configure **segments**.
+9. Configure **attachment policies**.
+10. Configure optional **NFGs (Network Function Groups)** and service insertion.
+11. Configure optional **Routing Policies**.
+12. Generate the change set.
+13. Review additions, modifications, and deletions.
+14. Execute the change set.
+15. Verify attachment state, segment association, routes, BGP, and application traffic.
 
 ---
 
 ## Verification checklist
 
-### Core network
+### Core Network
 
 Verify:
 
 ```text
-Core network state = AVAILABLE
+Core Network state = AVAILABLE
 Policy state = LIVE
 Expected CNEs exist
 Expected segments exist
@@ -1258,25 +1032,21 @@ Expected segments exist
 
 ### Attachments
 
-Check:
-
 ```cli
 aws networkmanager list-attachments \
   --core-network-id <CORE_NETWORK_ID>
 ```
 
-Verify:
+Check:
 
 - attachment type
 - attachment state
-- owner account
-- edge location
-- segment
-- tags
+- AWS account owner
+- edge location / Region
+- segment or NFG association
+- attachment tags
 
 ### Routes
-
-Use:
 
 ```cli
 aws networkmanager get-network-routes \
@@ -1287,32 +1057,20 @@ aws networkmanager get-network-routes \
 
 Verify:
 
-- expected local VPC routes
-- expected remote-region routes
-- expected hybrid prefixes
-- expected service insertion next hop
-- no unexpected overlapping route
-
-### VPC
-
-Verify:
-
-```text
-Subnet route table
-Security group
-NACL
-Attachment subnet
-AZ mapping
-```
+- local VPC routes
+- remote-Region routes
+- hybrid prefixes
+- expected inspection next hop
+- no unexpected overlapping prefixes
 
 ### Direct Connect
 
-Verify on the on-premises router:
+On the customer router verify:
 
 ```text
-BGP session Established
-Expected AWS prefixes received
-Expected local prefixes advertised
+BGP session = Established
+Expected AWS prefixes are received
+Expected on-premises prefixes are advertised
 AS_PATH is sensible
 Primary/backup path is correct
 ```
@@ -1322,10 +1080,10 @@ Primary/backup path is correct
 Verify:
 
 ```text
-IPsec tunnel UP
-BGP Established
-Prefixes sent/received
-Correct ECMP behavior
+IPsec tunnels are UP
+BGP sessions are Established
+Expected prefixes are sent and received
+ECMP behavior matches design
 ```
 
 ### Inspection
@@ -1334,8 +1092,8 @@ Verify both directions:
 
 ```text
 Forward traffic reaches firewall
-Return traffic reaches same stateful path
-Firewall policy permits the session
+Return traffic reaches compatible firewall state
+Firewall policy allows the session
 NAT behavior is intentional
 Appliance mode is enabled where required
 ```
@@ -1344,35 +1102,36 @@ Appliance mode is enabled where required
 
 ## Route Analysis
 
-Network Manager includes route-analysis capabilities.
+AWS Network Manager includes route-analysis functions that help troubleshoot multi-hop Cloud WAN paths.
 
-Route analysis is particularly valuable for global networks because a path may cross:
+A path may involve:
 
 ```text
 VPC route table
-   -> CNE route table
-   -> CNE-to-CNE path
-   -> inspection attachment
-   -> second segment
-   -> destination attachment
+ -> VPC attachment
+ -> source CNE
+ -> service insertion / NFG
+ -> remote CNE
+ -> destination attachment
+ -> destination VPC route table
 ```
 
-CLI commands include:
+Useful CLI commands include:
 
 ```cli
 aws networkmanager start-route-analysis
 aws networkmanager get-route-analysis
 ```
 
-Use route analysis to narrow down where reachability stops rather than assuming the problem is BGP.
+Route analysis helps identify the point where reachability stops instead of assuming every failure is BGP-related.
 
 ---
 
 ## CloudWatch monitoring
 
-Cloud WAN exports metrics to CloudWatch.
+Cloud WAN exports metrics to **Amazon CloudWatch**.
 
-Useful dimensions include:
+Useful monitoring dimensions include:
 
 ```text
 CoreNetwork
@@ -1381,96 +1140,79 @@ Attachment
 AvailabilityZone
 ```
 
-Cloud WAN also exposes usage metrics that can be compared with service quotas.
-
-Recommended alarms:
+Recommended monitoring areas:
 
 - attachment traffic anomalies
-- VPN tunnel status through related VPN metrics
-- Direct Connect BGP/connection health through related DX metrics
-- route-count utilization approaching quota
-- CNE/attachment usage approaching quota
+- VPN tunnel state
+- Direct Connect/BGP health
+- route-count utilization
+- attachment and CNE quota utilization
 - packet drops where applicable
-
-For Cloud WAN metrics, AWS notes that `Sum` is the meaningful statistic for the documented counters.
 
 ---
 
-## Important quotas and scale limits
+## Scale and quotas
 
-AWS quotas change, so always validate them before production design.
+AWS service quotas change, so always validate them in current AWS documentation before production design.
 
 Representative documented defaults include:
 
-| Item | Default |
+| Item | Representative default |
 |---|---:|
-| Global networks per AWS account | 5 |
-| Core networks per global network | 1 |
-| Edges per Region per core network | 1 |
-| Segments per core network | 40 |
-| Policy size | 1 MB |
-| Attachments per core network | 5,000 |
+| Global Networks per AWS account | 5 |
+| Core Networks per Global Network | 1 |
+| CNEs per Region per Core Network | 1 |
+| Segments per Core Network | 40 |
+| Core Network Policy size | 1 MB |
+| Attachments per Core Network | 5,000 |
 | Connect peers per Connect attachment | 4 |
-| Transit Gateway peers | 50 |
-| Direct Connect attachments per core network | 40 |
-| Routes across all core network segments | 10,000 |
-| VPN routes advertised to core network | 1,000 |
-| Routes advertised from core network over VPN | 5,000 |
-| Connect routes advertised to core network | 1,000 |
-| Routes advertised from core network over Connect | 5,000 |
+| TGW peers | 50 |
+| Direct Connect attachments per Core Network | 40 |
+| Routes across all Core Network segments | 10,000 |
+| VPN routes advertised to Core Network | 1,000 |
+| Routes advertised from Core Network over VPN | 5,000 |
+| Connect routes advertised to Core Network | 1,000 |
+| Routes advertised from Core Network over Connect | 5,000 |
 
-### Bandwidth-related documented limits
-
-Representative values include:
+Representative bandwidth-related limits documented by AWS include:
 
 - VPC attachment: up to 100 Gbps per Availability Zone
 - VPC attachment: up to 7.5 million packets per second per AZ
-- VPN tunnel: up to 1.25 Gbps
-- GRE Connect peer: up to 5 Gbps
+- VPN tunnel: up to approximately 1.25 Gbps
+- GRE Connect peer: up to approximately 5 Gbps
 - up to four Connect peers per Connect attachment
-- Tunnel-less Connect: significantly higher bandwidth, subject to documented platform limits
 
-These are service limits, not guaranteed application throughput.
+Always validate current service quotas and platform-specific limits before design approval.
 
 ---
 
-## MTU
+## MTU (Maximum Transmission Unit)
 
-AWS documents the Cloud WAN core network MTU as:
+AWS documents a Cloud WAN core-network MTU of up to 8500 bytes for supported VPC-to-VPC paths.
 
-```text
-8500 bytes for traffic between VPCs
-```
+Hybrid paths such as VPN can have lower effective MTU because of tunneling overhead.
 
-This includes supported Cloud WAN VPC paths such as Transit Gateway peering and Tunnel-less Connect VPC attachment scenarios described by AWS.
+Important terms:
 
-VPN paths are typically constrained to lower MTU, with AWS documenting 1500-byte support at the Cloud WAN service level before tunnel overhead considerations.
+- **MTU (Maximum Transmission Unit)** — maximum packet size a path supports without fragmentation.
+- **MSS (Maximum Segment Size)** — maximum TCP payload size advertised by endpoints.
+- **PMTUD (Path MTU Discovery)** — method endpoints use to learn the smallest MTU along the path.
 
-Important details:
-
-- packets larger than the supported core-network MTU are dropped
-- Cloud WAN enforces TCP Maximum Segment Size (MSS) clamping
-- Path MTU Discovery support differs by attachment type
-- AWS documents PMTUD support for traffic ingressing VPC attachments
-- PMTUD is not supported in the same way on Connect, Site-to-Site VPN, Direct Connect, and peering attachments
-
-### Troubleshooting MTU
-
-Symptoms:
+Common MTU symptom:
 
 ```text
 Ping works.
 Small HTTP requests work.
 Large transfers stall.
-TLS connections hang.
+TLS sessions hang or reset.
 ```
 
 Check:
 
 1. packet size
-2. DF bit behavior
-3. ICMP Fragmentation Needed / IPv6 Packet Too Big
-4. VPN overhead
+2. Don't Fragment behavior
+3. ICMP Fragmentation Needed / IPv6 Packet Too Big messages
+4. VPN/IPsec overhead
 5. firewall MSS adjustment
 6. intermediate appliance MTU
 
@@ -1478,155 +1220,50 @@ Check:
 
 ## Pricing model
 
-Cloud WAN pricing has several components.
-
-### Core Network Edge
-
-AWS pricing currently lists a fixed hourly CNE charge.
-
-At the time of review, AWS shows:
-
-```text
-$0.50 per CNE per hour
-```
-
-### Attachments
-
-Attachments have hourly charges that vary by Region.
-
-Examples include:
-
-- VPC
-- VPN
-- Direct Connect
-- Connect/SD-WAN
-- peering connections
-
-### Data processing
-
-AWS currently lists:
-
-```text
-$0.02 per GB
-```
-
-for data sent into the CNE from supported attachments.
-
-### Inter-Region transfer
-
-Standard AWS data-transfer charges can apply in addition to Cloud WAN charges.
-
-### Service insertion
-
-AWS documents no additional Cloud WAN feature charge specifically for service insertion beyond the underlying Cloud WAN and appliance/service charges.
-
-### Routing Policy
-
-AWS documents no additional charge specifically for enabling Routing Policy.
-
-### Cost design implication
-
-A multi-Region Cloud WAN is not merely:
-
-```text
-attachment cost
-```
-
-It can include:
+Cloud WAN cost can include several components:
 
 ```text
 CNE-hours
 + attachment-hours
 + data processing
 + inter-Region transfer
-+ Direct Connect/VPN charges
++ Direct Connect or VPN charges
 + firewall/GWLB/NAT charges
 + EC2 appliance charges
 ```
 
-Therefore, optimize:
+AWS currently lists Cloud WAN pricing components such as:
 
-- number of CNE Regions
-- inspection placement
-- cross-Region flows
-- centralized egress architecture
-- number of attachments
-- route design
+- CNE hourly charges
+- attachment hourly charges
+- per-GB data processing
+- standard inter-Region transfer where applicable
+
+Always check current regional pricing before finalizing a design.
 
 ---
 
 ## Cloud WAN versus Transit Gateway
 
-| Capability | Cloud WAN | Transit Gateway |
+| Capability | Cloud WAN | TGW (Transit Gateway) |
 |---|---|---|
 | Primary scope | Global | Regional |
-| Inter-Region fabric | Built in | TGW peering configured by customer |
-| Intent-based policy | Yes | More route-table centric |
-| Global segmentation | Native segments | Separate TGW route tables + peering design |
-| Central topology view | Strong | Available via Network Manager but more manually composed |
-| Direct Connect | Native DX gateway attachment | DXGW-TGW association |
+| Inter-Region fabric | Built into Cloud WAN | Customer configures TGW peering |
+| Segmentation | Global segments | Regional TGW route tables |
+| Policy model | Declarative Core Network Policy | Route-table centric |
+| Direct Connect | Native DXGW attachment | DXGW-to-TGW association |
 | VPN | Native attachment | Native attachment |
-| SD-WAN Connect | Native | Native TGW Connect |
-| Global automation | Major design goal | Customer automation usually needed |
-| Advanced global route policy | Cloud WAN Routing Policy | TGW route-table/BGP behavior |
-| Best fit | large multi-Region/global networks | regional hubs and smaller multi-Region estates |
+| SD-WAN/Connect | Supported | Supported |
+| Global route policy | Cloud WAN Routing Policy | TGW route tables + BGP behavior |
+| Best fit | Large global multi-Region networks | Regional or smaller transit architectures |
 
-### Rule of thumb
-
-Use Transit Gateway when:
-
-- you operate primarily in one or a few Regions
-- routing is relatively simple
-- your organization already has mature TGW automation
-- you want explicit regional control
-
-Use Cloud WAN when:
-
-- the network is genuinely global
-- consistent segmentation matters
-- many accounts/Regions are involved
-- you want one declarative network policy
-- you need central service insertion and advanced global routing control
-
-They can coexist.
-
----
-
-## Cloud WAN versus a traditional MPLS WAN
-
-Cloud WAN segments resemble MPLS Layer 3 VPN VRFs conceptually.
-
-Traditional model:
-
-```text
-Site
- -> CE
- -> PE
- -> MPLS backbone
- -> PE
- -> CE
- -> Site
-```
-
-Cloud WAN model:
-
-```text
-VPC / Site
- -> Attachment
- -> CNE
- -> AWS global backbone
- -> CNE
- -> Attachment
- -> VPC / Site
-```
-
-The analogy is useful, but Cloud WAN does not expose PE-router configuration to you. The control plane is driven by AWS API/policy.
+Cloud WAN and TGW can coexist, especially during migration.
 
 ---
 
 ## High availability and convergence
 
-Cloud WAN HA exists at multiple layers.
+Cloud WAN HA occurs at multiple layers.
 
 ### CNE layer
 
@@ -1634,7 +1271,7 @@ AWS manages the CNE infrastructure.
 
 ### Inter-Region layer
 
-CNEs form a resilient AWS backbone mesh.
+CNEs use the AWS global backbone.
 
 ### VPC layer
 
@@ -1642,566 +1279,356 @@ Use attachment subnets across multiple Availability Zones.
 
 ### Direct Connect
 
-Use resilient Direct Connect design:
+Use resilient Direct Connect designs with:
 
-- multiple physical connections
-- diverse locations
-- multiple transit VIFs
-- appropriate BGP policy
+- redundant physical connections
+- diverse Direct Connect locations where required
+- multiple Transit VIFs
+- deliberate BGP policy
 
 ### VPN
 
-Use both AWS VPN tunnels and dynamic routing.
+Use both AWS VPN tunnels and dynamic BGP routing where possible.
 
-### SD-WAN/Connect
+### SD-WAN / Connect
 
 Use:
 
 - redundant appliances
 - multiple Connect peers
-- multiple AZs
+- multiple Availability Zones
 - BGP
-- appliance/platform HA
+- platform-specific HA
 
 ### Firewall
 
-Use a distributed stateful appliance architecture or service that can preserve expected symmetry.
+Validate that both session directions follow compatible stateful inspection paths.
 
 ---
 
-## Failure scenario: local Direct Connect path fails
+## Failure scenario: Direct Connect primary path fails
 
-Assume two Direct Connect paths advertise the same on-prem prefix.
+Assume two Direct Connect paths advertise the same on-premises prefix.
 
 ```text
 Primary DX
 Backup DX
 ```
 
-Sequence:
+Typical sequence:
 
-1. BGP or physical DX state fails on primary.
-2. Route is withdrawn.
-3. Direct Connect gateway updates Cloud WAN.
-4. CNE recomputes best route.
-5. Backup route becomes active.
-6. CNE forwarding updates.
-7. Return path must also converge toward the backup.
-8. Existing stateful sessions may reset depending on firewall/NAT architecture.
+1. Physical or BGP state fails on the primary path.
+2. The route is withdrawn.
+3. The DXGW updates Cloud WAN reachability.
+4. The CNE recomputes the best route.
+5. The backup route becomes active.
+6. Forwarding updates.
+7. Return routing must also converge.
+8. Stateful sessions may reset depending on firewall/NAT architecture.
 
-For critical applications, test convergence rather than relying solely on routing theory.
-
----
-
-## Failure scenario: inspection VPC unavailable
-
-If a Region's inspection attachment is unavailable, service insertion behavior depends on:
-
-- NFG membership
-- available inspection attachment in other Regions
-- edge override configuration
-- service insertion mode
-- route propagation
-
-Potential symptom:
-
-```text
-Traffic still works but suddenly hairpins through another Region.
-```
-
-Consequences:
-
-- higher latency
-- higher inter-Region data transfer
-- different firewall state
-- capacity pressure on backup inspection stack
-
-Monitor not just availability but **path location**.
+Test actual convergence for critical applications rather than assuming routing failover alone guarantees uninterrupted sessions.
 
 ---
 
 ## Common mistakes
 
-### 1. Tagging the VPC instead of the attachment
+### 1. Tagging the VPC but not the attachment
 
-Cloud WAN attachment policy evaluates attachment metadata.
+Attachment Policies evaluate Cloud WAN attachment metadata.
 
-Fix:
-- confirm the tag exists on the Cloud WAN attachment itself.
+**Fix:** verify the tag exists on the Cloud WAN attachment itself.
 
-### 2. Wrong attachment-policy order
+### 2. Wrong Attachment Policy order
 
 A broad rule matches before a specific rule.
 
-Fix:
-- place specific rules at lower rule numbers.
+**Fix:** put more-specific rules earlier/lower in rule-number order.
 
-### 3. Forgetting VPC routes
+### 3. Forgetting the VPC route table
 
-Cloud WAN route table is correct, but VPC route table has no route to remote prefixes.
+The CNE has the correct destination route, but the VPC never sends traffic to Cloud WAN.
 
-Fix:
-- add/verify the VPC route pointing toward the Cloud WAN attachment path.
+**Fix:** add or correct the VPC route.
 
-### 4. Forgetting return routing
+### 4. Forgetting the return path
 
-The forward path works, but the remote network routes replies elsewhere.
+Forward traffic arrives, but replies leave through another route.
 
-Fix:
-- verify both directions.
+**Fix:** verify both directions independently.
 
-### 5. Assuming segment sharing is automatically transitive
+### 5. Overlapping CIDRs
 
-Segment sharing changes route visibility according to explicit policy.
+Overlapping prefixes can create ambiguous reachability.
 
-Fix:
-- inspect actual segment route tables.
+**Fix:** use address governance and Routing Policy filters where appropriate.
 
-### 6. Ignoring overlapping CIDRs
+### 6. Missing appliance mode
 
-Overlapping routes can cause ambiguous reachability.
+Stateful inspection traffic returns through an incompatible AZ/path.
 
-Fix:
-- use address governance and Routing Policy filters.
+**Fix:** enable the required appliance mode and validate symmetry.
 
-### 7. Misunderstanding Direct Connect legacy guidance
+### 7. Same-segment inspection without isolation
 
-Older AWS articles required TGW between DXGW and Cloud WAN.
+Attachments communicate directly and bypass inspection.
 
-Modern Cloud WAN supports native Direct Connect gateway attachments.
+**Fix:** use isolated mode when required for same-segment service insertion.
 
-Fix:
-- use current documentation for greenfield designs.
+### 8. Treating a CNE like a customer-managed TGW
 
-### 8. Missing appliance mode
+A CNE is an AWS-managed Cloud WAN routing node.
 
-Stateful inspection returns on a different AZ/path.
+**Fix:** manage behavior through Cloud WAN policy and Network Manager rather than expecting to configure the CNE like a router appliance.
 
-Fix:
-- enable the required appliance mode and validate route symmetry.
+### 9. Treating Cloud WAN as Layer 2
 
-### 9. Same-segment inspection without isolation
+Applications expect broadcast adjacency or VLAN stretch.
 
-Attachments communicate directly and bypass the firewall.
+**Fix:** redesign for Layer 3 routed connectivity.
 
-Fix:
-- use isolated mode for same-segment service insertion.
+### 10. Ignoring MTU differences
 
-### 10. Assuming a CNE is a user-managed TGW
+Small packets work but large flows fail.
 
-Although the CNE inherits characteristics from Transit Gateway, it is AWS-managed as part of Cloud WAN.
-
-Fix:
-- manage it through Cloud WAN policy and Network Manager.
-
-### 11. Treating Cloud WAN as Layer 2
-
-Applications depend on broadcast adjacency.
-
-Fix:
-- redesign for routed IP connectivity.
-
-### 12. Forgetting MTU differences
-
-Large packets fail on hybrid paths.
-
-Fix:
-- test PMTUD, MSS, and tunnel overhead.
+**Fix:** validate MTU, MSS, PMTUD, VPN overhead, and firewall behavior.
 
 ---
 
 ## Troubleshooting by symptom
 
-## Symptom: VPCs in the same segment cannot communicate
+### Symptom: VPCs in the same segment cannot communicate
 
 Check:
 
-1. Is each VPC attachment `AVAILABLE`?
-2. Are both attachments associated with the same segment?
+1. Are both VPC attachments `AVAILABLE`?
+2. Are both associated with the intended segment?
 3. Does the source VPC route table contain the destination prefix?
 4. Does the source CNE route table contain the destination route?
-5. Does the destination VPC route back to the source?
-6. Do security groups permit the flow?
-7. Do NACLs permit both directions?
-8. Is a routing policy filtering the prefix?
+5. Does the destination VPC have a return route?
+6. Do Security Groups allow the flow?
+7. Do NACLs allow both directions?
+8. Is a Routing Policy filtering the prefix?
 9. Is service insertion expected?
-10. Is the destination CIDR overlapping another route?
+10. Is there an overlapping CIDR?
 
-Success looks like:
+Expected successful path:
 
 ```text
-source VPC RT -> CNE route -> destination attachment -> destination VPC RT
+Source VPC route table
+ -> attachment
+ -> source CNE segment route
+ -> remote CNE
+ -> destination attachment
+ -> destination VPC route table
 ```
 
----
-
-## Symptom: attachment is created but not associated with a segment
+### Symptom: attachment is created but not associated with a segment
 
 Check:
 
 - attachment tags
-- attachment policy rule order
+- Attachment Policy rule order
 - `require-attachment-acceptance`
-- segment existence in the attachment Region
-- policy execution status
+- segment existence in that Region
+- policy execution state
 
-If acceptance is required, the attachment can wait until the core-network owner approves it.
-
----
-
-## Symptom: Direct Connect BGP is up but AWS routes are missing
+### Symptom: Direct Connect BGP is up but routes are missing
 
 Check:
 
-1. Is the Direct Connect gateway attachment `AVAILABLE`?
+1. Is the DXGW attachment `AVAILABLE`?
 2. Is it associated with the correct segment?
-3. Is the correct CNE/Region selected?
+3. Is the expected CNE/Region included?
 4. Are the VPC routes present in that segment?
-5. Is the segment isolated?
-6. Is a Routing Policy filtering outbound advertisements?
-7. Is on-premises rejecting the AWS AS_PATH?
-8. Does the route exceed a quota?
-9. Are you relying on obsolete allowed-prefix behavior from a TGW architecture?
+5. Is Routing Policy filtering advertisements?
+6. Is the customer router rejecting the AS_PATH?
+7. Are route quotas being approached?
 
----
-
-## Symptom: on-premises routes are visible in one Region but not another
-
-Check:
-
-- which CNEs are associated with the DX gateway attachment
-- whether the segment spans both Regions
-- inter-Region Routing Policy
-- route filtering
-- AS_PATH selection
-- isolated segment behavior
-
-A Direct Connect gateway associated to only a subset of CNEs receives and advertises behavior based on those selected edges.
-
----
-
-## Symptom: traffic bypasses firewall
+### Symptom: traffic bypasses the firewall
 
 Check:
 
 - service insertion action
 - source/destination segment pair
 - NFG attachment membership
-- attachment belongs to NFG rather than ordinary segment
 - same-segment isolation
-- conflicting static route
-- policy version is actually LIVE
+- conflicting static routes
+- active policy version
 
-Use `get-network-routes` to inspect the effective next hop.
-
----
-
-## Symptom: firewall sees one direction only
+### Symptom: firewall sees only one direction
 
 Check:
 
 - appliance mode
-- service insertion action
+- service insertion path
 - edge override
 - VPC route tables
-- different-region return path
-- NAT
-- multiple default routes
-- asymmetric BGP preference on Direct Connect/VPN
+- return-path BGP preference
+- NAT behavior
+- multi-Region asymmetry
 
-Stateful traffic requires path symmetry.
-
----
-
-## Symptom: traffic takes an unexpected Region
+### Symptom: traffic takes an unexpected Region
 
 Check:
 
 - local route availability
-- DX gateway CNE association
+- DXGW CNE association
 - CNE route preference
-- service insertion ordered edge selection
+- service insertion placement
 - edge override
-- Routing Policy local preference/AS path behavior
-- route advertisements from multiple sites
+- Routing Policy
+- advertisements from multiple hybrid sites
 
----
-
-## Symptom: new routes do not appear immediately in an NFG route view
-
-AWS notes that BGP route updates for Network Function Group route tables can sometimes take up to approximately 30 minutes to appear in `GetNetworkRoutes` or the console.
-
-This display delay does not necessarily mean forwarding is broken.
-
-Validate actual packet forwarding and related telemetry before assuming the policy failed.
-
----
-
-## Symptom: policy generation fails
+### Symptom: policy generation fails
 
 Check:
 
 - JSON syntax
-- policy version/schema
+- policy schema version
 - invalid segment reference
 - nonexistent NFG
-- service insertion referencing an attachment not included correctly
 - invalid edge location
-- duplicate/unsupported construct
-- size over 1 MB
-- Routing Policy used with an older policy version
+- unsupported construct
+- policy size
+- Routing Policy features used with an incompatible schema version
 
 ---
 
-## Symptom: application works in one Region but fails in another
-
-Compare:
-
-```text
-CNE existence
-segment presence
-attachment state
-local route table
-remote route table
-routing policy association
-inspection NFG presence
-edge override
-security group
-NACL
-MTU
-```
-
-Do not assume the policy is identical merely because the segment name is the same.
-
----
-
-## Design example: global enterprise WAN
+## Global enterprise design example
 
 ### Requirements
 
 - Production and Development isolated
 - both need Shared Services
 - branches connect through VPN or SD-WAN
-- data centers use Direct Connect
-- all hybrid-to-production traffic inspected
+- data centers connect through Direct Connect
+- Hybrid-to-Production traffic must be inspected
 - regional inspection stacks
-- production routes summarized to on-premises
-
-### Logical design
+- summarized routes toward on-premises
 
 ```mermaid
 flowchart TB
     subgraph CW["AWS Cloud WAN"]
-      PROD["Production"]
-      DEV["Development"]
-      SHARED["Shared Services"]
-      HYBRID["Hybrid"]
+      PROD["Production Segment"]
+      DEV["Development Segment"]
+      SHARED["Shared Services Segment"]
+      HYBRID["Hybrid Segment"]
       NFG["Inspection NFG"]
     end
 
     PVPC["Production VPCs"] --> PROD
     DVPC["Development VPCs"] --> DEV
     SVPC["DNS / AD / Shared VPCs"] --> SHARED
-
-    DX["Direct Connect Gateways"] --> HYBRID
-    VPN["VPN Branches"] --> HYBRID
+    DX["DXGW / Direct Connect"] --> HYBRID
+    VPN["VPN branches"] --> HYBRID
     SDWAN["SD-WAN Connect"] --> HYBRID
 
     PROD --> NFG
     NFG --> HYBRID
-
     PROD --> SHARED
     DEV --> SHARED
     HYBRID --> SHARED
 ```
 
-### Policy intent
+Policy intent:
 
 ```text
 Production <-> Hybrid
-    must pass Inspection NFG
+  must traverse Inspection NFG
 
 Development <-> Production
-    denied
+  denied
 
-Development -> Shared
-    allowed
+Development -> Shared Services
+  allowed
 
-Production -> Shared
-    allowed
+Production -> Shared Services
+  allowed
 
-Hybrid -> Shared
-    allowed
+Hybrid -> Shared Services
+  allowed
 ```
 
-### Routing policy
+Routing Policy intent:
 
 ```text
-Inbound from on-prem:
-    drop overlapping enterprise prefixes
+Inbound from on-premises:
+  drop overlapping enterprise prefixes
 
-Outbound to on-prem:
-    summarize workload CIDRs
+Outbound to on-premises:
+  summarize workload CIDRs
 
 Preferred hybrid path:
-    Direct Connect primary
-    VPN secondary
+  Direct Connect primary
+  VPN secondary
 ```
 
 ---
 
-## Design example: regional Internet egress
+## Infrastructure as Code considerations
 
-```mermaid
-flowchart LR
-    US["US workload Regions"] --> CW["Cloud WAN"]
-    EU["EU workload Regions"] --> CW
-    AP["APAC workload Regions"] --> CW
+Cloud WAN is a strong Infrastructure as Code candidate because the network policy itself is declarative.
 
-    CW --> USE["US inspection/egress"]
-    CW --> EUE["Frankfurt inspection/egress"]
-    CW --> APE["Singapore inspection/egress"]
-
-    USE --> INTERNET["Internet"]
-    EUE --> INTERNET
-    APE --> INTERNET
-```
-
-Goals:
-
-- regulatory locality
-- lower latency
-- predictable firewall path
-- controlled egress IPs
-- centralized logging
-
-Use service insertion and Routing Policy together where appropriate.
-
----
-
-## Terraform / Infrastructure as Code considerations
-
-Cloud WAN is a strong candidate for Infrastructure as Code because the policy itself is declarative.
-
-Recommended pattern:
+Recommended repository model:
 
 ```text
-Git repository
-  cloudwan/
-    core-network.tf
-    policy.json
-    variables.tf
-    outputs.tf
-    attachments/
-    tests/
+cloudwan/
+  core-network.tf
+  policy.json
+  variables.tf
+  outputs.tf
+  attachments/
+  tests/
 ```
-
-Keep the policy JSON version-controlled even if Terraform creates the surrounding resources.
 
 Pipeline checks should include:
 
 - JSON validation
-- allowed Region list
+- allowed AWS Region list
 - duplicate CIDR detection
-- attachment-policy ordering
-- segment name validation
+- Attachment Policy ordering
+- segment-name validation
 - NFG references
-- policy-schema version
+- CNP schema version
 - prohibited default-route changes
 - route-count estimates
 - change-set review
 
-Do not blindly auto-apply a global core-network change in production.
-
-A controlled workflow is preferable:
+A safer production workflow is:
 
 ```text
-pull request
+Pull request
  -> lint
- -> security review
+ -> network/security review
  -> Cloud WAN change-set generation
- -> human review
- -> approved execution
+ -> human approval
+ -> execute change set
  -> post-change route validation
 ```
 
 ---
 
-## Operational commands reference
-
-### List core networks
-
-```cli
-aws networkmanager list-core-networks
-```
-
-### List policy versions
-
-```cli
-aws networkmanager list-core-network-policy-versions \
-  --core-network-id <CORE_NETWORK_ID>
-```
-
-### Get active policy
-
-```cli
-aws networkmanager get-core-network-policy \
-  --core-network-id <CORE_NETWORK_ID>
-```
-
-### List attachments
-
-```cli
-aws networkmanager list-attachments \
-  --core-network-id <CORE_NETWORK_ID>
-```
-
-### Inspect routes
-
-```cli
-aws networkmanager get-network-routes \
-  --core-network-id <CORE_NETWORK_ID> \
-  --segment-name <SEGMENT_NAME> \
-  --edge-location <AWS_REGION>
-```
-
-### Route analysis
-
-```cli
-aws networkmanager start-route-analysis <OPTIONS>
-aws networkmanager get-route-analysis <OPTIONS>
-```
-
-### Direct Connect attachment
-
-```cli
-aws networkmanager create-direct-connect-gateway-attachment <OPTIONS>
-```
-
-Use `aws networkmanager <command> help` or the current AWS CLI reference for the full parameter schema.
-
----
-
 ## Configuration validation checklist
 
-Before deploying:
+Before deployment:
 
-- [ ] Required Regions identified
-- [ ] CNE ASN ranges do not conflict with enterprise BGP design
+- [ ] required AWS Regions identified
+- [ ] CNE ASN ranges reviewed
 - [ ] segment taxonomy defined
-- [ ] CIDR plan reviewed for overlap
-- [ ] attachment tag standard defined
-- [ ] attachment-policy order reviewed
+- [ ] CIDR plan checked for overlap
+- [ ] attachment-tag standard defined
+- [ ] Attachment Policy order reviewed
 - [ ] acceptance requirements defined
 - [ ] segment sharing documented
 - [ ] service insertion paths documented
-- [ ] stateful symmetry validated
-- [ ] Direct Connect gateway segment mapping documented
+- [ ] NFG placement documented
+- [ ] stateful firewall symmetry validated
+- [ ] DXGW-to-segment mapping documented
 - [ ] VPN/Connect redundancy documented
 - [ ] Routing Policy schema version confirmed
 - [ ] route filters reviewed
 - [ ] summaries reviewed
-- [ ] CNE and attachment quotas checked
+- [ ] quotas checked
 - [ ] MTU reviewed
 - [ ] pricing estimate completed
 - [ ] rollback policy version identified
@@ -2214,74 +1641,79 @@ Before deploying:
 
 Cloud WAN provides segmentation and routing control, but it is not itself a complete firewall.
 
-Security enforcement can occur at several layers:
+Security enforcement can occur at multiple layers:
 
 ```text
 Cloud WAN segment isolation
 Cloud WAN Routing Policy
-AWS Network Firewall
-Gateway Load Balancer + third-party NGFW
-VPC security groups
-Network ACLs
-application security controls
+ANFW (AWS Network Firewall)
+GWLB + third-party firewall
+VPC Security Groups
+NACLs
+application controls
 on-premises firewall policy
 ```
 
-A route existing does not imply traffic is authorized.
+A route existing does not mean traffic is authorized.
 
-Likewise, a security group allowing traffic does not help if the Cloud WAN routing domain does not contain a route.
+Similarly, a Security Group allowing traffic does not help if the Cloud WAN routing domain has no route.
 
-Security architecture should treat **reachability** and **authorization** as separate controls.
+Treat **reachability** and **authorization** as separate controls.
 
 ---
 
 ## Key interview and certification distinctions
 
+### CNE vs Segment
+
+**CNE (Core Network Edge)** = the regional Cloud WAN router.
+
+**Segment** = the logical routing domain carried by that CNE.
+
+Think:
+
+```text
+CNE = router
+Segment = VRF-like routing table/domain on the Cloud WAN fabric
+```
+
 ### Cloud WAN segment vs VPC subnet
 
-A segment is a **global Layer 3 routing domain**.
+**Segment** = global Layer 3 routing domain.
 
-A subnet is an **Availability Zone-scoped VPC IP network**.
+**VPC subnet** = Availability Zone-scoped IP subnet inside a VPC.
 
-### Cloud WAN vs TGW peering
+### Attachment Policy vs Routing Policy
 
-Cloud WAN automatically creates a managed inter-CNE fabric.
-
-Transit Gateway requires the architect to explicitly design regional TGWs and inter-Region peerings.
-
-### Attachment policy vs Routing Policy
-
-Attachment Policy:
+**Attachment Policy**:
 
 ```text
-Which segment/NFG should this attachment join?
+Where does this attachment belong?
 ```
 
-Routing Policy:
+**Routing Policy**:
 
 ```text
-What should happen to routes learned from or advertised toward this resource/path?
+What should happen to routes learned from or advertised toward this attachment/path?
 ```
 
-### Service insertion vs static routing
+### NFG vs Segment
 
-Static routes can steer traffic, but service insertion provides a policy-driven model designed for centralized network functions and multi-Region inspection.
+**Segment** = workload routing domain.
 
-### NFG vs segment
+**NFG** = collection of network-function attachments used for service insertion.
 
-Segment:
-- workload routing domain
+### Cloud WAN vs TGW
 
-NFG:
-- collection of network-function attachments used as service-chain targets
+Cloud WAN automatically builds a managed inter-CNE global fabric.
 
-An attachment cannot belong to both at the same time.
+TGW is primarily regional and requires explicit inter-Region TGW peering where global connectivity is needed.
 
-### Native Direct Connect vs legacy TGW integration
+### Native Direct Connect vs older TGW-based integration
 
-Current Cloud WAN can attach a Direct Connect gateway directly.
+Current Cloud WAN can attach a DXGW directly.
 
-Older designs may still use TGW for migration or interoperability.
+Older architectures may still use TGW between Direct Connect and Cloud WAN for migration or legacy interoperability.
 
 ---
 
@@ -2293,24 +1725,24 @@ When a Cloud WAN flow fails, troubleshoot in this order:
 1. Endpoint
 2. VPC route table
 3. VPC attachment
-4. Source segment route table
-5. Routing Policy
-6. Service insertion / NFG
-7. Inter-CNE path
-8. Destination segment route table
-9. Destination attachment
-10. Destination VPC/on-prem route
-11. Security policy
-12. Return path
+4. Source CNE
+5. Source segment route table
+6. Routing Policy
+7. Service insertion / NFG
+8. Inter-CNE path
+9. Destination CNE
+10. Destination segment route table
+11. Destination attachment
+12. Destination VPC/on-prem route
+13. Security policy
+14. Return path
 ```
 
-This prevents wasted time looking at BGP when the actual issue is an attachment tag or VPC route.
+This prevents wasting time on BGP when the actual issue is an Attachment Policy, tag, VPC route, firewall path, or return route.
 
 ---
 
 ## Configuration summary
-
-A production Cloud WAN implementation typically contains:
 
 ```text
 Global Network
@@ -2321,7 +1753,7 @@ Global Network
     ├── Segments
     │   ├── Production
     │   ├── Development
-    │   ├── Shared
+    │   ├── Shared Services
     │   └── Hybrid
     ├── Network Function Groups
     │   └── InspectionNFG
@@ -2333,7 +1765,7 @@ Global Network
 Attachments
 ├── VPC
 ├── Site-to-Site VPN
-├── Direct Connect Gateway
+├── DXGW (Direct Connect Gateway)
 ├── Connect / SD-WAN
 └── TGW Route Table
 ```
@@ -2343,17 +1775,18 @@ Attachments
 ## Key takeaways
 
 1. **Cloud WAN is a policy-driven global Layer 3 WAN**, not an Ethernet extension service.
-2. **Segments are global routing domains** comparable conceptually to VRFs.
-3. **CNEs are AWS-managed Regional routing endpoints** connected through the AWS backbone.
-4. **Attachment policies classify attachments into segments/NFGs** and are rule-order sensitive.
-5. **Routing Policies control route propagation and BGP attributes**, separate from segment classification.
-6. **Native Direct Connect gateway attachment** removes the need for TGW in many greenfield hybrid designs.
-7. **Service insertion** provides global traffic steering through inspection/security functions.
-8. **Appliance mode and route symmetry matter** for stateful firewalls.
-9. **Cloud WAN and Transit Gateway can coexist**, especially during migration.
-10. **Troubleshooting requires checking both VPC routing and Cloud WAN segment routing**.
-11. **Route scale, MTU, attachment limits, and cost must be designed intentionally**.
-12. **Policy versioning and change-set review are major operational advantages** and should be integrated into GitOps workflows.
+2. **CNE (Core Network Edge)** means the AWS-managed **regional Cloud WAN router**.
+3. **Segments are global routing domains**, similar conceptually to VRFs.
+4. **Attachments connect resources into Cloud WAN**.
+5. **Attachment Policies decide where attachments belong**.
+6. **Routing Policies control route filtering, propagation, summarization, and BGP path behavior**.
+7. **NFGs (Network Function Groups)** contain firewall/network-function attachments for service insertion.
+8. **Native DXGW attachments** simplify modern hybrid Cloud WAN designs.
+9. **Appliance mode and path symmetry matter** for stateful firewalls.
+10. **Cloud WAN and TGW can coexist**, especially during migration.
+11. **Troubleshooting requires checking both VPC routing and Cloud WAN CNE/segment routing**.
+12. **Quotas, MTU, routing policy, and cost should be designed intentionally**.
+13. **Policy versioning and change-set review fit naturally into GitOps workflows**.
 
 ---
 
@@ -2390,4 +1823,4 @@ Attachments
 
 ---
 
-> **Version note:** AWS networking services evolve quickly. Routing Policy, native Direct Connect gateway attachments, service insertion, attachment support, route quotas, pricing, and Region availability should always be checked against the current AWS documentation before production deployment.
+> **Version note:** AWS networking services evolve quickly. Routing Policy, native Direct Connect Gateway attachments, service insertion, quotas, pricing, and Region availability should always be checked against current AWS documentation before production deployment.
