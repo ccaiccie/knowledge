@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<defs>
+<marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker>
+<marker id="c" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/></marker>
+<style>
+.t{font:700 30px Segoe UI,Arial;fill:#0f172a} .s{font:400 16px Segoe UI,Arial;fill:#475569}
+.bt{font:700 18px Segoe UI,Arial;fill:#0f172a} .bs{font:400 14px Segoe UI,Arial;fill:#334155}
+.al{font:600 13px Segoe UI,Arial;fill:#1d4ed8} .note{font:400 13px Segoe UI,Arial;fill:#7c2d12}
+</style></defs><rect width="100%" height="100%" fill="white"/>
+<text x="40" y="48" class="t">How an NVA Route Reaches a Spoke VM</text><text x="40" y="78" class="s">The BGP route is injected into the NIC&#x27;s effective routes; it is not written into the subnet&#x27;s UDR route-table object.</text>
+<rect x="60" y="180" width="260" height="150" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="76" y="208" class="bt">NVA BGP RIB</text>
+<text x="76" y="235" class="bs">Advertises: 0.0.0.0/0</text>
+<text x="76" y="255" class="bs">NEXT_HOP = NVA private IP</text>
+<text x="76" y="275" class="bs">AS_PATH = 65001</text>
+<rect x="400" y="180" width="270" height="150" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="416" y="208" class="bt">Azure Route Server</text>
+<text x="416" y="235" class="bs">Learns route over eBGP</text>
+<text x="416" y="255" class="bs">Applies route-map policy if configured</text>
+<text x="416" y="275" class="bs">Keeps route in ARS control plane</text>
+<rect x="760" y="180" width="300" height="150" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="776" y="208" class="bt">Azure SDN route propagation</text>
+<text x="776" y="235" class="bs">Evaluates peering eligibility</text>
+<text x="776" y="255" class="bs">Propagates learned route to hub/spoke</text>
+<text x="776" y="275" class="bs">Does NOT edit a UDR resource</text>
+<rect x="1140" y="160" width="300" height="190" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="1156" y="188" class="bt">Spoke VM NIC effective routes</text>
+<text x="1156" y="215" class="bs">System routes</text>
+<text x="1156" y="235" class="bs">BGP route: 0.0.0.0/0 → NVA</text>
+<text x="1156" y="255" class="bs">Any UDRs attached to subnet</text>
+<text x="1156" y="275" class="bs">Azure selects winning route</text>
+<rect x="1140" y="500" width="300" height="150" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+<text x="1156" y="528" class="bt">Subnet Route Table resource</text>
+<text x="1156" y="555" class="bs">May contain zero UDR entries</text>
+<text x="1156" y="575" class="bs">Remains unchanged by NVA BGP</text>
+<text x="1156" y="595" class="bs">Only static/admin-defined UDRs live here</text>
+<path d="M 320 255 L 400 255" stroke="#2563eb" stroke-width="4" fill="none" stroke-dasharray="8 6" marker-end="url(#c)"/>
+<text x="360.0" y="247.0" text-anchor="middle" class="al">1. UPDATE</text>
+<path d="M 670 255 L 760 255" stroke="#2563eb" stroke-width="4" fill="none" stroke-dasharray="8 6" marker-end="url(#c)"/>
+<text x="715.0" y="247.0" text-anchor="middle" class="al">2. Learned route</text>
+<path d="M 1060 255 L 1140 255" stroke="#2563eb" stroke-width="4" fill="none" stroke-dasharray="8 6" marker-end="url(#c)"/>
+<text x="1100.0" y="247.0" text-anchor="middle" class="al">3. Program effective route</text>
+<path d="M 1290 500 L 1290 350" stroke="#2563eb" stroke-width="4" fill="none" stroke-dasharray="8 6" marker-end="url(#c)"/>
+<text x="1290.0" y="417.0" text-anchor="middle" class="al">UDR contributes if present</text>
+<rect x="40" y="790" width="1420" height="80" rx="12" fill="#fff7ed" stroke="#f59e0b"/>
+<text x="58" y="820" class="note">This is the crucial distinction: Azure Route Server updates the effective forwarding state, not the user-created route-table resource.</text>
+<text x="58" y="842" class="note">You can open the spoke route-table resource and see no 0/0 entry, while the VM NIC still has a BGP 0/0 pointing to the NVA.</text>
+</svg>
