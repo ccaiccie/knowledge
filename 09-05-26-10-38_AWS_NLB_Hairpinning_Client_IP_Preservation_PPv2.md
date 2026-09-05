@@ -75,7 +75,7 @@ This is why AWS states that **NAT loopback is not supported when client-IP prese
 
 ## The correct design
 
-![AWS NLB hairpinning flow](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow.svg)
+![AWS NLB hairpinning flow](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow_v2.svg)
 
 [Open or edit the draw.io source](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow.drawio)
 
