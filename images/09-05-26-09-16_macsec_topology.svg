@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+  <style>text{font-family:Arial,sans-serif;fill:#111} .box{fill:#fff;stroke:#111;stroke-width:2} .link{stroke:#111;stroke-width:3;marker-start:url(#a);marker-end:url(#a)}</style>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#111"/></marker></defs>
+  <text x="600" y="42" text-anchor="middle" font-size="26" font-weight="bold">MACsec link-by-link protection</text>
+  <rect class="box" x="80" y="150" width="220" height="90"/><text x="190" y="200" text-anchor="middle" font-size="22">Router / Switch A</text>
+  <rect class="box" x="490" y="150" width="220" height="90"/><text x="600" y="190" text-anchor="middle" font-size="22">Provider / L2</text><text x="600" y="218" text-anchor="middle" font-size="22">transport</text>
+  <rect class="box" x="900" y="150" width="220" height="90"/><text x="1010" y="200" text-anchor="middle" font-size="22">Router / Switch B</text>
+  <line class="link" x1="320" y1="195" x2="470" y2="195"/><line class="link" x1="730" y1="195" x2="880" y2="195"/>
+  <text x="395" y="135" text-anchor="middle" font-size="17">MACsec-protected Ethernet link</text><text x="805" y="135" text-anchor="middle" font-size="17">MACsec-protected Ethernet link</text>
+  <text x="600" y="320" text-anchor="middle" font-size="19">Each protected hop/session is negotiated independently with MKA.</text>
+  <text x="600" y="352" text-anchor="middle" font-size="19">Across a carrier service, MKA/EAPOL must be transported transparently.</text>
+</svg>
