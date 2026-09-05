@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z"/></marker></defs>
+<rect width="100%" height="100%" fill="white" fill-opacity="0"/>
+<text x="30" y="45" font-family="Arial" font-size="28" font-weight="700">Azure Virtual WAN secured hub — high-level architecture</text>
+<rect x="70" y="160" rx="18" ry="18" width="250" height="110" fill="#FFF7ED" stroke="#EA580C" stroke-width="2"/>
+<text x="195.0" y="194" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Branch / On-premises</text>
+<text x="195.0" y="224" text-anchor="middle" font-family="Arial" font-size="14">S2S VPN / ExpressRoute / SD-WAN</text>
+<rect x="70" y="520" rx="18" ry="18" width="250" height="110" fill="#ECFDF5" stroke="#059669" stroke-width="2"/>
+<text x="195.0" y="554" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Spoke VNet A</text>
+<text x="195.0" y="584" text-anchor="middle" font-family="Arial" font-size="14">10.10.0.0/16</text>
+<text x="195.0" y="604" text-anchor="middle" font-family="Arial" font-size="14">Workloads</text>
+<rect x="1080" y="520" rx="18" ry="18" width="250" height="110" fill="#ECFDF5" stroke="#059669" stroke-width="2"/>
+<text x="1205.0" y="554" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Spoke VNet B</text>
+<text x="1205.0" y="584" text-anchor="middle" font-family="Arial" font-size="14">10.20.0.0/16</text>
+<text x="1205.0" y="604" text-anchor="middle" font-family="Arial" font-size="14">Workloads</text>
+<rect x="500" y="210" rx="18" ry="18" width="400" height="390" fill="#EEF2FF" stroke="#4F46E5" stroke-width="2"/>
+<text x="700.0" y="244" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Virtual WAN Secured Hub</text>
+<text x="700.0" y="274" text-anchor="middle" font-family="Arial" font-size="14">Microsoft-managed virtual hub router</text>
+<text x="700.0" y="294" text-anchor="middle" font-family="Arial" font-size="14">Routing Intent / Policies</text>
+<text x="700.0" y="314" text-anchor="middle" font-family="Arial" font-size="14">Default route table + labels</text>
+<rect x="575" y="320" rx="18" ry="18" width="250" height="110" fill="#FEF2F2" stroke="#DC2626" stroke-width="2"/>
+<text x="700.0" y="354" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Security Provider</text>
+<text x="700.0" y="384" text-anchor="middle" font-family="Arial" font-size="14">Azure Firewall OR supported integrated NVA</text>
+<rect x="1080" y="160" rx="18" ry="18" width="250" height="110" fill="#F3F4F6" stroke="#374151" stroke-width="2"/>
+<text x="1205.0" y="194" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Internet / SaaS</text>
+<text x="1205.0" y="224" text-anchor="middle" font-family="Arial" font-size="14">0.0.0.0/0</text>
+<line x1="320" y1="215" x2="500" y2="310" stroke="#111827" stroke-width="3" marker-end="url(#arrow)"/><rect x="325.0" y="245.5" width="170" height="24" rx="6" fill="white" fill-opacity="0.92"/><text x="410.0" y="262.5" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700">learned routes / traffic</text>
+<line x1="320" y1="575" x2="500" y2="500" stroke="#111827" stroke-width="3" marker-end="url(#arrow)"/><rect x="325.0" y="520.5" width="170" height="24" rx="6" fill="white" fill-opacity="0.92"/><text x="410.0" y="537.5" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700">VNet connection</text>
+<line x1="900" y1="500" x2="1080" y2="575" stroke="#111827" stroke-width="3" marker-end="url(#arrow)"/><rect x="905.0" y="520.5" width="170" height="24" rx="6" fill="white" fill-opacity="0.92"/><text x="990.0" y="537.5" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700">VNet connection</text>
+<line x1="900" y1="310" x2="1080" y2="215" stroke="#111827" stroke-width="3" marker-end="url(#arrow)"/><rect x="905.0" y="245.5" width="170" height="24" rx="6" fill="white" fill-opacity="0.92"/><text x="990.0" y="262.5" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700">Internet policy</text>
+<line x1="700" y1="320" x2="700" y2="280" stroke="#111827" stroke-width="3" marker-end="url(#arrow)"/><rect x="615.0" y="283.0" width="170" height="24" rx="6" fill="white" fill-opacity="0.92"/><text x="700.0" y="300.0" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700">Private/Internet steering</text>
+</svg>
