@@ -2,6 +2,11 @@
 
 A browsable index of the technical study guides and labs in this repository. Each entry links directly to the Markdown article and summarizes the major concepts it covers.
 
+## Network Security
+
+### [MACsec (IEEE 802.1AE) — Comprehensive Network Engineering Study Guide](09-05-26-09-16_MACsec_IEEE_8021AE_Study_Guide.md)
+Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA control-plane operation, CAK/CKN/SAK relationships, Secure Channels and Secure Associations, GCM-AES cipher suites, replay protection, WAN MACsec over carrier Ethernet, EAPOL transparency, MTU and Port-Channel considerations, Cisco IOS XE and Junos configuration patterns, packet flow, verification, failover, common mistakes, and symptom-based troubleshooting.
+
 ## GCP Networking
 
 ### [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
