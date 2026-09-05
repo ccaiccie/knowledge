@@ -4,6 +4,9 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
+### [DNSSEC (Domain Name System Security Extensions) — Comprehensive Network & Security Study Guide](09-05-26-12-14_DNSSEC_Comprehensive_Study_Guide.md)
+Comprehensive guide to DNSSEC authenticity and integrity, the root-to-child chain of trust, DS/DNSKEY/RRSIG relationships, KSK and ZSK roles, NSEC/NSEC3 authenticated denial, Secure/Insecure/Bogus validation states, `dig` verification, EDNS/UDP/TCP/MTU considerations, key rollover and provider migration, Amazon Route 53 DNSSEC signing/validation behavior, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [MACsec (IEEE 802.1AE) — Comprehensive Network Engineering Study Guide](09-05-26-09-16_MACsec_IEEE8021AE_Study_Guide.md)
 Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA control-plane operation, CAK/CKN/SAK relationships, Secure Channels and Secure Associations, GCM-AES cipher suites, replay protection, WAN MACsec over carrier Ethernet, EAPOL transparency, MTU and Port-Channel considerations, Cisco IOS XE and Junos configuration patterns, packet flow, verification, failover, common mistakes, and symptom-based troubleshooting.
 
