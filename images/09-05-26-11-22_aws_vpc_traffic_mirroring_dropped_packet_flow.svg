@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker><marker id="r" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#b91c1c"/></marker></defs>
+<text x="700.0" y="48" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="700" fill="#111827">Inbound SG/NACL drop before mirroring</text>
+<rect x="120" y="210" width="240" height="110" rx="18" fill="#E0F2FE" stroke="#0369A1" stroke-width="3"/>
+<text x="240.0" y="250.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="700" fill="#0f172a">Client</text>
+<text x="240.0" y="280.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="400" fill="#0f172a">Inbound packet</text>
+<rect x="500" y="190" width="300" height="150" rx="18" fill="#FEF3C7" stroke="#B45309" stroke-width="3"/>
+<text x="650.0" y="250.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="700" fill="#0f172a">Inbound SG / NACL</text>
+<text x="650.0" y="280.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="400" fill="#0f172a">Source-side policy</text>
+<rect x="980" y="190" width="260" height="150" rx="18" fill="#FEE2E2" stroke="#B91C1C" stroke-width="3"/>
+<text x="1110.0" y="250.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="700" fill="#0f172a">DROP</text>
+<text x="1110.0" y="280.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="400" fill="#0f172a">Not mirrored</text>
+<line x1="360" y1="265" x2="500" y2="265" stroke="#334155" stroke-width="5" marker-end="url(#a)"/>
+<line x1="800" y1="265" x2="980" y2="265" stroke="#b91c1c" stroke-width="5" marker-end="url(#r)"/>
+<text x="890.0" y="253.0" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#b91c1c">REJECT</text>
+</svg>
