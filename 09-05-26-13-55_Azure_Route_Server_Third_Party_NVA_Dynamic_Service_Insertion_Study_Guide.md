@@ -1,8 +1,8 @@
 # Azure Route Server + Third-Party NVA for Dynamic Service Insertion — Comprehensive Study Guide
 
 **Generated:** 2026-09-05  
-**Updated:** 2026-09-05 — expanded with NVA placement, peering, control-plane, and data-plane requirements  
-**Scope:** Azure Route Server (ARS), Border Gateway Protocol (BGP), third-party Network Virtual Appliances (NVAs), dynamic service insertion, route tables, effective routes, hub-and-spoke, internet/hybrid/East-West flow paths, high availability, symmetry, verification, and troubleshooting.
+**Updated:** 2026-09-05 — expanded with NVA placement, route injection, and detailed hub/spoke peering requirements  
+**Scope:** Azure Route Server (ARS), Border Gateway Protocol (BGP), third-party Network Virtual Appliances (NVAs), dynamic service insertion, route tables, effective routes, hub-and-spoke peering, internet/hybrid/East-West flow paths, high availability, symmetry, verification, and troubleshooting.
 
 ## Supplied / supporting URLs
 
@@ -17,6 +17,7 @@
 - https://learn.microsoft.com/en-us/azure/route-server/route-maps-scenario-drop-inbound-routes
 - https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
+- https://learn.microsoft.com/en-us/azure/networking/design-guide/hub-spoke
 - https://learn.microsoft.com/en-us/azure/architecture/networking/guide/network-virtual-appliance-high-availability
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/firewalls/
 
@@ -90,12 +91,6 @@ The real requirements are:
 
 [Editable draw.io](images/09-05-26-13-55_ars_same_vnet_nva_requirement.drawio)
 
-**What this image shows:** Route Server and the firewall/NVA are separate resources/subnets inside one hub VNet, with workload spokes peered to the hub.
-
-**What matters:** This topology minimizes peering and reachability variables. The NVA can reach both Route Server IPs directly through VNet routing, while spoke workloads can reach the NVA through hub/spoke peering.
-
-**What to verify:** Both NVA-to-ARS BGP sessions, spoke peering settings, forwarded traffic, and the spoke VM NIC effective routes.
-
 Example:
 
 ```text
@@ -141,11 +136,7 @@ Route Server is **not** in the data path.
 
 [Editable draw.io](images/09-05-26-13-55_ars_peered_vnet_nva_supported.drawio)
 
-**What this image shows:** Route Server is in VNet A while the NVA is in VNet B, with peering providing IP reachability for BGP.
-
-**What matters:** Successful BGP across the peering does not automatically prove that a third workload VNet can reach the NVA. **VNet peering is not automatically transitive.**
-
-**What to verify:** Two separate paths:
+Successful BGP across a peering does not automatically prove that a third workload VNet can reach the NVA. **VNet peering is not automatically transitive.**
 
 ```text
 Control plane:
@@ -155,67 +146,19 @@ Data plane:
 Workload VNet <---- valid Azure forwarding path ----> NVA VNet
 ```
 
-### Why this distinction matters
-
-This topology can exist:
-
-```text
-Spoke VNet  <---- peering ---->  RouteServer VNet
-RouteServer VNet <---- peering ----> NVA VNet
-```
-
-But that does **not** automatically create generic transit:
-
-```text
-Spoke VNet  <---- automatic transit? ----> NVA VNet
-```
-
-It may be possible for the NVA to have perfect BGP adjacency with Route Server while the spoke packet cannot actually reach the NVA private IP that appears as its next hop.
-
 Therefore:
 
 > **Route propagation is not the same thing as packet transit.**
 
-For a different-VNet NVA design, you must deliberately provide the workload-to-NVA data path, for example through direct peering or another supported transit design.
+For a different-VNet NVA design, deliberately provide the workload-to-NVA data path through direct peering or another supported transit architecture.
 
 ### What absolutely must be in the Route Server VNet?
 
 - Azure Route Server itself.
 - The dedicated `RouteServerSubnet`.
-- For the standard Route Server + ExpressRoute/VPN gateway integration, the gateway participates from the Route Server hub design as documented by Microsoft.
+- Any other components that Microsoft specifically documents as colocated for a given integration pattern.
 
 The **NVA itself does not universally have to be in that VNet**.
-
-### Recommended design for learning and straightforward production deployments
-
-Start with:
-
-```text
-                        HUB VNET
-             +---------------------------+
-             | RouteServerSubnet         |
-             | Azure Route Server        |
-             |                           |
-             | NVA subnet                |
-             | FW-1          FW-2        |
-             +---------------------------+
-                  /                 \
-                 / VNet peering      \ VNet peering
-                /                     \
-       +----------------+      +----------------+
-       | Spoke A        |      | Spoke B        |
-       | 10.10.0.0/16   |      | 10.20.0.0/16   |
-       +----------------+      +----------------+
-```
-
-This keeps the mental model clean:
-
-```text
-NVA ⇄ Route Server       = BGP control plane
-Route Server → Spokes    = Azure route propagation
-Spoke → NVA              = data plane
-NVA → destination        = inspected forwarding
-```
 
 ---
 
@@ -227,15 +170,15 @@ For a common centralized hub-and-spoke design:
 
 ### Hub-to-spoke peering
 
-Configure the hub side so the peering permits the routing/transit behavior required by the NVA design, including **forwarded traffic** where the firewall forwards packets across the peering.
+Configure the hub side so the hub Route Server can be used by the spoke and so NVA-forwarded traffic can traverse the peering where required.
 
 ### Spoke-to-hub peering
 
-Enable the option conceptually shown in Azure as:
+Enable:
 
 **Use the remote virtual network's gateway or Route Server**.
 
-This is the key peering relationship that lets the spoke consume the Route Server in the remote hub.
+This is the key spoke-side opt-in that lets the spoke consume the Route Server in the remote hub.
 
 ### What the spoke VM does not need
 
@@ -293,8 +236,6 @@ NVA 10.0.2.4, ASN 65001
 
 ### Step 3 — Route Server learns the route
 
-Verify:
-
 ```cli
 az network routeserver peering list-learned-routes \
   --name '<PEER_NAME>' \
@@ -303,7 +244,7 @@ az network routeserver peering list-learned-routes \
   -o table
 ```
 
-Conceptual result:
+Conceptual output:
 
 ```text
 Network      NextHop     Origin   ASPath
@@ -315,9 +256,7 @@ Network      NextHop     Origin   ASPath
 
 ### Step 4 — Azure checks spoke eligibility
 
-Azure evaluates VNet peering and remote Route Server usage.
-
-If ARS learned the route but the spoke NIC does not show it, inspect the spoke/hub peering before troubleshooting the firewall dataplane.
+Azure evaluates VNet peering and remote Route Server usage. If ARS learned the route but the spoke NIC does not show it, inspect the spoke/hub peering before troubleshooting the firewall data plane.
 
 ### Step 5 — Azure SDN programs the spoke NIC effective route
 
@@ -329,7 +268,7 @@ The NVA does not modify a UDR resource. The effective route can become:
 
 ### Step 6 — Azure evaluates the destination
 
-For `8.8.8.8`, candidate routes might be:
+For `8.8.8.8`:
 
 ```text
 0.0.0.0/0 -> Internet       [system]
@@ -377,7 +316,7 @@ After ARS propagates the NVA route:
 
 The Azure Route Table resource attached to the subnet can still have **zero UDR entries**.
 
-Verify on the workload NIC:
+Verify:
 
 ```cli
 az network nic show-effective-route-table \
@@ -394,9 +333,7 @@ az network nic show-effective-route-table \
 
 [Editable draw.io](images/09-05-26-13-55_ars_effective_route_selection_example.drawio)
 
-Azure first uses **longest-prefix match**. For equal prefixes, route source precedence and documented special cases determine the winner.
-
-Example:
+Azure first uses **longest-prefix match**. For equal prefixes, route-source precedence and documented special cases determine the winner.
 
 ```text
 System:
@@ -459,11 +396,7 @@ Forward path:
 5. NVA applies security/session policy.
 6. NVA forwards toward Spoke B.
 
-Return path:
-
-1. VM-B performs its own route lookup for `10.10.1.10`.
-2. Its effective route must also steer the flow through the intended inspection tier.
-3. The firewall must see a compatible stateful return path.
+Return path is evaluated independently. VM-B must also have a route that steers the reply through the intended inspection tier, and the stateful NVA must see a compatible return path.
 
 ---
 
@@ -500,7 +433,7 @@ Internet
 
 ### NVA self-route caveat
 
-Microsoft documents a subtle case where an NVA advertising `0.0.0.0/0` can itself receive that learned default in effective routing. A suitable UDR on the NVA subnet may be required to preserve the NVA's intended management or internet egress path.
+Microsoft documents a case where an NVA advertising `0.0.0.0/0` can itself receive that learned default in effective routing. A suitable UDR on the NVA subnet can be required to preserve the NVA's intended management or internet egress path.
 
 ---
 
@@ -516,16 +449,10 @@ If NVA-1 withdraws the route or its BGP session fails:
 
 1. Route Server removes that learned path.
 2. Azure recomputes affected effective routes.
-3. Another NVA path may become active.
-4. If no firewall route remains, another applicable route may win depending on the design.
+3. Another NVA path can become active.
+4. If no firewall route remains, another applicable route can win depending on the design.
 
-Compare with a static UDR:
-
-```text
-0.0.0.0/0 -> 10.0.2.4
-```
-
-The static UDR does not rewrite itself simply because the NVA failed.
+A static UDR such as `0.0.0.0/0 -> 10.0.2.4` does not rewrite itself simply because the NVA failed.
 
 ---
 
@@ -544,28 +471,18 @@ Both NVAs advertise equal paths:
 0.0.0.0/0 -> NVA-2
 ```
 
-Azure can use ECMP across flows.
-
-For stateful firewalls validate:
-
-- session synchronization,
-- vendor-supported cluster behavior,
-- SNAT,
-- return-path symmetry,
-- failover behavior.
+Azure can use ECMP across flows. For stateful firewalls validate session synchronization, vendor-supported clustering, SNAT, symmetry, and failover behavior.
 
 ### Active/standby
 
 A common policy is a shorter AS_PATH on the active NVA and prepending on standby.
-
-Conceptual example:
 
 ```text
 NVA-1: 0.0.0.0/0 AS_PATH 65001
 NVA-2: 0.0.0.0/0 AS_PATH 65002 65002 65002
 ```
 
-Route Server default keepalive/hold timers are documented as 60/180 seconds; peers can negotiate lower values. Test convergence rather than assuming BGP session loss equals instant application recovery.
+Route Server default keepalive/hold timers are documented as 60/180 seconds; peers can negotiate lower values. Test end-to-end convergence rather than assuming BGP session loss equals instant application recovery.
 
 ---
 
@@ -584,9 +501,7 @@ az network routeserver update \
   --allow-b2b-traffic true
 ```
 
-Route Server hub routing preference can influence equal destinations learned via ExpressRoute, VPN, or NVA/SD-WAN paths.
-
-Example:
+Route Server hub routing preference can influence destinations learned via ExpressRoute, VPN, or NVA/SD-WAN paths.
 
 ```cli
 az network routeserver update \
@@ -601,13 +516,7 @@ az network routeserver update \
 
 Azure Route Server route maps are currently documented as **Preview**.
 
-Use cases include:
-
-- dropping unwanted prefixes,
-- aggregation,
-- AS_PATH manipulation,
-- BGP community policy,
-- controlling propagation between NVA and gateway domains.
+Use cases include route filtering, aggregation, AS_PATH manipulation, BGP community policy, and controlling propagation between NVA and gateway domains.
 
 Microsoft also documents `NO_ADVERTISE`:
 
@@ -675,13 +584,7 @@ Re-check these before production deployment because limits can change.
 
 ### Check 1 — Did the NVA advertise the prefix?
 
-On the NVA verify:
-
-- both BGP neighbors,
-- local BGP RIB,
-- advertised routes,
-- route policy,
-- AS_PATH and communities.
+Verify both BGP neighbors, local BGP RIB, advertised routes, route policy, AS_PATH, and communities.
 
 ### Check 2 — Did Route Server learn it?
 
@@ -722,14 +625,7 @@ Use Azure Network Watcher **Next hop**.
 
 ### Check 7 — Does the packet reach the NVA?
 
-Check:
-
-- packet capture,
-- policy hit counters,
-- session table,
-- NAT translation,
-- NVA RIB/FIB,
-- HA/session state.
+Check packet capture, policy hit counters, session table, NAT translation, NVA RIB/FIB, and HA/session state.
 
 ---
 
@@ -737,26 +633,11 @@ Check:
 
 ### BGP is up, but spoke VM does not show NVA route
 
-Check:
-
-1. ARS learned-routes.
-2. Spoke/hub peering.
-3. Remote Route Server usage.
-4. Route-map filtering.
-5. VM NIC effective routes.
-6. More-specific competing routes.
+Check ARS learned-routes, spoke/hub peering, remote Route Server usage, route-map filtering, VM NIC effective routes, and more-specific competing routes.
 
 ### NVA is in another VNet; BGP works but packets never arrive
 
-This strongly suggests a **data-plane reachability** issue rather than Route Server itself.
-
-Check:
-
-- Is the workload VNet directly peered to the NVA VNet or otherwise provided valid transit?
-- Are you incorrectly assuming VNet peering is transitive?
-- Does Network Watcher Next Hop return the NVA private IP?
-- Can Azure actually resolve that next hop through the configured topology?
-- Is forwarded traffic allowed?
+This strongly suggests a **data-plane reachability** issue rather than Route Server itself. Check direct/explicit transit to the NVA VNet, non-transitive peering assumptions, Network Watcher Next Hop, NVA next-hop reachability, and forwarded-traffic permissions.
 
 ### Route Table blade is empty
 
@@ -816,6 +697,365 @@ When someone asks, **"How does the NVA update the spoke route table?"**, the pre
 
 ---
 
+## 21. Exactly how the spoke is tied to the hub: the peering contract
+
+This is the missing connection between the two VNets.
+
+**Source information:** For Route Server route injection into a spoke, Microsoft requires the spoke VNet to be peered with the hub VNet and the spoke-side peering to have **Use the remote virtual network's gateway or Route Server** enabled. Azure VNet peering settings are directional: the hub side exposes its gateway/Route Server for use, while the spoke side opts in to using it.
+
+**Additional explanation:** Think of the hub/spoke relationship as a three-part contract:
+
+1. **VNet peering** creates direct private IP connectivity between the hub and spoke address spaces.
+2. **Gateway/Route Server transit settings** connect the spoke to the hub Route Server's route-distribution domain.
+3. **Allow forwarded traffic** permits traffic whose original source is not the directly peered VNet — important when an NVA is forwarding packets between networks.
+
+![Hub-spoke Route Server peering contract](images/09-05-26-13-55_ars_hub_spoke_peering_contract.svg)
+
+[Editable draw.io](images/09-05-26-13-55_ars_hub_spoke_peering_contract.drawio)
+
+**What this image shows:** The exact directional peering relationship between a hub containing Route Server/NVA and a workload spoke.
+
+**What matters:** The spoke does not automatically inherit a Route Server merely because the VNets are peered. The remote Route Server relationship must be enabled on the peering.
+
+**What to verify:** Inspect **both** peering objects. Azure peering is represented directionally, so verify Hub→Spoke and Spoke→Hub rather than assuming one checkbox configures both directions.
+
+### 21.1 What must the hub and spoke have in common?
+
+They do **not** need:
+
+- the same address range,
+- the same subnet sizes,
+- the same route table,
+- the same resource group,
+- the same subscription in all supported peering scenarios,
+- BGP directly between the spoke VM and Route Server,
+- a Route Server in every spoke.
+
+They **do** need a supported VNet peering relationship and **non-overlapping address spaces** suitable for VNet peering/routing.
+
+A simple topology is:
+
+```text
+HUB VNet 10.0.0.0/16
+  |
+  |-- RouteServerSubnet 10.0.1.0/26
+  |     Azure Route Server
+  |
+  |-- NVA subnet 10.0.2.0/24
+  |     Firewall 10.0.2.4
+  |
+  +=============================+
+          VNet peering
+  +=============================+
+  |
+SPOKE VNet 10.20.0.0/16
+  |
+  `-- Workload subnet 10.20.1.0/24
+        VM 10.20.1.10
+```
+
+The peering is the actual Azure construct that ties the spoke to the hub.
+
+### 21.2 The two peering objects are directional
+
+Conceptually Azure maintains:
+
+```text
+HubToSpoke
+SpokeToHub
+```
+
+They represent the two directional views of the same VNet relationship.
+
+This matters because **gateway/Route Server transit settings are directional**.
+
+### 21.3 Hub → Spoke settings
+
+On the hub-side peering, the important settings are conceptually:
+
+```text
+Allow virtual network access                         = Enabled
+Allow gateway or Route Server in HUB
+  to forward traffic to SPOKE                       = Enabled
+Allow forwarded traffic                             = Enabled when the NVA transit path requires it
+Use remote gateway or Route Server                  = Disabled
+```
+
+The critical gateway/Route Server setting corresponds to the Azure peering property commonly exposed as `allowGatewayTransit`.
+
+What it means:
+
+> "This hub contains a gateway or Route Server, and the peer is allowed to consume that routing service."
+
+The hub normally does **not** enable `useRemoteGateways` toward the spoke because the hub is the side providing Route Server.
+
+### 21.4 Spoke → Hub settings
+
+On the spoke-side peering:
+
+```text
+Allow virtual network access                         = Enabled
+Use the remote virtual network's gateway
+  or Route Server                                    = Enabled
+Allow forwarded traffic                              = Enabled when the NVA transit path requires it
+Allow gateway/Route Server transit toward hub        = Disabled
+```
+
+The crucial setting is:
+
+> **Use the remote virtual network's gateway or Route Server**
+
+This corresponds to the peering property commonly exposed as `useRemoteGateways`.
+
+What it means:
+
+> "I am the spoke, and I want Azure to use the gateway/Route Server in the remote hub as my routing service."
+
+Microsoft's Route Server route-injection documentation explicitly calls out this spoke-side requirement.
+
+### 21.5 Why both sides matter
+
+A useful mental model is:
+
+```text
+Hub side:
+"I OFFER my Route Server to this peer."
+
+Spoke side:
+"I ACCEPT and USE that remote Route Server."
+```
+
+If the hub does not expose the gateway/Route Server relationship, the spoke cannot consume it correctly.
+
+If the spoke does not enable **Use remote gateway or Route Server**, ordinary peering can still provide direct hub/spoke IP connectivity, but the spoke is not attached to the hub Route Server's route-distribution relationship in the intended way.
+
+### 21.6 What Route Server then learns and injects
+
+Assume the NVA advertises:
+
+```text
+0.0.0.0/0
+10.100.0.0/16
+```
+
+The sequence is:
+
+```text
+NVA
+ |
+ | BGP UPDATE
+ v
+Azure Route Server in HUB
+ |
+ | Azure SDN route propagation
+ | across the eligible hub/spoke peering relationship
+ v
+SPOKE VM NIC effective routes
+```
+
+The resulting spoke effective routes can conceptually contain:
+
+```text
+Source   Prefix           Next hop type       Next hop
+------   ---------------  ------------------  --------
+BGP      0.0.0.0/0        Virtual appliance   10.0.2.4
+BGP      10.100.0.0/16    Virtual appliance   10.0.2.4
+```
+
+Again, nothing was written into a user-created spoke UDR table.
+
+### 21.7 How the data packet uses that same peering
+
+For a packet:
+
+```text
+10.20.1.10 -> 8.8.8.8
+```
+
+Control-plane work already happened earlier. At packet time:
+
+```text
+Spoke VM 10.20.1.10
+  |
+  | Effective route:
+  | 0.0.0.0/0 -> NVA 10.0.2.4
+  |
+  | crosses Spoke ↔ Hub VNet peering
+  v
+NVA 10.0.2.4
+  |
+  | inspect / NAT / route
+  v
+Internet
+```
+
+Route Server does not receive this packet.
+
+### 21.8 What "Allow forwarded traffic" really means
+
+This checkbox is often confused with Route Server propagation.
+
+It does **not** make the NVA advertise routes and does **not** create a Route Server relationship by itself.
+
+It controls whether a peering accepts traffic that was **forwarded by another device/network** rather than originated by the directly peered VNet.
+
+Example:
+
+```text
+Spoke A
+   |
+   v
+NVA in Hub
+   |
+   v
+Spoke B
+```
+
+When the NVA forwards a packet from Spoke A toward Spoke B, that packet is transit/forwarded traffic. The applicable peering must permit forwarded traffic for that architecture.
+
+So keep these concepts separate:
+
+```text
+Use remote gateway/Route Server
+    = route-distribution relationship
+
+Allow forwarded traffic
+    = permit NVA/transit data-plane traffic
+```
+
+### 21.9 The hub and spoke do not become one VNet
+
+Peering gives private connectivity, but they remain separate VNets.
+
+That means each VNet retains its own:
+
+- address space,
+- subnets,
+- NSGs,
+- route tables/UDRs,
+- DNS configuration,
+- policies,
+- resource ownership.
+
+Route Server simply extends dynamic route distribution to eligible peered workloads.
+
+### 21.10 Peering is not transitive
+
+Suppose:
+
+```text
+Spoke-A <---- peering ----> Hub <---- peering ----> Spoke-B
+```
+
+This does **not** mean Azure automatically creates:
+
+```text
+Spoke-A <---- direct peering/transit ----> Spoke-B
+```
+
+For Spoke-A → Spoke-B traffic to traverse the hub NVA, you still need:
+
+1. routes that point both directions toward the NVA,
+2. the NVA to perform IP forwarding,
+3. forwarded traffic permitted on the applicable peerings,
+4. security policy permitting the flow,
+5. return-route symmetry for a stateful firewall.
+
+Route Server supplies the dynamic routing information; it does not magically turn peering into a transit router.
+
+### 21.11 Why the spoke normally does not need a local Route Server
+
+In the centralized design, the hub Route Server is intentionally shared through peering.
+
+```text
+             HUB
+      Azure Route Server
+          /        \
+         /          \
+      Spoke-A      Spoke-B
+```
+
+Each spoke opts into the **remote** Route Server.
+
+A local Route Server in every spoke would be a different architecture and is not required for ordinary centralized service insertion.
+
+### 21.12 Important remote-gateway constraint
+
+Azure peering limits how remote gateway/Route Server usage can be configured. A spoke cannot arbitrarily select multiple remote gateway relationships at the same time, and a VNet that already has its own gateway can have constraints on using a remote gateway. Validate the specific topology when combining Route Server with VPN/ExpressRoute gateways or multiple hubs.
+
+### 21.13 Concrete configuration checklist
+
+For each spoke attached to a centralized Route Server hub, verify:
+
+| Item | Hub side | Spoke side |
+|---|---|---|
+| VNet peering state | Connected | Connected |
+| Allow VNet access | Yes | Yes |
+| Allow gateway/Route Server transit | **Yes — hub provides ARS** | Normally No |
+| Use remote gateway/Route Server | Normally No | **Yes — spoke consumes ARS** |
+| Allow forwarded traffic | Yes when NVA transit requires it | Yes when NVA transit requires it |
+| Route Server deployed locally | Yes | No |
+| NVA BGP session to Route Server | Hub NVA peers to ARS | None required |
+
+### 21.14 What failure looks like for each missing setting
+
+**Peering not created or not Connected**
+
+```text
+Result: no normal hub/spoke private connectivity and no intended remote Route Server relationship.
+```
+
+**Hub does not expose gateway/Route Server transit**
+
+```text
+Result: spoke cannot correctly consume the hub routing service.
+```
+
+**Spoke does not enable Use remote gateway/Route Server**
+
+```text
+Result: ordinary peering can exist, but the spoke does not receive the intended remote Route Server route injection relationship.
+```
+
+**Allow forwarded traffic is missing where NVA transit needs it**
+
+```text
+Result: route can appear correct, but packets forwarded by the NVA across the peering can fail.
+```
+
+**NVA BGP is down**
+
+```text
+Result: peering is fine, but Route Server has no NVA route to inject.
+```
+
+**Effective route exists but NVA cannot forward**
+
+```text
+Result: control plane works, data plane fails at the NVA.
+```
+
+### 21.15 The easiest troubleshooting sequence
+
+Do these checks in this order:
+
+1. **Hub ↔ Spoke peering:** state is `Connected` in both directions.
+2. **Hub peering:** gateway/Route Server transit is allowed.
+3. **Spoke peering:** **Use remote gateway or Route Server** is enabled.
+4. **Forwarded traffic:** enabled wherever the NVA transit path requires it.
+5. **NVA BGP:** NVA is Established to both Route Server BGP IPs.
+6. **ARS learned routes:** intended NVA prefixes are visible.
+7. **Spoke NIC effective routes:** BGP route is visible with NVA next hop.
+8. **Network Watcher Next Hop:** exact destination resolves to NVA.
+9. **NVA packet capture/session:** packet arrives and is forwarded.
+10. **Destination/return effective route:** reply returns through compatible firewall state.
+
+### 21.16 Final one-sentence explanation
+
+> **The hub and spoke are tied together by VNet peering; the hub-side peering exposes the hub Route Server for transit, the spoke-side peering opts into using that remote Route Server, Azure SDN then injects the NVA's BGP routes into the spoke NIC's effective routes, and the actual packet crosses the peering directly to the NVA.**
+
+---
+
 ## Sources
 
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
@@ -829,13 +1069,14 @@ When someone asks, **"How does the NVA update the spoke route table?"**, the pre
 - https://learn.microsoft.com/en-us/azure/route-server/route-maps-scenario-drop-inbound-routes
 - https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
+- https://learn.microsoft.com/en-us/azure/networking/design-guide/hub-spoke
 - https://learn.microsoft.com/en-us/azure/architecture/networking/guide/network-virtual-appliance-high-availability
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/firewalls/
 
 ### Source classification
 
-**Source information:** Microsoft Learn / Azure Architecture Center statements about Route Server, route injection, peering, BGP behavior, route maps, limits, effective routes, and documented NVA architectures.
+**Source information:** Microsoft Learn / Azure Architecture Center statements about Route Server, route injection, peering, gateway/Route Server transit, BGP behavior, route maps, limits, effective routes, and documented NVA architectures.
 
-**Additional explanation:** The route propagation walkthroughs, placement comparisons, packet-flow explanations, and troubleshooting sequences connect those documented behaviors into an operational network-engineering model.
+**Additional explanation:** The route propagation walkthroughs, placement comparisons, peering-contract model, packet-flow explanations, and troubleshooting sequences connect those documented behaviors into an operational network-engineering model.
 
-**Reasonable inference:** Recommendations such as beginning with the same-VNet hub architecture before adopting a multi-VNet NVA design are architecture guidance, not claims of undocumented Azure behavior.
+**Reasonable inference:** Recommendations such as beginning with the same-VNet hub architecture and treating the peering settings as an offer/accept contract are explanatory architecture guidance rather than claims of undocumented Azure implementation behavior.
