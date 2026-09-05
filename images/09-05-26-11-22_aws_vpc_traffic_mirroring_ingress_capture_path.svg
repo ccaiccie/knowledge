@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#b91c1c"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1400" height="760" rx="28" fill="#ffffff"/>
+  <text x="700" y="55" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111827">AWS VPC Traffic Mirroring — Why an Inbound Packet May Be Missing</text>
+  <text x="700" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#475569">Mirror source = workload ENI • Mirror target = analyzer / NLB / GWLBe</text>
+  <rect x="70" y="180" width="210" height="110" rx="18" fill="#e0f2fe" stroke="#0369a1" stroke-width="3"/>
+  <text x="175" y="225" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#0c4a6e">Inbound packet</text>
+  <text x="175" y="258" text-anchor="middle" font-family="Arial" font-size="17" fill="#0c4a6e">from client / peer</text>
+  <rect x="370" y="165" width="260" height="140" rx="18" fill="#fef3c7" stroke="#b45309" stroke-width="3"/>
+  <text x="500" y="210" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#78350f">Source-side policy</text>
+  <text x="500" y="245" text-anchor="middle" font-family="Arial" font-size="18" fill="#78350f">Inbound Security Group</text>
+  <text x="500" y="275" text-anchor="middle" font-family="Arial" font-size="18" fill="#78350f">Inbound Network ACL</text>
+  <rect x="750" y="165" width="250" height="140" rx="18" fill="#dcfce7" stroke="#15803d" stroke-width="3"/>
+  <text x="875" y="210" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#14532d">Workload ENI</text>
+  <text x="875" y="245" text-anchor="middle" font-family="Arial" font-size="18" fill="#14532d">Traffic Mirror source</text>
+  <text x="875" y="275" text-anchor="middle" font-family="Arial" font-size="18" fill="#14532d">Filter/session applied</text>
+  <rect x="1100" y="165" width="230" height="140" rx="18" fill="#ede9fe" stroke="#6d28d9" stroke-width="3"/>
+  <text x="1215" y="210" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#4c1d95">Workload</text>
+  <text x="1215" y="245" text-anchor="middle" font-family="Arial" font-size="18" fill="#4c1d95">OS / application</text>
+  <text x="1215" y="275" text-anchor="middle" font-family="Arial" font-size="18" fill="#4c1d95">receives allowed packet</text>
+  <line x1="280" y1="235" x2="370" y2="235" stroke="#334155" stroke-width="5" marker-end="url(#arrow)"/>
+  <line x1="630" y1="235" x2="750" y2="235" stroke="#334155" stroke-width="5" marker-end="url(#arrow)"/>
+  <line x1="1000" y1="235" x2="1100" y2="235" stroke="#334155" stroke-width="5" marker-end="url(#arrow)"/>
+  <rect x="370" y="420" width="260" height="115" rx="18" fill="#fee2e2" stroke="#b91c1c" stroke-width="3"/>
+  <text x="500" y="465" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#7f1d1d">DROP</text>
+  <text x="500" y="500" text-anchor="middle" font-family="Arial" font-size="17" fill="#7f1d1d">Not mirrored if dropped here</text>
+  <line x1="500" y1="305" x2="500" y2="420" stroke="#b91c1c" stroke-width="5" stroke-dasharray="10 8" marker-end="url(#arrowRed)"/>
+  <rect x="750" y="420" width="250" height="115" rx="18" fill="#dbeafe" stroke="#1d4ed8" stroke-width="3"/>
+  <text x="875" y="460" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#1e3a8a">Mirrored copy</text>
+  <text x="875" y="495" text-anchor="middle" font-family="Arial" font-size="17" fill="#1e3a8a">VXLAN / UDP 4789</text>
+  <line x1="875" y1="305" x2="875" y2="420" stroke="#1d4ed8" stroke-width="5" stroke-dasharray="10 8" marker-end="url(#arrow)"/>
+  <rect x="1090" y="410" width="250" height="135" rx="18" fill="#f3e8ff" stroke="#7e22ce" stroke-width="3"/>
+  <text x="1215" y="453" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#581c87">Mirror target</text>
+  <text x="1215" y="488" text-anchor="middle" font-family="Arial" font-size="17" fill="#581c87">Analyzer ENI / NLB / GWLBe</text>
+  <text x="1215" y="518" text-anchor="middle" font-family="Arial" font-size="17" fill="#581c87">must accept UDP 4789</text>
+  <line x1="1000" y1="477" x2="1090" y2="477" stroke="#334155" stroke-width="5" marker-end="url(#arrow)"/>
+  <rect x="125" y="610" width="1150" height="100" rx="16" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="700" y="647" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Critical troubleshooting nuance</text>
+  <text x="700" y="681" text-anchor="middle" font-family="Arial" font-size="18" fill="#334155">If the workload truly received the exact packet, that exact packet was not dropped by its inbound SG/NACL.</text>
+</svg>
