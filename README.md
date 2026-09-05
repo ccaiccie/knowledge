@@ -19,6 +19,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS VPC Traffic Mirroring — Missing Inbound Packets and Source-Side Policy](09-05-26-11-22_AWS_VPC_Traffic_Mirroring_Missing_Inbound_Packets_Study_Guide.md)
+Explains why an analyzer can miss inbound packets in AWS VPC Traffic Mirroring, including the documented behavior that traffic dropped at the mirror source by inbound Security Group or Network ACL rules is not mirrored. Covers source/filter/target architecture, VXLAN/UDP 4789 transport, TLS misconceptions, the important nuance when a workload claims it received the exact packet, AWS CLI configuration patterns, verification, bandwidth/PPS limitations, and symptom-based troubleshooting, with matching SVG and editable draw.io packet-flow diagrams.
+
 ### [AWS NLB Hairpinning, Client-IP Preservation, and Proxy Protocol v2](09-05-26-10-38_AWS_NLB_Hairpinning_Client_IP_Preservation_PPv2.md)
 Explains why an internal Network Load Balancer target calling the same NLB can fail when client-IP preservation is enabled. Covers AWS NAT loopback/hairpinning behavior, self-target packet flow, why routing changes do not solve the issue, disabling `preserve_client_ip.enabled`, using Proxy Protocol v2 to retain client identity, protocol/default caveats, CLI configuration, verification, common mistakes, and symptom-based troubleshooting.
 
