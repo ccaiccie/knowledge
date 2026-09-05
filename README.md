@@ -19,6 +19,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS NLB Hairpinning, Client-IP Preservation, and Proxy Protocol v2](09-05-26-10-38_AWS_NLB_Hairpinning_Client_IP_Preservation_PPv2.md)
+Explains why an internal Network Load Balancer target calling the same NLB can fail when client-IP preservation is enabled. Covers AWS NAT loopback/hairpinning behavior, self-target packet flow, why routing changes do not solve the issue, disabling `preserve_client_ip.enabled`, using Proxy Protocol v2 to retain client identity, protocol/default caveats, CLI configuration, verification, common mistakes, and symptom-based troubleshooting.
+
 ### [AWS Cloud WAN — Comprehensive Network Engineering Study Guide](09-05-26-09-57_AWS_Cloud_WAN_Comprehensive_Study_Guide.md)
 Deep dive into AWS Cloud WAN as a policy-driven global Layer 3 WAN. Covers Global Networks, Core Networks, Core Network Edges, globally consistent segments, attachment policies, VPC/VPN/Connect/TGW/Direct Connect gateway attachments, native Direct Connect routing, service insertion and Network Function Groups, Routing Policy route filtering/summarization/BGP path control, packet flows, multi-account operation, CLI workflows, Route Analysis, CloudWatch monitoring, quotas, MTU, pricing, convergence, migration, common mistakes, and symptom-based troubleshooting.
 
