@@ -2,6 +2,11 @@
 
 A browsable index of the technical study guides and labs in this repository. Each entry links directly to the Markdown article and summarizes the major concepts it covers.
 
+## Azure Networking
+
+### [Azure ExpressRoute Global Reach — Comprehensive Study Guide](09-04-26-18-22_Azure_ExpressRoute_Global_Reach_Study_Guide.md)
+Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service between on-premises networks connected by separate ExpressRoute circuits. Covers BGP and private-peering behavior, `/29` IPv4 and `/125` IPv6 connection addressing, Premium requirements for cross-geopolitical connections, same- and cross-subscription configuration, route and connection limits, throughput, failover, route-policy interaction with MPLS/SD-WAN/VPN paths, firewall and asymmetric-routing considerations, verification, and symptom-based troubleshooting.
+
 ## AWS Networking
 
 ### [AWS PrivateLink, VPC Endpoints, and GWLB Firewall Inspection](09-04-26-16-18_AWS_PrivateLink_GWLB_Firewall_Inspection_Study_Guide.md)
