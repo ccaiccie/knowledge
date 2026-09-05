@@ -1,0 +1,11 @@
+<mxfile host="app.diagrams.net"><diagram name="DNSSEC Chain of Trust"><mxGraphModel dx="1200" dy="700" grid="1" gridSize="10" page="1" pageWidth="1169" pageHeight="827"><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="2" value="Validating Resolver&#xa;Root trust anchor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;" vertex="1" parent="1"><mxGeometry x="40" y="100" width="210" height="100" as="geometry"/></mxCell>
+<mxCell id="3" value="Root Zone (.)&#xa;DNSKEY + RRSIG" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;" vertex="1" parent="1"><mxGeometry x="330" y="100" width="210" height="100" as="geometry"/></mxCell>
+<mxCell id="4" value="Parent / TLD (.com)&#xa;DS for example.com" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;" vertex="1" parent="1"><mxGeometry x="620" y="100" width="220" height="100" as="geometry"/></mxCell>
+<mxCell id="5" value="Child Zone&#xa;DNSKEY RRset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=16;" vertex="1" parent="1"><mxGeometry x="920" y="100" width="200" height="100" as="geometry"/></mxCell>
+<mxCell id="6" value="Signed RRset&#xa;www.example.com A 192.0.2.10&#xa;RRSIG(A)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=16;" vertex="1" parent="1"><mxGeometry x="430" y="360" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;" edge="1" parent="1" source="2" target="3"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;" edge="1" parent="1" source="3" target="4"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="9" value="DS authenticates child key" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;" edge="1" parent="1" source="4" target="5"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="10" value="DNSKEY verifies RRSIG" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;" edge="1" parent="1" source="5" target="6"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>
