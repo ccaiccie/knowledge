@@ -1,1 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0L0 6L7 3z" fill="#2471a3"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#17365d}.n{fill:#eaf3fb;stroke:#2471a3;stroke-width:2}.e{stroke:#2471a3;stroke-width:3;marker-end:url(#a)}</style><text x="40" y="48" font-size="26" font-weight="700">Virtual WAN integrated third-party NGFW</text><rect class="n" x="40" y="160" width="180" height="80" rx="14"/><text x="130.0" y="206" text-anchor="middle" font-size="16">Branches</text><rect class="n" x="275" y="160" width="180" height="80" rx="14"/><text x="365.0" y="206" text-anchor="middle" font-size="16">vWAN Hub</text><rect class="n" x="510" y="160" width="180" height="80" rx="14"/><text x="600.0" y="206" text-anchor="middle" font-size="16">Integrated NGFW</text><rect class="n" x="745" y="160" width="180" height="80" rx="14"/><text x="835.0" y="206" text-anchor="middle" font-size="16">Connected VNets</text><rect class="n" x="980" y="280" width="180" height="80" rx="14"/><text x="1070.0" y="326" text-anchor="middle" font-size="16">Internet</text><line class="e" x1="220" y1="200" x2="275" y2="200"/><line class="e" x1="455" y1="200" x2="510" y2="200"/><line class="e" x1="690" y1="200" x2="745" y2="200"/><line class="e" x1="690" y1="200" x2="980" y2="320"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="930" viewBox="0 0 1600 930">
+
+<defs>
+  <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#0078D4"/>
+  </marker>
+  <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#107C10"/>
+  </marker>
+  <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#CA5010"/>
+  </marker>
+  <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5C2D91"/>
+  </marker>
+  <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#D13438"/>
+  </marker>
+  <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.18"/>
+  </filter>
+  <style>
+    .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill: #14314A; }
+    .subtitle { font: 400 15px 'Segoe UI', Arial, sans-serif; fill: #4A4A4A; }
+    .label { font: 600 16px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .small { font: 400 13px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .tiny { font: 400 12px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .legend { font: 600 13px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+  </style>
+</defs>
+<text x="30" y="40" class="title" text-anchor="start">Virtual WAN integrated third-party firewall NVA</text>
+<text x="30" y="64" class="subtitle" text-anchor="start">Use a qualified integrated provider when you need Virtual WAN operations with partner NGFW policy and telemetry.</text>
+<g filter="url(#shadow)"><ellipse cx="99.0" cy="225.0" rx="28.0" ry="18.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="130.5" cy="212.0" rx="31.5" ry="22.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="162.0" cy="220.0" rx="29.750000000000004" ry="19.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="88.5" y="222.0" width="87.5" height="20.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="137.5" y="263.0" class="label" text-anchor="middle">Branches / users</text>
+<g filter="url(#shadow)"><ellipse cx="1434.0" cy="225.0" rx="28.0" ry="18.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1465.5" cy="212.0" rx="31.5" ry="22.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1497.0" cy="220.0" rx="29.750000000000004" ry="19.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="1423.5" y="222.0" width="87.5" height="20.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="1472.5" y="263.0" class="label" text-anchor="middle">Internet</text>
+<g filter="url(#shadow)"><ellipse cx="1434.0" cy="705.0" rx="28.0" ry="18.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1465.5" cy="692.0" rx="31.5" ry="22.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1497.0" cy="700.0" rx="29.750000000000004" ry="19.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="1423.5" y="702.0" width="87.5" height="20.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="1472.5" y="743.0" class="label" text-anchor="middle">On-premises DC</text>
+<rect x="280" y="110" width="1040" height="700" rx="22" fill="#F8FBFF" stroke="#0078D4" stroke-width="3" stroke-dasharray="7 5"/>
+<text x="800" y="145" class="label" text-anchor="middle">Microsoft-managed Virtual WAN region</text>
+<rect x="570" y="220" width="470" height="320" rx="16" fill="#F3F8FF" stroke="#0078D4" stroke-width="3" filter="url(#shadow)" class=""/>
+<text x="805.0" y="248" class="label" text-anchor="middle">Virtual WAN hub</text>
+<path d="M711.0,418.4 L805.0,332.0 L899.0,418.4" fill="none" stroke="#0078D4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="711.0" cy="418.4" r="6" fill="#0078D4"/><circle cx="805.0" cy="332.0" r="6" fill="#0078D4"/><circle cx="899.0" cy="418.4" r="6" fill="#0078D4"/><rect x="650" y="335" width="150" height="75" rx="16" fill="#ECF8D9" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M680.0,363.5 h90.0 M680.0,376.25 h90.0 M680.0,389.0 h90.0" stroke="#4C8B00" stroke-width="4" stroke-linecap="round"/><circle cx="770.0" cy="353.75" r="9" fill="#7FBA00"/><text x="725.0" y="430" class="small" text-anchor="middle">Integrated NVA</text>
+<rect x="815" y="335" width="150" height="75" rx="16" fill="#ECF8D9" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M845.0,363.5 h90.0 M845.0,376.25 h90.0 M845.0,389.0 h90.0" stroke="#4C8B00" stroke-width="4" stroke-linecap="round"/><circle cx="935.0" cy="353.75" r="9" fill="#7FBA00"/><text x="890.0" y="430" class="small" text-anchor="middle">Vendor service</text>
+<rect x="670" y="445" width="304" height="24" rx="12" fill="white" stroke="#7FBA00" stroke-width="2"/><text x="822.0" y="462" class="tiny" text-anchor="middle">Routing Intent / integrated provider</text>
+<rect x="695" y="475" width="256" height="24" rx="12" fill="white" stroke="#7FBA00" stroke-width="2"/><text x="823.0" y="492" class="tiny" text-anchor="middle">Provider manages NGFW datapath</text>
+<rect x="335" y="260" width="180" height="170" rx="12" fill="#F8FCFF" stroke="#50B0F9" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="425" y="285" class="label" text-anchor="middle">Spoke VNet A</text>
+<rect x="380" y="335" width="90" height="55" rx="10" fill="white" stroke="#50B0F9" stroke-width="2" filter="url(#shadow)" class=""/>
+<rect x="396.2" y="346.0" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="396.2" y="359.75" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="396.2" y="373.5" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><text x="425.0" y="410" class="small" text-anchor="middle">Apps</text>
+<rect x="335" y="500" width="180" height="170" rx="12" fill="#F8FCFF" stroke="#50B0F9" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="425" y="525" class="label" text-anchor="middle">Spoke VNet B</text>
+<rect x="380" y="575" width="90" height="55" rx="10" fill="white" stroke="#50B0F9" stroke-width="2" filter="url(#shadow)" class=""/>
+<rect x="396.2" y="586.0" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="396.2" y="599.75" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="396.2" y="613.5" width="57.6" height="5.5" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><text x="425.0" y="650" class="small" text-anchor="middle">Private Endpoint apps</text>
+<rect x="1090" y="350" width="180" height="85" rx="12" fill="#FFF7EB" stroke="#8A6D3B" stroke-width="2" filter="url(#shadow)" class=""/>
+<text x="1180" y="398" class="small" text-anchor="middle">vWAN branch / ER / VPN
+connectivity</text>
+<polyline points="225,220 530,220 530,372 650,372" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="470,390 570,390" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="470,630 570,430" fill="none" stroke="#CA5010" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+<polyline points="965,372 1090,372" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="965,340 1320,340 1320,220 1385,220" fill="none" stroke="#107C10" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowGreen)"/>
+<circle cx="530" cy="220" r="14" fill="white" stroke="#0078D4" stroke-width="3"/><text x="530" y="225" class="legend" text-anchor="middle">1</text>
+<text x="565" y="225" class="tiny" text-anchor="start">Traffic enters managed hub</text>
+<circle cx="1000" cy="340" r="14" fill="white" stroke="#107C10" stroke-width="3"/><text x="1000" y="345" class="legend" text-anchor="middle">2</text>
+<text x="1037" y="344" class="tiny" text-anchor="start">Vendor NGFW inspects forwarded traffic</text>
+<rect x="1140" y="40" width="340" height="114" rx="14" fill="white" stroke="#A0B3C4" stroke-width="1.5" filter="url(#shadow)" class=""/>
+<text x="1158" y="64" class="label" text-anchor="start">Legend</text>
+<line x1="1158" y1="88" x2="1210" y2="88" stroke="#0078D4" stroke-width="4" /><text x="1222" y="93" class="small" text-anchor="start">Spoke or branch traffic into vWAN hub</text>
+<line x1="1158" y1="116" x2="1210" y2="116" stroke="#CA5010" stroke-width="4" /><text x="1222" y="121" class="small" text-anchor="start">Private application or east-west path</text>
+<line x1="1158" y1="144" x2="1210" y2="144" stroke="#107C10" stroke-width="4" /><text x="1222" y="149" class="small" text-anchor="start">Internet breakout via integrated NVA</text>
+</svg>
