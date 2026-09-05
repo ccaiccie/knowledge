@@ -4,7 +4,7 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
-### [MACsec (IEEE 802.1AE) — Comprehensive Network Engineering Study Guide](09-05-26-09-16_MACsec_IEEE_8021AE_Study_Guide.md)
+### [MACsec (IEEE 802.1AE) — Comprehensive Network Engineering Study Guide](09-05-26-09-16_MACsec_IEEE8021AE_Study_Guide.md)
 Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA control-plane operation, CAK/CKN/SAK relationships, Secure Channels and Secure Associations, GCM-AES cipher suites, replay protection, WAN MACsec over carrier Ethernet, EAPOL transparency, MTU and Port-Channel considerations, Cisco IOS XE and Junos configuration patterns, packet flow, verification, failover, common mistakes, and symptom-based troubleshooting.
 
 ## GCP Networking
@@ -18,6 +18,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service between on-premises networks connected by separate ExpressRoute circuits. Covers BGP and private-peering behavior, `/29` IPv4 and `/125` IPv6 connection addressing, Premium requirements for cross-geopolitical connections, same- and cross-subscription configuration, route and connection limits, throughput, failover, route-policy interaction with MPLS/SD-WAN/VPN paths, firewall and asymmetric-routing considerations, verification, and symptom-based troubleshooting.
 
 ## AWS Networking
+
+### [AWS Cloud WAN — Comprehensive Network Engineering Study Guide](09-05-26-09-57_AWS_Cloud_WAN_Comprehensive_Study_Guide.md)
+Deep dive into AWS Cloud WAN as a policy-driven global Layer 3 WAN. Covers Global Networks, Core Networks, Core Network Edges, globally consistent segments, attachment policies, VPC/VPN/Connect/TGW/Direct Connect gateway attachments, native Direct Connect routing, service insertion and Network Function Groups, Routing Policy route filtering/summarization/BGP path control, packet flows, multi-account operation, CLI workflows, Route Analysis, CloudWatch monitoring, quotas, MTU, pricing, convergence, migration, common mistakes, and symptom-based troubleshooting.
 
 ### [AWS PrivateLink, VPC Endpoints, and GWLB Firewall Inspection](09-04-26-16-18_AWS_PrivateLink_GWLB_Firewall_Inspection_Study_Guide.md)
 Deep dive into AWS PrivateLink and VPC endpoint types, including interface endpoints, endpoint services, resource/service-network endpoints, and the distinction between gateway endpoints and PrivateLink. Covers Gateway Load Balancer Endpoints (GWLBE), route-table-based traffic steering, GENEVE-based appliance insertion, centralized and distributed firewall inspection, packet flows, security controls, limitations, and troubleshooting.
