@@ -75,9 +75,11 @@ This is why AWS states that **NAT loopback is not supported when client-IP prese
 
 ## The correct design
 
+### Rendered SVG equivalent
+
 ![AWS NLB hairpinning flow](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow_v3_transparent.svg)
 
-[Open or edit the draw.io source](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow.drawio)
+[Open or edit the matching draw.io source](images/09-05-26-10-38_AWS_NLB_Hairpinning_Flow_v3_transparent.drawio)
 
 **What this image shows:** A registered proxy target can also initiate a connection to the same internal NLB. The dashed return path illustrates the hairpin/NAT-loopback case where the NLB can select that same proxy as the destination.
 
@@ -85,7 +87,9 @@ This is why AWS states that **NAT loopback is not supported when client-IP prese
 
 **What to verify:** Confirm `preserve_client_ip.enabled=false`, confirm `proxy_protocol_v2.enabled=true` only after the backend listener supports PPv2, and test from a registered target through the NLB to prove the exact hairpin path works.
 
-### Mermaid version
+### Mermaid source
+
+The SVG above and the linked draw.io file are the visual equivalents of this Mermaid topology.
 
 ```mermaid
 flowchart LR
