@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Virtual WAN Security SaaS Provider — Method 6 Deep Dive](09-05-26-16-44_Azure_Virtual_WAN_Security_SaaS_Provider_Method_6_Deep_Dive.md)
+Deep dive into Azure Firewall Manager Security Partner Provider service insertion for VNet-to-Internet and Branch-to-Internet inspection. Covers the external SECaaS architecture, required vHub S2S VPN Gateway/IPsec service tunnel, secured `0.0.0.0/0` route programming and connection opt-in, VNet and branch packet walks, Microsoft 365 local-breakout guidance, the supported split of SECaaS for Internet and Azure Firewall for private traffic, current Zscaler-specific integration caveats, provider-list documentation conflicts, verification, HA/failure behavior, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [Azure Virtual WAN Secured Hub with Azure Firewall or Integrated NVA — Method 4 Study Guide](09-05-26-15-56_Azure_Virtual_WAN_Secured_Hub_Method_4_Study_Guide.md)
 Deep dive into Virtual WAN secured hubs for centralized firewall inspection. Covers Azure Firewall versus supported hub-integrated NVAs, Routing Intent and Private/Internet traffic policies, route association/propagation, spoke-to-spoke and branch-to-spoke packet walks, inter-hub inspection, Internet egress/DNAT, Private Endpoint caveats, HA/asymmetry, verification, troubleshooting, and configuration steps, with matching SVG and editable draw.io diagrams.
 
