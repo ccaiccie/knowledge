@@ -1,1 +1,74 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0L0 6L7 3z" fill="#2471a3"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#17365d}.n{fill:#eaf3fb;stroke:#2471a3;stroke-width:2}.e{stroke:#2471a3;stroke-width:3;marker-end:url(#a)}</style><text x="40" y="48" font-size="26" font-weight="700">Third-party NVA HA with Standard Load Balancer</text><rect class="n" x="40" y="160" width="180" height="80" rx="14"/><text x="130.0" y="206" text-anchor="middle" font-size="16">Spokes</text><rect class="n" x="275" y="160" width="180" height="80" rx="14"/><text x="365.0" y="206" text-anchor="middle" font-size="16">ILB HA Ports</text><rect class="n" x="510" y="160" width="180" height="80" rx="14"/><text x="600.0" y="206" text-anchor="middle" font-size="16">NGFW A</text><rect class="n" x="745" y="160" width="180" height="80" rx="14"/><text x="835.0" y="206" text-anchor="middle" font-size="16">NGFW B</text><rect class="n" x="980" y="160" width="180" height="80" rx="14"/><text x="1070.0" y="206" text-anchor="middle" font-size="16">Destinations</text><line class="e" x1="220" y1="200" x2="275" y2="200"/><line class="e" x1="455" y1="200" x2="510" y2="200"/><line class="e" x1="455" y1="200" x2="745" y2="200"/><line class="e" x1="690" y1="200" x2="980" y2="200"/><line class="e" x1="925" y1="200" x2="980" y2="200"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920">
+
+<defs>
+  <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#0078D4"/>
+  </marker>
+  <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#107C10"/>
+  </marker>
+  <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#CA5010"/>
+  </marker>
+  <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5C2D91"/>
+  </marker>
+  <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#D13438"/>
+  </marker>
+  <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.18"/>
+  </filter>
+  <style>
+    .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill: #14314A; }
+    .subtitle { font: 400 15px 'Segoe UI', Arial, sans-serif; fill: #4A4A4A; }
+    .label { font: 600 16px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .small { font: 400 13px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .tiny { font: 400 12px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+    .legend { font: 600 13px 'Segoe UI', Arial, sans-serif; fill: #173B5C; }
+  </style>
+</defs>
+<text x="30" y="40" class="title" text-anchor="start">Third-party NVA pair behind Standard Load Balancer HA Ports</text>
+<text x="30" y="64" class="subtitle" text-anchor="start">Internal SLB provides a stable next hop; appliance HA and session state remain vendor-specific.</text>
+<g filter="url(#shadow)"><ellipse cx="85.4" cy="175.0" rx="28.8" ry="18.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="117.8" cy="162.0" rx="32.4" ry="22.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="150.2" cy="170.0" rx="30.6" ry="19.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="74.6" y="172.0" width="90.0" height="20.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="125.0" y="213.0" class="label" text-anchor="middle">Spoke / Branch Sources</text>
+<g filter="url(#shadow)"><ellipse cx="1420.4" cy="175.0" rx="28.8" ry="18.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1452.8" cy="162.0" rx="32.4" ry="22.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1485.2" cy="170.0" rx="30.6" ry="19.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="1409.6" y="172.0" width="90.0" height="20.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="1460.0" y="213.0" class="label" text-anchor="middle">Internet</text>
+<g filter="url(#shadow)"><ellipse cx="1420.4" cy="755.0" rx="28.8" ry="18.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1452.8" cy="742.0" rx="32.4" ry="22.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><ellipse cx="1485.2" cy="750.0" rx="30.6" ry="19.0" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/><rect x="1409.6" y="752.0" width="90.0" height="20.0" rx="18" fill="#f4f7fa" stroke="#6e6e6e" stroke-width="2"/></g><text x="1460.0" y="793.0" class="label" text-anchor="middle">On-premises</text>
+<rect x="250" y="100" width="1090" height="720" rx="22" fill="#D9ECFB" stroke="#0078D4" stroke-width="3" filter="url(#shadow)" class=""/>
+<text x="795" y="135" class="label" text-anchor="middle">Inspection Hub VNet</text>
+<rect x="320" y="220" width="250" height="420" rx="14" fill="#F8FCFF" stroke="#50B0F9" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="445" y="245" class="label" text-anchor="middle">Transit / spoke edge</text>
+<rect x="380" y="300" width="100" height="60" rx="10" fill="white" stroke="#50B0F9" stroke-width="2" filter="url(#shadow)" class=""/>
+<rect x="398.0" y="312.0" width="64.0" height="6.0" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="398.0" y="327.0" width="64.0" height="6.0" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><rect x="398.0" y="342.0" width="64.0" height="6.0" rx="6" fill="#CFE8FB" stroke="#57A0D3" stroke-width="1.5"/><text x="430.0" y="380" class="small" text-anchor="middle">UDR / BGP ingress</text>
+<rect x="350" y="520" width="232" height="24" rx="12" fill="white" stroke="#0078D4" stroke-width="2"/><text x="466.0" y="537" class="tiny" text-anchor="middle">Next hop = ILB frontend VIP</text>
+<rect x="620" y="180" width="330" height="500" rx="14" fill="#F8FCFF" stroke="#53A551" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="785" y="205" class="label" text-anchor="middle">Load-balancer tier</text>
+<rect x="715" y="255" width="140" height="80" rx="16" fill="#EAF7EA" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M745.8,283.0 h78.4 M745.8,295.0 h78.4 M745.8,307.0 h78.4" stroke="#4C8B00" stroke-width="5" stroke-linecap="round"/><path d="M759.8,277.4 l-10,10 l10,10" fill="none" stroke="#4C8B00" stroke-width="3"/><path d="M810.2,277.4 l10,10 l-10,10" fill="none" stroke="#4C8B00" stroke-width="3"/><text x="785.0" y="355" class="small" text-anchor="middle">Standard LB (HA Ports)</text>
+<rect x="665" y="355" width="112" height="24" rx="12" fill="white" stroke="#7FBA00" stroke-width="2"/><text x="721.0" y="372" class="tiny" text-anchor="middle">Frontend VIP</text>
+<rect x="790" y="355" width="120" height="24" rx="12" fill="white" stroke="#7FBA00" stroke-width="2"/><text x="850.0" y="372" class="tiny" text-anchor="middle">Health probes</text>
+<rect x="1010" y="180" width="270" height="500" rx="14" fill="#F8FCFF" stroke="#7FBA00" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="1145" y="205" class="label" text-anchor="middle">Firewall tier</text>
+<rect x="1060" y="260" width="160" height="80" rx="16" fill="#ECF8D9" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M1092.0,290.4 h96.0 M1092.0,304.0 h96.0 M1092.0,317.6 h96.0" stroke="#4C8B00" stroke-width="4" stroke-linecap="round"/><circle cx="1188.0" cy="280.0" r="9" fill="#7FBA00"/><text x="1140.0" y="360" class="small" text-anchor="middle">NVA-A</text>
+<rect x="1060" y="430" width="160" height="80" rx="16" fill="#ECF8D9" stroke="#7FBA00" stroke-width="2" filter="url(#shadow)" class=""/>
+<path d="M1092.0,460.4 h96.0 M1092.0,474.0 h96.0 M1092.0,487.6 h96.0" stroke="#4C8B00" stroke-width="4" stroke-linecap="round"/><circle cx="1188.0" cy="450.0" r="9" fill="#7FBA00"/><text x="1140.0" y="530" class="small" text-anchor="middle">NVA-B</text>
+<rect x="1035" y="550" width="280" height="24" rx="12" fill="white" stroke="#7FBA00" stroke-width="2"/><text x="1175.0" y="567" class="tiny" text-anchor="middle">State sync / HA = vendor specific</text>
+<polyline points="215,175 280,175 280,290 715,290" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="855,290 1060,300" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="855,290 1060,470" fill="none" stroke="#107C10" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowGreen)"/>
+<polyline points="1220,300 1310,300 1310,175 1370,175" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<polyline points="1220,470 1310,470 1310,750 1370,750" fill="none" stroke="#CA5010" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+<circle cx="300" cy="175" r="14" fill="white" stroke="#0078D4" stroke-width="3"/><text x="300" y="180" class="legend" text-anchor="middle">1</text>
+<text x="335" y="180" class="tiny" text-anchor="start">Traffic arrives from spoke or branch</text>
+<circle cx="930" cy="290" r="14" fill="white" stroke="#0078D4" stroke-width="3"/><text x="930" y="295" class="legend" text-anchor="middle">2</text>
+<text x="970" y="294" class="tiny" text-anchor="start">SLB selects a healthy NVA</text>
+<circle cx="1305" cy="300" r="14" fill="white" stroke="#107C10" stroke-width="3"/><text x="1305" y="305" class="legend" text-anchor="middle">3</text>
+<text x="1185" y="145" class="tiny" text-anchor="start">Internet egress / north-south path</text>
+<circle cx="1305" cy="470" r="14" fill="white" stroke="#CA5010" stroke-width="3"/><text x="1305" y="475" class="legend" text-anchor="middle">4</text>
+<text x="1180" y="795" class="tiny" text-anchor="start">Hybrid path to on-premises</text>
+<rect x="1170" y="30" width="340" height="114" rx="14" fill="white" stroke="#A0B3C4" stroke-width="1.5" filter="url(#shadow)" class=""/>
+<text x="1188" y="54" class="label" text-anchor="start">Legend</text>
+<line x1="1188" y1="78" x2="1240" y2="78" stroke="#0078D4" stroke-width="4" /><text x="1252" y="83" class="small" text-anchor="start">Primary flow path</text>
+<line x1="1188" y1="106" x2="1240" y2="106" stroke="#107C10" stroke-width="4" /><text x="1252" y="111" class="small" text-anchor="start">Alternative healthy-NVA distribution</text>
+<line x1="1188" y1="134" x2="1240" y2="134" stroke="#CA5010" stroke-width="4" /><text x="1252" y="139" class="small" text-anchor="start">Hybrid or return path</text>
+</svg>
