@@ -2,6 +2,11 @@
 
 A browsable index of the technical study guides and labs in this repository. Each entry links directly to the Markdown article and summarizes the major concepts it covers.
 
+## GCP Networking
+
+### [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/protocol-based traffic steering and service insertion. Covers routing order, internal passthrough Network Load Balancer next hops, stateful NVA/firewall symmetry, VM-tag and Cloud Interconnect scopes, `DEFAULT_ROUTING` bypass policies, Google APIs/GKE/Private Service Connect caveats, Console configuration, `gcloud` examples, Terraform resources and lab skeletons, official Google diagrams/screenshots, verification, and symptom-based troubleshooting.
+
 ## Azure Networking
 
 ### [Azure ExpressRoute Global Reach — Comprehensive Study Guide](09-04-26-18-22_Azure_ExpressRoute_Global_Reach_Study_Guide.md)
@@ -21,7 +26,7 @@ Advanced AWS DNS guide covering AmazonProvidedDNS/VPC+2, Route 53 VPC Resolver, 
 Explains RFC 9107 Optimal Route Reflection, why conventional route reflectors can cause suboptimal hot-potato routing, client-versus-RR IGP viewpoints, alternate IGP roots, client-specific route selection, Cisco IOS XR and Junos behavior, interaction with ADD-PATH, design considerations, verification, and troubleshooting.
 
 ### [BGP Clusters and Route Reflectors — Comprehensive Study Guide](08-29-26-15-14_bgp_clusters_study_guide.md)
-Covers route-reflector clusters, RR clients and non-clients, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, loop prevention, redundant route reflectors, hierarchical reflection, path-selection implications, Cisco/Juniper/FRR configuration concepts, failover, verification, and troubleshooting.
+Covers route-reflector clusters, RR clients and non-clients, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, loop prevention, redundant route reflectors, hierarchical reflection, path-selection implications, Cisco/Juniper/FRR configuration concepts, verification, and troubleshooting.
 
 ### [BGP Clusters: Route Reflectors, Cluster IDs, and Hierarchical Design — GitHub Edition](08-29-26-14-55_bgp_clusters_route_reflectors_github_fixed.md)
 GitHub-rendering-corrected route-reflector guide covering RFC 4456 reflection rules, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, client/non-client behavior, loop prevention, redundant RR design, and operational verification with repository-hosted images.
