@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker></defs>
+<rect width="1400" height="820" fill="#f8fafc"/>
+<text x="700" y="42" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700" fill="#0f172a">Optional double inspection: Azure Firewall then on-premises firewall</text>
+<text x="700" y="70" text-anchor="middle" font-family="Arial" font-size="16" fill="#475569">Use only when policy requires Azure Firewall controls before enterprise Internet egress; this is not the same as direct gateway forced tunneling.</text>
+<rect x="50" y="250" width="210" height="130" rx="14" fill="#dbeafe" stroke="#334155" stroke-width="2"/>
+<text x="155.0" y="280" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Spoke workload</text>
+<text x="155.0" y="306" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">10.30.1.4/24</text>
+<text x="155.0" y="328" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">UDR 0/0 → Azure Firewall</text>
+<rect x="330" y="220" width="250" height="190" rx="14" fill="#fee2e2" stroke="#334155" stroke-width="2"/>
+<text x="455.0" y="250" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Azure Firewall</text>
+<text x="455.0" y="276" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">AzureFirewallSubnet</text>
+<text x="455.0" y="298" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Forced tunneling enabled</text>
+<text x="455.0" y="320" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">SNATs Internet flow to private IP</text>
+<rect x="650" y="240" width="220" height="150" rx="14" fill="#e0e7ff" stroke="#334155" stroke-width="2"/>
+<text x="760.0" y="270" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">VPN / ER Gateway</text>
+<text x="760.0" y="296" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Hybrid path to on-premises</text>
+<text x="760.0" y="318" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Post-firewall traffic</text>
+<rect x="950" y="220" width="250" height="190" rx="14" fill="#fef3c7" stroke="#334155" stroke-width="2"/>
+<text x="1075.0" y="250" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">On-prem NGFW</text>
+<text x="1075.0" y="276" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Receives Azure Firewall private source</text>
+<text x="1075.0" y="298" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Inspection + Internet SNAT</text>
+<rect x="1030" y="520" width="150" height="90" rx="14" fill="#dcfce7" stroke="#334155" stroke-width="2"/>
+<text x="1105.0" y="550" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Internet</text>
+<text x="1105.0" y="576" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Public destination</text>
+<rect x="330" y="510" width="250" height="120" rx="14" fill="#f1f5f9" stroke="#334155" stroke-width="2"/>
+<text x="455.0" y="540" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">AzureFirewallManagementSubnet</text>
+<text x="455.0" y="566" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Separate management NIC/public IP</text>
+<text x="455.0" y="588" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Operational traffic uses Azure path</text>
+<line x1="260" y1="315" x2="330" y2="315" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="295.0" y="305.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">1  UDR</text>
+<line x1="580" y1="315" x2="650" y2="315" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="615.0" y="305.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">2  Inspected/SNATed</text>
+<line x1="870" y1="315" x2="950" y2="315" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="910.0" y="305.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">3  Hybrid path</text>
+<line x1="1080" y1="410" x2="1100" y2="520" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="1090.0" y="451.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">4  Internet SNAT</text>
+<line x1="1030" y1="565" x2="920" y2="410" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="975.0" y="477.5" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">5  Return</text>
+<line x1="950" y1="350" x2="870" y2="350" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="910.0" y="340.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">6  Reverse state</text>
+<line x1="650" y1="350" x2="580" y2="350" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="615.0" y="340.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">7  Return</text>
+<line x1="330" y1="350" x2="260" y2="350" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="295.0" y="340.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">8  Deliver</text>
+<line x1="455" y1="510" x2="455" y2="410" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/><text x="455.0" y="452.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">Management</text>
+<text x="50" y="770" font-family="Arial" font-size="13" fill="#475569">Azure Firewall forced tunneling requires a Management NIC architecture so firewall operational traffic is not sent on-premises.</text>
+<text x="50" y="788" font-family="Arial" font-size="13" fill="#475569">Because Azure Firewall SNATs Internet-bound traffic to a private firewall IP in this mode, the on-premises firewall does not see the original spoke IP as the source.</text>
+</svg>
