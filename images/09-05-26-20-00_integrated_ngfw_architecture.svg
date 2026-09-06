@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker></defs>
+<style>.t{font-family:Arial,sans-serif;fill:#0f172a}.n{fill:#fff;stroke:#334155;stroke-width:2}.e{fill:none;stroke:#334155;stroke-width:2;marker-end:url(#arrow)}.el{font:13px Arial,sans-serif;fill:#334155}.h{font:bold 24px Arial,sans-serif;fill:#0f172a}</style><rect width="100%" height="100%" fill="#ffffff"/>
+<text x="40" y="42" class="h">Integrated third-party NGFW directly inside an Azure Virtual WAN hub</text>
+<path d="M 230 160.0 L 355.0 160.0 L 355.0 275.0 L 480 275.0" class="e"/>
+<text x="361.0" y="211.5" class="el">1. learned/connected routes</text>
+<path d="M 1130 160.0 L 930.0 160.0 L 930.0 275.0 L 730 275.0" class="e"/>
+<text x="936.0" y="211.5" class="el">2. VNet connection</text>
+<path d="M 1130 360.0 L 930.0 360.0 L 930.0 275.0 L 730 275.0" class="e"/>
+<text x="936.0" y="311.5" class="el">3. VNet connection</text>
+<path d="M 605.0 170 L 605.0 195.0 L 605.0 195.0 L 605.0 220" class="e"/>
+<text x="611.0" y="189.0" class="el">programs steering</text>
+<path d="M 730 275.0 L 765.0 275.0 L 765.0 275.0 L 800 275.0" class="e"/>
+<text x="771.0" y="269.0" class="el">4. inspected traffic</text>
+<path d="M 800 275.0 L 765.0 275.0 L 765.0 275.0 L 730 275.0" class="e"/>
+<text x="771.0" y="269.0" class="el">5. return to hub fabric</text>
+<path d="M 480 275.0 L 345.0 275.0 L 345.0 355.0 L 210 355.0" class="e"/>
+<text x="351.0" y="309.0" class="el">6. Internet path</text>
+<path d="M 920.0 500 L 920.0 415.0 L 920.0 415.0 L 920.0 330" class="e"/>
+<text x="926.0" y="409.0" class="el">vendor control</text>
+<rect x="40" y="320" width="170" height="70" rx="12" class="n"/>
+<text x="125.0" y="355.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Internet</text>
+<rect x="40" y="120" width="190" height="80" rx="12" class="n"/>
+<text x="135.0" y="151.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Branches / On-prem</text>
+<text x="135.0" y="171.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">S2S VPN / ER / SD-WAN</text>
+<rect x="1130" y="120" width="210" height="80" rx="12" class="n"/>
+<text x="1235.0" y="151.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Spoke VNet A</text>
+<text x="1235.0" y="171.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">10.10.0.0/16</text>
+<rect x="1130" y="320" width="210" height="80" rx="12" class="n"/>
+<text x="1235.0" y="351.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Spoke VNet B</text>
+<text x="1235.0" y="371.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">10.20.0.0/16</text>
+<rect x="480" y="220" width="250" height="110" rx="12" class="n"/>
+<text x="605.0" y="266.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Azure Virtual WAN Hub</text>
+<text x="605.0" y="286.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Microsoft-managed router</text>
+<rect x="800" y="220" width="240" height="110" rx="12" class="n"/>
+<text x="920.0" y="266.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Integrated NGFW NVA</text>
+<text x="920.0" y="286.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Check Point / Fortinet / Cisco FTDv</text>
+<rect x="480" y="80" width="250" height="90" rx="12" class="n"/>
+<text x="605.0" y="116.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Routing Intent</text>
+<text x="605.0" y="136.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Private + Internet policies</text>
+<rect x="800" y="500" width="240" height="80" rx="12" class="n"/>
+<text x="920.0" y="531.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Vendor management plane</text>
+<text x="920.0" y="551.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">policy / licensing / logs</text>
+</svg>
