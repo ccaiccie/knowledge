@@ -21,13 +21,15 @@ jobs:
           import xml.etree.ElementTree as ET
           guide=Path('09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md')
           s=guide.read_text()
-          s=s.replace('_v4.svg','_v5.svg').replace('_v4.drawio','_v5.drawio')
+          for old in ('_v2','_v3','_v4'):
+              s=s.replace(old+'.svg','_v5.svg').replace(old+'.drawio','_v5.drawio')
           guide.write_text(s)
           for f in Path('images').glob('*_v5.svg'): ET.parse(f)
           for f in Path('images').glob('*_v5.drawio'): ET.parse(f)
           assert len(list(Path('images').glob('*_v5.svg'))) == 10
           assert len(list(Path('images').glob('*_v5.drawio'))) == 10
           assert '_v5.svg' in s and '_v5.drawio' in s
+          assert '_v2.svg' not in s and '_v3.svg' not in s and '_v4.svg' not in s
           PY
       - name: Remove temporary generator and workflow
         run: rm -f tools/generate_vwan_ngfw_v5.py .github/workflows/publish-clean-vwan-ngfw-v5.yml
