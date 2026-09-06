@@ -142,32 +142,274 @@ Do **not** confuse this with Route Server. Azure Route Server does not provide c
 
 ---
 
-## 3. Private peering versus Microsoft peering
+## 3. Private peering, Microsoft peering, and the legacy Public Peering name
 
-### 3.1 Azure private peering
+### 3.1 First: what happened to Azure Public Peering?
 
-Purpose: reach private IP addresses in Azure VNets through an ExpressRoute gateway.
+**Source information:** New ExpressRoute circuits support **two** peering/routing domains: **Azure Private Peering** and **Microsoft Peering**. The older **Azure Public Peering** routing domain is deprecated and should not be designed into new deployments.
+
+This causes a great deal of terminology confusion because engineers still say “public peering” when they really mean **Microsoft Peering**.
+
+Use this terminology:
+
+| Term | Current status | What it means |
+|---|---|---|
+| **Azure Private Peering** | Current | Private connectivity to Azure VNets and resources reachable through private VNet addressing |
+| **Microsoft Peering** | Current | Connectivity over ExpressRoute to supported Microsoft services that expose **public IP endpoints** |
+| **Azure Public Peering / Public Peering** | Legacy/deprecated | Historical ExpressRoute routing domain; do not use it as the current design name |
+
+**Important:** “Microsoft Peering uses public IP addresses” does **not** mean the traffic is sent over the public Internet. The customer reaches the Microsoft edge over the ExpressRoute circuit, but the addressing/routing domain uses public prefixes.
+
+### 3.2 Azure Private Peering — private addressing into your VNets
+
+Use **Azure Private Peering** when the destination is a private resource inside an Azure virtual network.
+
+Typical destinations include:
+
+- Azure virtual machines using RFC1918/private addresses;
+- internal load balancers;
+- private IPs on Azure appliances;
+- Private Endpoints/Private Link resources when the VNet routing design supports them;
+- hub-and-spoke VNets reached through an ExpressRoute VNet gateway or Virtual WAN ExpressRoute gateway.
 
 Typical route exchange:
 
-- Customer advertises on-premises prefixes to Microsoft.
-- Azure advertises VNet prefixes reachable through the gateway.
+- Customer advertises on-premises private prefixes to Microsoft.
+- Azure advertises VNet prefixes reachable through the ExpressRoute gateway.
 - A default route may be advertised **only** on private peering.
 
-Private peering BGP interface addressing can use private or public IPs, but it must not overlap VNet address space.
+Private-peering BGP interface addressing may use private or public addresses, but the peering subnets cannot overlap the Azure VNet address space.
 
-### 3.2 Microsoft peering
+#### Private-peering packet example
 
-Purpose: reach supported Microsoft public services using public IP addressing.
+Assume:
 
-Requirements are stricter:
+```text
+On-premises client: 10.10.10.25
+Azure VM:           10.50.20.10
+Protocol:           TCP/443
+```
 
-- Peering IPs are public.
-- Advertised public prefixes must be validated as belonging to you.
-- Traffic entering Microsoft must use valid public source IP addresses.
-- Route filters are used for Microsoft service/community selection.
+Path:
 
-Do not advertise the same public prefix equally to the Internet and ExpressRoute unless you intentionally design the more-specific policy. Otherwise, asymmetric routing can result.
+```text
+10.10.10.25
+   -> enterprise router
+   -> ExpressRoute private-peering BGP path
+   -> MSEE
+   -> Microsoft backbone
+   -> ExpressRoute VNet/vWAN gateway or eligible FastPath data path
+   -> Azure VNet
+   -> 10.50.20.10
+```
+
+No Internet routing is required and ExpressRoute itself does not require SNAT for this flow.
+
+### 3.3 Microsoft Peering — public Microsoft service endpoints over ExpressRoute
+
+Use **Microsoft Peering** when the destination is a supported Microsoft service reached by a **public IP address**, but you want the path from your WAN to the Microsoft edge to use ExpressRoute rather than your normal Internet transit.
+
+Microsoft documents Microsoft Peering for services such as:
+
+- Microsoft 365, subject to Microsoft's ExpressRoute-for-Microsoft-365 guidance and approval/use-case requirements;
+- supported Azure PaaS public endpoints;
+- Microsoft PSTN/public Microsoft services supported by the peering;
+- Power Platform and other supported Microsoft online services where applicable.
+
+Microsoft Peering is a separate BGP routing domain from Private Peering.
+
+Requirements include:
+
+- two redundant BGP sessions, just like Private Peering;
+- public `/30` IPv4 or `/126` IPv6 peering subnets for the MSEE-facing links;
+- public source prefixes owned by you or your provider and validated through the appropriate routing registry/authorization process;
+- public source addressing before traffic enters Microsoft, commonly implemented with SNAT;
+- route filters/BGP communities to select the Microsoft service routes you intend to receive.
+
+Microsoft accepts up to the documented Microsoft-peering prefix limit per BGP session; do not leak RFC1918 prefixes or a default route into Microsoft Peering.
+
+#### Microsoft-peering packet example
+
+Assume:
+
+```text
+On-premises client:       10.10.10.25
+Enterprise SNAT address:  203.0.113.25   (illustrative public prefix)
+Microsoft service:        public Microsoft endpoint
+```
+
+Conceptual flow:
+
+```text
+10.10.10.25
+   -> enterprise firewall/proxy
+   -> SNAT 10.10.10.25 to enterprise-owned public IP
+   -> ExpressRoute Microsoft-peering BGP path
+   -> MSEE
+   -> Microsoft network
+   -> supported Microsoft public service
+```
+
+The private client address normally cannot be presented directly as the source on Microsoft Peering because traffic entering the Microsoft public-service routing domain must use valid public source addressing.
+
+### 3.4 Why would you enable both Private and Microsoft Peering on the same circuit?
+
+Because they solve **different reachability problems**.
+
+A typical enterprise might need all of the following at the same time:
+
+```text
+Datacenter -> Azure VM 10.50.20.10
+           uses Azure Private Peering
+
+Datacenter -> Azure Private Endpoint 10.60.5.8
+           uses Azure Private Peering
+
+Datacenter -> supported Microsoft public SaaS/PaaS endpoint
+           uses Microsoft Peering
+```
+
+One ExpressRoute circuit can have **one or both** current peerings enabled. The circuit bandwidth is shared by the enabled peerings.
+
+A useful mental model is:
+
+```text
+                    ExpressRoute circuit
+                           |
+                +----------+----------+
+                |                     |
+       Azure Private Peering    Microsoft Peering
+                |                     |
+        private IP routing       public IP routing
+                |                     |
+          VNets / private        Microsoft public
+          Azure resources        service endpoints
+```
+
+### 3.5 When you need only Private Peering
+
+Use only Private Peering when:
+
+- the goal is hybrid IaaS/VNet connectivity;
+- SaaS/public Microsoft traffic can continue to use the Internet;
+- you use Private Endpoints so key PaaS services are resolved to private VNet addresses;
+- you do not have a business requirement for Microsoft-service traffic to enter Microsoft's network through the ExpressRoute circuit.
+
+This is the most common ExpressRoute design for Azure infrastructure workloads.
+
+### 3.6 When Microsoft Peering is useful
+
+Microsoft Peering becomes valuable when:
+
+- a supported Microsoft public service must use the private carrier/ExpressRoute path to the Microsoft edge;
+- the enterprise wants deterministic WAN transport to Microsoft instead of relying solely on general Internet transit;
+- a supported application architecture requires public Microsoft endpoints but the organization wants those routes delivered over ExpressRoute;
+- you are implementing a documented Microsoft-Peering-specific architecture such as IPsec VPN over Microsoft Peering.
+
+It is **not** needed simply because you use Azure PaaS. If that PaaS service is consumed through a Private Endpoint, the traffic normally follows Private Peering because the destination resolves to a private VNet IP.
+
+### 3.7 Same Azure service, different peering depending on endpoint type
+
+This is one of the most useful distinctions to understand.
+
+Suppose Azure Storage can be reached through either:
+
+1. its normal public endpoint; or
+2. a Private Endpoint in your VNet.
+
+Then conceptually:
+
+```text
+On-prem -> Storage public IP/FQDN
+          -> Microsoft Peering (when supported/selected)
+
+On-prem -> Storage Private Endpoint 10.50.40.5
+          -> Azure Private Peering
+```
+
+The service name can be the same, but **DNS resolution and destination IP determine the routing domain**.
+
+### 3.8 Security-zone design: do not merge the two peerings blindly
+
+Microsoft recommends treating the routing domains differently:
+
+- **Private Peering** commonly terminates toward the enterprise core/private routing domain.
+- **Microsoft Peering** commonly terminates in a DMZ or controlled perimeter because it uses public addressing and reaches Microsoft public-service endpoints.
+
+A strong design therefore looks like:
+
+```text
+                    ExpressRoute circuit
+                           |
+                  Provider / MSEE pair
+                    /             \
+                   /               \
+          Private Peering       Microsoft Peering
+                |                     |
+          Enterprise core          DMZ / edge
+                |                     |
+       private RFC1918 WAN       firewall / proxy / SNAT
+```
+
+Do not simply redistribute all Microsoft-Peering routes into the private core without policy. Keep route filtering, firewall policy, NAT, and failure behavior explicit.
+
+### 3.9 Why SNAT is common on Microsoft Peering
+
+Assume the user is `10.10.10.25`. Microsoft Peering requires valid public source addressing before traffic enters Microsoft's public-service network.
+
+A perimeter firewall might perform:
+
+```text
+Before SNAT:
+Src 10.10.10.25:53000
+Dst <Microsoft-public-IP>:443
+
+After SNAT:
+Src 203.0.113.25:62001
+Dst <Microsoft-public-IP>:443
+```
+
+The Microsoft service returns traffic to `203.0.113.25`; the firewall performs reverse NAT and delivers it to `10.10.10.25`.
+
+### 3.10 Internet routing and asymmetric-path warning
+
+Do **not** casually advertise the same public source/NAT prefix with equal specificity to both:
+
+- the public Internet; and
+- ExpressRoute Microsoft Peering.
+
+Microsoft specifically warns that this can create asymmetric routing.
+
+Safer approaches include:
+
+- dedicate a public prefix to Microsoft Peering that is not advertised to the Internet; or
+- advertise a more-specific prefix over ExpressRoute so the Microsoft return path is deterministic.
+
+This becomes especially important when a stateful firewall performs SNAT.
+
+### 3.11 Can Microsoft Peering replace Internet access?
+
+No. Microsoft Peering is not a general-purpose private Internet connection.
+
+It advertises supported Microsoft service routes according to the ExpressRoute Microsoft-Peering model and route filters. General Internet destinations still require normal Internet connectivity unless another architecture provides them.
+
+### 3.12 Can Private Peering reach Microsoft public services?
+
+Not merely because those services are hosted in Azure.
+
+Private Peering routes private VNet-connected address space. A public Microsoft endpoint remains a public destination unless you deliberately change the application architecture, for example by deploying a Private Endpoint and resolving the service name to that private address.
+
+### 3.13 Practical decision table
+
+| Destination/use case | Peering to use | Source addressing | Key Azure component |
+|---|---|---|---|
+| Azure VM private IP | **Private** | Private IP | ExpressRoute VNet/vWAN gateway |
+| Internal Load Balancer | **Private** | Private IP | VNet routing |
+| Azure Private Endpoint | **Private** | Private IP | Private Endpoint + DNS |
+| Supported Azure PaaS public endpoint | **Microsoft** | Public/SNAT | Microsoft Peering + route filter |
+| Microsoft 365 approved ExpressRoute scenario | **Microsoft** | Public/SNAT | Microsoft Peering + route filter |
+| General Internet website | Neither peering as a general rule | Public/NAT | Internet edge |
+| IPsec VPN carried over Microsoft Peering | **Microsoft** under the documented design | Public tunnel endpoints | VPN Gateway/NVA + Microsoft Peering |
 
 ---
 
