@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS Transit Gateway + Centralized GWLB/GWLBE Inspection VPC — Deep Dive](09-06-26-15-45_TGW_Centralized_GWLB_GWLBE_Inspection_VPC_Deep_Dive.md)
+Detailed centralized third-party NGFW architecture using TGW, a dedicated Inspection VPC, zonal GWLBE, GWLB, and Appliance Mode. Covers pre-inspection versus post-inspection TGW route tables, exact Inspection-VPC subnet routes, east-west packet flow, centralized Internet egress and NAT return enforcement, Direct Connect Transit VIF/DXGW and Site-to-Site VPN inspection, stateful symmetry, HA/AZ behavior, AWS CLI configuration and verification, bypass risks, troubleshooting, and matching editable draw.io/SVG diagrams.
+
 ### [Distributed GWLBE with a Centralized Third-Party Firewall Fleet — Deep Dive](09-06-26-15-23_Distributed_GWLBE_Centralized_Third_Party_Firewall_Fleet_Deep_Dive.md)
 Fine-grained distributed Gateway Load Balancer Endpoint architecture with a centralized third-party NGFW fleet. Covers exact per-subnet route-table enforcement for east-west VPC traffic, Internet north-south ingress, south-north egress through NAT Gateway, Direct Connect Transit VIF → Direct Connect Gateway → Transit Gateway routing, Site-to-Site VPN primary/backup behavior, TGW route priority, BGP, double-inspection choices, original-tuple/GENEVE packet flow, AWS CLI deployment and verification, failover, common mistakes, and symptom-based troubleshooting, with three detailed matching SVG/editable draw.io diagrams.
 
