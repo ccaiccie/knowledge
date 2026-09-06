@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Gateway Load Balancer for Transparent NVA Insertion — Comprehensive Study Guide](09-05-26-17-03_Gateway_Load_Balancer_Transparent_NVA_Insertion_Study_Guide.md)
+Deep dive into Azure Gateway Load Balancer as a transparent bump-in-the-wire service for third-party NVAs. Covers Standard Public Load Balancer and VM public-IP chaining, VXLAN internal/external tunnel interfaces, HA Ports, flow symmetry and stateful-firewall stickiness, inbound and outbound packet walks, provider/consumer separation across subscriptions or tenants, MTU requirements, portal and Azure CLI deployment, limitations, verification, failover behavior, common mistakes, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [Azure Virtual WAN Security SaaS Provider — Method 6 Deep Dive](09-05-26-16-44_Azure_Virtual_WAN_Security_SaaS_Provider_Method_6_Deep_Dive.md)
 Deep dive into Azure Firewall Manager Security Partner Provider service insertion for VNet-to-Internet and Branch-to-Internet inspection. Covers the external SECaaS architecture, required vHub S2S VPN Gateway/IPsec service tunnel, secured `0.0.0.0/0` route programming and connection opt-in, VNet and branch packet walks, Microsoft 365 local-breakout guidance, the supported split of SECaaS for Internet and Azure Firewall for private traffic, current Zscaler-specific integration caveats, provider-list documentation conflicts, verification, HA/failure behavior, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
 
