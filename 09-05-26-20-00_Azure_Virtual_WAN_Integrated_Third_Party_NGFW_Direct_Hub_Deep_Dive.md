@@ -28,9 +28,9 @@
 
 **Reasonable inference:** Treat internal load-balancer addresses and internal vHub next-hop addresses as implementation details unless the vendor or Microsoft explicitly exposes them. Design against supported resource abstractions—Virtual Hub, Network Virtual Appliance, Routing Intent, VNet/branch connections—not against undocumented internal IPs.
 
-![Integrated NGFW architecture](images/09-05-26-20-00_integrated_ngfw_architecture_v2.svg)
+![Integrated NGFW architecture](images/09-05-26-20-00_architecture_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_integrated_ngfw_architecture_v2.drawio)
+[Editable draw.io source](images/09-05-26-20-00_architecture_v3.drawio)
 
 **What this image shows:** VNets and branches attach to the managed vHub. Routing Intent makes the integrated NGFW the service next hop for selected traffic classes.
 
@@ -94,9 +94,9 @@ Example reasoning:
 
 ## 6. The control plane: Routing Intent is the service-insertion mechanism
 
-![Routing Intent control plane](images/09-05-26-20-00_routing_intent_control_plane_v2.svg)
+![Routing Intent control plane](images/09-05-26-20-00_routing_intent_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_routing_intent_control_plane_v2.drawio)
+[Editable draw.io source](images/09-05-26-20-00_routing_intent_v3.drawio)
 
 **What this image shows:** Route sources feed the virtual hub router. Routing Intent makes the Integrated NGFW a next hop for a traffic class. After inspection, the hub performs the final destination lookup.
 
@@ -158,9 +158,9 @@ Example:
 
 ### Forward-path diagram
 
-![East-west forward packet flow](images/09-05-26-20-00_eastwest_forward.svg)
+![East-west forward packet flow](images/09-05-26-20-00_eastwest_forward_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_eastwest_forward.drawio)
+[Editable draw.io source](images/09-05-26-20-00_eastwest_forward_v3.drawio)
 
 **What this image shows:** Only the initiating VM-A → VM-B direction. Every blue arrow points in the packet's forward direction, so the service-insertion sequence is unambiguous.
 
@@ -170,9 +170,9 @@ Example:
 
 ### Return-path diagram
 
-![East-west return packet flow](images/09-05-26-20-00_eastwest_return.svg)
+![East-west return packet flow](images/09-05-26-20-00_eastwest_return_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_eastwest_return.drawio)
+[Editable draw.io source](images/09-05-26-20-00_eastwest_return_v3.drawio)
 
 **What this image shows:** Only VM-B → VM-A reply traffic. Orange arrows distinguish the return path from the initiating direction.
 
@@ -204,6 +204,30 @@ Example:
 ## 8. Branch-to-spoke and ExpressRoute packet flow
 
 For a branch prefix `10.50.0.0/16` reaching Spoke A `10.10.0.0/16`:
+
+### Forward-path diagram
+
+![Branch-to-spoke forward packet flow](images/09-05-26-20-00_branch_forward_v3.svg)
+
+[Editable draw.io source](images/09-05-26-20-00_branch_forward_v3.drawio)
+
+**What this image shows:** The branch, VPN/ExpressRoute gateway, vHub routing fabric, integrated NGFW, and Azure spoke are separate visual domains.
+
+**What matters:** This separates route learning at the branch gateway from security insertion and the final spoke lookup.
+
+**What to verify:** Prove the branch prefix is learned through the intended VPN/ER connection, then prove Routing Intent selects the NGFW, then prove the inspected flow resolves to the spoke.
+
+### Return-path diagram
+
+![Branch-to-spoke return packet flow](images/09-05-26-20-00_branch_return_v3.svg)
+
+[Editable draw.io source](images/09-05-26-20-00_branch_return_v3.drawio)
+
+**What this image shows:** The Azure workload reply returns through the vHub, NGFW state, branch route lookup, and VPN/ER gateway.
+
+**What matters:** The symmetry requirement is visible as a separate return path rather than a bidirectional line.
+
+**What to verify:** The return packet matches existing/synchronized NGFW state and the vHub resolves `10.50.0.0/16` toward the expected branch connectivity domain.
 
 ### Forward-path diagram
 
@@ -244,9 +268,9 @@ For VM-A `10.10.1.4` to `8.8.8.8:443`:
 
 ### Forward-path diagram
 
-![Internet egress forward packet flow](images/09-05-26-20-00_internet_egress_forward.svg)
+![Internet egress forward packet flow](images/09-05-26-20-00_internet_forward_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_internet_egress_forward.drawio)
+[Editable draw.io source](images/09-05-26-20-00_internet_forward_v3.drawio)
 
 **What this image shows:** Only workload-to-Internet traffic. Blue arrows show the spoke default route entering the vHub, matching Internet Routing Intent, traversing the NGFW, and leaving after security policy and SNAT.
 
@@ -263,9 +287,9 @@ For VM-A `10.10.1.4` to `8.8.8.8:443`:
 
 ### Return-path diagram
 
-![Internet egress return packet flow](images/09-05-26-20-00_internet_egress_return.svg)
+![Internet egress return packet flow](images/09-05-26-20-00_internet_return_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_internet_egress_return.drawio)
+[Editable draw.io source](images/09-05-26-20-00_internet_return_v3.drawio)
 
 **What this image shows:** Only Internet-to-workload response traffic. Orange arrows show the response reaching the security service, matching state, receiving reverse NAT, and returning through the vHub to VM-A.
 
@@ -287,9 +311,9 @@ Cisco FTDv is not currently listed on Microsoft's vHub NVA DNAT support page.
 
 ### Inbound / forward-path diagram
 
-![Internet inbound DNAT forward packet flow](images/09-05-26-20-00_dnat_inbound_forward.svg)
+![Internet inbound DNAT forward packet flow](images/09-05-26-20-00_dnat_forward_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_dnat_inbound_forward.drawio)
+[Editable draw.io source](images/09-05-26-20-00_dnat_forward_v3.drawio)
 
 **What this image shows:** Only Internet-client-to-backend traffic. Blue arrows show the client reaching the Standard public IP, Azure selecting a healthy NVA instance, the NGFW applying DNAT and usually SNAT, and the vHub forwarding to the same-hub backend.
 
@@ -299,9 +323,9 @@ Cisco FTDv is not currently listed on Microsoft's vHub NVA DNAT support page.
 
 ### Return-path diagram
 
-![Internet inbound DNAT return packet flow](images/09-05-26-20-00_dnat_inbound_return.svg)
+![Internet inbound DNAT return packet flow](images/09-05-26-20-00_dnat_return_v3.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_dnat_inbound_return.drawio)
+[Editable draw.io source](images/09-05-26-20-00_dnat_return_v3.drawio)
 
 **What this image shows:** Only backend-to-Internet-client response traffic. Orange arrows make the reverse direction explicit: backend → vHub/NVA → reverse DNAT/SNAT → Azure public-IP path → original client.
 
