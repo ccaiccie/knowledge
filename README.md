@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [Distributed GWLBE with a Centralized Third-Party Firewall Fleet — Deep Dive](09-06-26-15-23_Distributed_GWLBE_Centralized_Third_Party_Firewall_Fleet_Deep_Dive.md)
+Fine-grained distributed Gateway Load Balancer Endpoint architecture with a centralized third-party NGFW fleet. Covers exact per-subnet route-table enforcement for east-west VPC traffic, Internet north-south ingress, south-north egress through NAT Gateway, Direct Connect Transit VIF → Direct Connect Gateway → Transit Gateway routing, Site-to-Site VPN primary/backup behavior, TGW route priority, BGP, double-inspection choices, original-tuple/GENEVE packet flow, AWS CLI deployment and verification, failover, common mistakes, and symptom-based troubleshooting, with three detailed matching SVG/editable draw.io diagrams.
+
 ### [AWS Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
 Comprehensive AWS firewall-insertion guide covering AWS Network Firewall, third-party NGFW/NVAs behind Gateway Load Balancer, distributed GWLBE, centralized Transit Gateway inspection VPCs, Direct Connect transit-VIF/DXGW/TGW inspection, Internet ingress and egress, ALB/NLB placement, ELB sandwich and direct-NVA legacy designs, Cloud WAN Network Function Group service insertion, VPC Route Server/BGP active-standby patterns, NAT/source-IP behavior, appliance mode and symmetry, AWS CLI verification, failover, MTU, common mistakes, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
 
@@ -82,7 +85,7 @@ Advanced AWS DNS guide covering AmazonProvidedDNS/VPC+2, Route 53 VPC Resolver, 
 ## BGP, MPLS, and Routing
 
 ### [BGP Optimal Route Reflection (ORR) — Comprehensive Study Guide](08-29-26-15-51_bgp_optimal_route_reflection_orr.md)
-Explains RFC 9107 Optimal Route Reflection, why conventional route reflectors can cause suboptimal hot-potato routing, client-versus-RR IGP viewpoints, alternate IGP roots, client-specific route selection, Cisco IOS XR and Junos behavior, interaction with ADD-PATH, design considerations, verification, and troubleshooting.
+Explains RFC 9107 Optimal Route Reflection, why conventional route reflectors can cause suboptimal hot-potato routing, client-versus-RR IGP viewpoints, alternate IGP roots, Cisco IOS XR and Junos behavior, interaction with ADD-PATH, design considerations, verification, and troubleshooting.
 
 ### [BGP Clusters and Route Reflectors — Comprehensive Study Guide](08-29-26-15-14_bgp_clusters_study_guide.md)
 Covers route-reflector clusters, RR clients and non-clients, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, loop prevention, path-selection implications, Cisco/Juniper/FRR configuration concepts, verification, and troubleshooting.
