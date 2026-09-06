@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS ALB/NLB + Inline Firewall Endpoint — GWLB/GWLBE Deep Dive](09-06-26-16-42_AWS_ALB_NLB_Inline_Firewall_Endpoint_GWLBE_Deep_Dive.md)
+Deep dive into pre-load-balancer and post-load-balancer firewall insertion with ALB/NLB, Gateway Load Balancer, and GWLBE. Covers IGW gateway-route-table steering, VPC more-specific subnet routes, exact ALB backend packet flow, NLB IP-target requirements, client-IP preservation limitations, GENEVE/UDP 6081, per-AZ route symmetry, provider/consumer deployment CLI, TLS placement, verification, common mistakes, and troubleshooting, with three matching SVG/editable draw.io diagrams.
+
 ### [Legacy AWS Transit Gateway + Direct NVA VPC Attachment — Deep Dive](09-06-26-16-41_Legacy_TGW_NVA_VPC_Attachment_Deep_Dive.md)
 Deep dive into the pre-GWLB direct-appliance service-insertion pattern: PRE/POST Transit Gateway route tables, Inspection-VPC TGW attachment subnet routing directly to firewall ENIs, Appliance Mode and stateful symmetry, active/active and active/standby HA, source/destination check, east-west packet walks, Direct Connect transit-VIF/DXGW and Site-to-Site VPN enforcement, Internet egress variants, AWS CLI build/verification commands, bypass analysis, troubleshooting, and matching editable draw.io/SVG diagrams.
 
