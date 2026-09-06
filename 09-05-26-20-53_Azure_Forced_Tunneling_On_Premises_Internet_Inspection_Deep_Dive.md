@@ -6,6 +6,7 @@
 
 - https://learn.microsoft.com/en-us/azure/vpn-gateway/about-site-to-site-tunneling
 - https://learn.microsoft.com/en-us/azure/vpn-gateway/site-to-site-tunneling
+- https://learn.microsoft.com/en-us/cli/azure/network/vnet-gateway?view=azure-cli-latest
 - https://learn.microsoft.com/en-us/azure/expressroute/expressroute-routing
 - https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-vpn-faq
 - https://learn.microsoft.com/en-us/azure/firewall/management-nic
@@ -43,7 +44,7 @@ A VPN or ExpressRoute circuit by itself does not insert the firewall. The worklo
 | Variant | How Azure obtains the default path | Transport | Best fit |
 |---|---|---|---|
 | **VPN Gateway + BGP** | On-premises advertises `0.0.0.0/0` | S2S IPsec | Dynamic routing, redundant VPNs, enterprise BGP designs |
-| **VPN Gateway + Default Site** | A local network gateway is assigned as the gateway default site | S2S IPsec | Route-based VPN when the default is not learned through BGP |
+| **VPN Gateway + Default Site** | A Local Network Gateway is assigned as the gateway default site | S2S IPsec | Route-based VPN when the default is not learned through BGP |
 | **ExpressRoute private peering** | Customer advertises `0.0.0.0/0` on private peering | ExpressRoute private circuit | High-throughput private WAN Internet breakout |
 | **Azure Firewall then on-prem** | Spoke UDR sends traffic to Azure Firewall; Azure Firewall is then forced on-prem | VPN or ExpressRoute | Explicit double-inspection requirement |
 
@@ -109,13 +110,163 @@ A stateful firewall normally must see both directions of the session. If the out
 
 ## 4. VPN Gateway Default Site
 
-Microsoft also supports forced tunneling on a **route-based** VPN Gateway by assigning one local network gateway as the default site. The on-premises VPN device must be configured to accept `0.0.0.0/0` as the relevant traffic selector.
+Microsoft also supports forced tunneling on a **route-based VPN Gateway** by assigning one **Local Network Gateway (LNG)** as the gateway's **Default Site**. The LNG is an Azure configuration object that represents the remote on-premises site; it is **not** a packet-forwarding appliance. The actual data plane runs from the Azure VPN Gateway across the S2S IPsec tunnel to the real on-premises VPN device.
 
-### PowerShell
+![Azure VPN Gateway Default Site forced tunneling](images/09-05-26-20-53_Azure_Forced_Tunneling_On_Premises_Internet_Inspection_Deep_Dive_vpn_default_site.svg)
+
+[Editable draw.io source](images/09-05-26-20-53_Azure_Forced_Tunneling_On_Premises_Internet_Inspection_Deep_Dive_vpn_default_site.drawio)
+
+**What this image shows:** The Azure VPN Gateway is configured with `gatewayDefaultSite = LNG-HQ`. The green dashed relationship is configuration/control plane only. Internet-bound packets do not traverse the LNG object; they are forced into the S2S IPsec tunnel toward the on-premises VPN endpoint represented by `LNG-HQ`, then routed through the on-premises NGFW for inspection and Internet SNAT.
+
+**What matters:** A Default Site is an explicit gateway configuration association. It is different from dynamically learning `0.0.0.0/0` through BGP. The on-premises VPN device must also accept the broad Internet destination space in its tunnel policy/traffic selectors.
+
+**What to verify:** The gateway is `RouteBased`, `gatewayDefaultSite` references the intended LNG, the S2S connection to that LNG is connected, an Internet destination selects the Virtual Network Gateway rather than the Azure Internet system path, and the on-premises firewall sees both directions of the session.
+
+### 4.1 Resource relationship
+
+For the CLI examples below:
+
+| Azure object | Example | Meaning |
+|---|---|---|
+| Virtual Network Gateway | `VNG-Hub` | Azure VPN Gateway that terminates the S2S tunnel |
+| Local Network Gateway | `LNG-HQ` | Azure representation of the remote HQ VPN site |
+| VPN connection | `CONN-HQ` | S2S connection between `VNG-Hub` and `LNG-HQ` |
+| On-prem VPN public IP | `203.0.113.10` | Real public endpoint used by the remote VPN device |
+
+The important relationship is:
+
+`VNG-Hub.gatewayDefaultSite -> LNG-HQ`
+
+That relationship tells Azure which represented remote site should receive forced-tunneled Internet traffic. It does **not** mean that `LNG-HQ` itself routes packets.
+
+### 4.2 Azure CLI — inspect the Local Network Gateway
+
+```cli
+az network local-gateway show \
+  --resource-group RG-Network \
+  --name LNG-HQ \
+  --output jsonc
+```
+
+**What it tests:** Confirms that `LNG-HQ` represents the intended remote VPN endpoint and on-premises address spaces.
+
+**Important fields:** `gatewayIpAddress`, `localNetworkAddressSpace.addressPrefixes`, and BGP settings if BGP is also enabled.
+
+**Success criteria:** The public VPN endpoint and remote prefixes match the actual on-premises site.
+
+### 4.3 Azure CLI — set the Default Site
+
+Microsoft's current Azure CLI exposes `--gateway-default-site` on `az network vnet-gateway update`. The argument accepts the **name or resource ID of a Local Network Gateway representing a local network site with default routes**.
+
+Using the LNG name:
+
+```cli
+az network vnet-gateway update \
+  --resource-group RG-Network \
+  --name VNG-Hub \
+  --gateway-default-site LNG-HQ
+```
+
+For automation, using the full resource ID is less ambiguous:
+
+```cli
+LNG_ID=$(az network local-gateway show \
+  --resource-group RG-Network \
+  --name LNG-HQ \
+  --query id \
+  --output tsv)
+
+az network vnet-gateway update \
+  --resource-group RG-Network \
+  --name VNG-Hub \
+  --gateway-default-site "$LNG_ID"
+```
+
+**What it changes:** Sets the Virtual Network Gateway's `gatewayDefaultSite` property to `LNG-HQ`.
+
+**Configuration order recommendation:** Build and validate the S2S tunnel first, validate on-premises routing/firewall/NAT, then set the Default Site. That avoids intentionally steering production Internet traffic into an unproven path.
+
+### 4.4 Azure CLI — verify the configured Default Site
+
+```cli
+az network vnet-gateway show \
+  --resource-group RG-Network \
+  --name VNG-Hub \
+  --query gatewayDefaultSite \
+  --output json
+```
+
+**Expected state:** The returned reference points to the `LNG-HQ` Local Network Gateway resource. Exact JSON formatting can vary by CLI/API version, so validate the resource identity rather than relying on a fabricated fixed output string.
+
+You can reduce the result to the referenced resource ID:
+
+```cli
+az network vnet-gateway show \
+  --resource-group RG-Network \
+  --name VNG-Hub \
+  --query gatewayDefaultSite.id \
+  --output tsv
+```
+
+**Success criteria:** The ID ends with `/localNetworkGateways/LNG-HQ`.
+
+**Failure indicator:** Empty output, a different LNG, or an update that never reached `Succeeded` provisioning state.
+
+### 4.5 Verify the S2S connection itself
+
+```cli
+az network vpn-connection show \
+  --resource-group RG-Network \
+  --name CONN-HQ \
+  --query "{connectionStatus:connectionStatus,provisioningState:provisioningState,localNetworkGateway2:localNetworkGateway2.id}" \
+  --output json
+```
+
+**What it tests:** Confirms the connection is the one associated with the intended LNG and reports its current connection/provisioning state.
+
+**Success criteria:** The connection references `LNG-HQ`; the tunnel is connected/healthy before Internet traffic is forced through it.
+
+### 4.6 Verify the workload actually uses the forced-tunnel path
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group RG-App \
+  --name NIC-App01 \
+  --output table
+```
+
+Then test a concrete public destination with Network Watcher:
+
+```cli
+az network watcher show-next-hop \
+  --resource-group RG-App \
+  --vm App01 \
+  --nic NIC-App01 \
+  --source-ip 10.0.1.4 \
+  --dest-ip 93.184.216.34 \
+  --output table
+```
+
+**Success criteria:** The selected path is the Virtual Network Gateway/forced-tunnel path rather than direct Azure Internet egress.
+
+**Failure indicator:** `Internet` for the tested public destination means the workload is not currently being forced through the intended VPN path.
+
+### 4.7 Default Site versus BGP default route
+
+| Characteristic | VPN Gateway Default Site | BGP `0.0.0.0/0` |
+|---|---|---|
+| Control mechanism | Explicit gateway property | Dynamic BGP route advertisement |
+| Azure object involved | Local Network Gateway referenced by `gatewayDefaultSite` | BGP peer/route learned by VPN Gateway |
+| Dynamic withdrawal | No BGP withdrawal semantics inherent to the property | Yes; route can be withdrawn/reselected |
+| Data plane | S2S IPsec | S2S IPsec |
+| On-prem requirement | Remote VPN policy/selectors must support broad Internet destination space | BGP policy must advertise/permit default route plus tunnel data plane |
+| Best mental model | "Use this represented VPN site as the forced-tunnel site" | "On-prem dynamically tells Azure that default destinations are reachable through me" |
+
+### 4.8 PowerShell equivalent
 
 ```cli
 $LocalGateway = Get-AzLocalNetworkGateway `
-  -Name "DefaultSiteHQ" `
+  -Name "LNG-HQ" `
   -ResourceGroupName "RG-Network"
 
 $VirtualGateway = Get-AzVirtualNetworkGateway `
@@ -127,11 +278,7 @@ Set-AzVirtualNetworkGatewayDefaultSite `
   -VirtualNetworkGateway $VirtualGateway
 ```
 
-**What it does:** Tells the route-based VPN gateway which on-premises site should receive forced-tunneled Internet traffic.
-
-**Dependency:** The on-premises side must permit the broad Internet destination space in the tunnel policy/traffic selectors.
-
-**Operational difference from BGP:** A Default Site is a gateway configuration association. BGP, by contrast, is a dynamic routing mechanism whose advertisement can be withdrawn and re-selected during convergence.
+**Operational difference from BGP:** A Default Site is a gateway configuration association. BGP is a dynamic routing mechanism whose advertisements can be withdrawn and re-selected during convergence.
 
 ---
 
@@ -202,22 +349,19 @@ Current Azure Firewall architecture uses `AzureFirewallManagementSubnet` and a s
 
 Azure first applies **longest-prefix match**. When multiple candidate routes have the same prefix length, route source preference is:
 
-```text
-User-defined route (UDR) > BGP-propagated route > System route
-```
+| Route source at equal prefix length | Preference |
+|---|---:|
+| User-defined route (UDR) | 1 |
+| BGP-propagated route | 2 |
+| System route | 3 |
 
 Important examples:
 
-```text
-Normal Azure Internet egress:
-0.0.0.0/0 -> Internet                Source: system/default
-
-BGP forced tunneling:
-0.0.0.0/0 -> VirtualNetworkGateway   Source: gateway/BGP
-
-Explicit NVA insertion:
-0.0.0.0/0 -> VirtualAppliance        Source: user-defined route
-```
+| Scenario | Prefix | Next hop | Source |
+|---|---|---|---|
+| Normal Azure Internet egress | `0.0.0.0/0` | Internet | System/default |
+| BGP forced tunneling | `0.0.0.0/0` | Virtual Network Gateway | Gateway/BGP |
+| Explicit NVA insertion | `0.0.0.0/0` | Virtual Appliance | User-defined route |
 
 A same-length UDR can override a BGP default. This is a common reason forced tunneling appears to be configured correctly at the gateway but is not used by a workload subnet.
 
@@ -235,7 +379,7 @@ When the hybrid gateway is in a hub VNet and spokes consume it through peering:
 
 ### Do not disable BGP propagation casually
 
-Disabling gateway route propagation on a spoke route table removes routes learned through the virtual network gateway. That can remove both specific on-premises routes **and the default route that implements forced tunneling**.
+Disabling gateway route propagation on a spoke route table removes routes learned through the virtual network gateway. That can remove both specific on-premises routes **and the default route that implements forced tunneling** in BGP-based designs.
 
 ---
 
@@ -268,7 +412,7 @@ az network nic show-effective-route-table \
 
 **Failure indicators:** Default route absent; default still points to `Internet`; UDR unexpectedly wins; propagated routes are disabled.
 
-**Next action:** Check subnet route-table association, route propagation, gateway BGP state, and on-prem advertisements.
+**Next action:** Check subnet route-table association, route propagation, gateway BGP/default-site configuration, and on-prem routing.
 
 Expected-state example (columns vary by CLI version):
 
@@ -306,7 +450,7 @@ az network vnet-gateway list-bgp-peer-status \
   --output table
 ```
 
-**What it tests:** BGP session state with VPN peers.
+**What it tests:** BGP session state with VPN peers in the BGP forced-tunneling variant.
 
 **Success criteria:** Neighbor is connected and routes are being exchanged.
 
@@ -356,12 +500,13 @@ For dual data centers, BGP can steer the default route, but stateful inspection 
 
 ## 13. Common mistakes
 
-- **"The VPN exists, so Internet traffic uses it."** A matching route must actually select the VPN.
+- **"The VPN exists, so Internet traffic uses it."** A matching forced-tunnel mechanism must actually select the VPN.
+- **"The Local Network Gateway forwards the packet."** It does not. It represents the remote site; the Azure VPN Gateway and real on-premises VPN device carry the data plane.
 - **"BGP default and Default Site are identical."** They achieve a similar outcome through different control mechanisms.
 - **"ExpressRoute automatically provides Internet transit."** The customer network must route, inspect, NAT, and provide Internet breakout.
 - **"If the learned default disappears, Internet stops."** Not necessarily; remaining Azure routes determine what happens.
 - **"A stateful firewall only needs outbound packets."** Return symmetry and NAT state are fundamental.
-- **"Disable BGP propagation to simplify routing."** That may remove required on-prem/default routes.
+- **"Disable BGP propagation to simplify routing."** In BGP-based designs that may remove required on-prem/default routes.
 - **"Azure Firewall preserves the spoke source when forced on-prem."** Azure Firewall forced-tunnel Internet flows are SNATed to a firewall private IP before reaching on-premises.
 - **"ExpressRoute is encrypted."** ExpressRoute is private connectivity, not inherent IPsec encryption.
 
@@ -372,8 +517,8 @@ For dual data centers, BGP can steer the default route, but stateful inspection 
 ### Symptom: workload effective route still says `Internet`
 
 **Where:** NIC effective routes / Network Watcher Next Hop.  
-**Likely causes:** Default not advertised, BGP down, route propagation disabled, UDR override, incorrect gateway transit.  
-**Next action:** Fix route control plane before troubleshooting the firewall.
+**Likely causes:** Default Site not configured as intended, BGP default not advertised, BGP down, route propagation disabled, UDR override, incorrect gateway transit.  
+**Next action:** Fix the route/control-plane condition before troubleshooting the firewall.
 
 ### Symptom: Azure selects gateway, but on-prem firewall sees no packet
 
@@ -404,9 +549,10 @@ For dual data centers, BGP can steer the default route, but stateful inspection 
 ## 15. Design checklist
 
 - [ ] Choose VPN+BGP, VPN Default Site, or ExpressRoute private peering.
-- [ ] Confirm every target workload sees the expected effective `0.0.0.0/0`.
+- [ ] For Default Site, verify `gatewayDefaultSite` references the intended LNG.
+- [ ] Confirm every target workload sees the expected effective forced-tunnel path.
 - [ ] Validate hub/spoke gateway transit where applicable.
-- [ ] Validate BGP propagation and UDR precedence.
+- [ ] Validate BGP propagation and UDR precedence where BGP is used.
 - [ ] Size VPN/ER bandwidth for Azure Internet egress.
 - [ ] Size on-prem firewall throughput, sessions, TLS inspection, and NAT ports.
 - [ ] Confirm on-prem routing forces the flow through the intended NGFW.
@@ -426,19 +572,21 @@ For dual data centers, BGP can steer the default route, but stateful inspection 
    https://learn.microsoft.com/en-us/azure/vpn-gateway/about-site-to-site-tunneling
 2. Microsoft Learn — Configure forced tunneling using Default Site  
    https://learn.microsoft.com/en-us/azure/vpn-gateway/site-to-site-tunneling
-3. Microsoft Learn — ExpressRoute routing requirements  
+3. Microsoft Learn — Azure CLI `az network vnet-gateway` (`--gateway-default-site`)  
+   https://learn.microsoft.com/en-us/cli/azure/network/vnet-gateway?view=azure-cli-latest
+4. Microsoft Learn — ExpressRoute routing requirements  
    https://learn.microsoft.com/en-us/azure/expressroute/expressroute-routing
-4. Microsoft Learn — Azure VPN Gateway FAQ  
+5. Microsoft Learn — Azure VPN Gateway FAQ  
    https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-vpn-faq
-5. Microsoft Learn — Azure Firewall Management NIC  
+6. Microsoft Learn — Azure Firewall Management NIC  
    https://learn.microsoft.com/en-us/azure/firewall/management-nic
-6. Microsoft Learn — Azure Firewall forced tunneling  
+7. Microsoft Learn — Azure Firewall forced tunneling  
    https://learn.microsoft.com/en-us/azure/firewall/forced-tunneling
-7. Microsoft Learn — Manage route tables / effective routes  
+8. Microsoft Learn — Manage route tables / effective routes  
    https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table
-8. Microsoft Learn — Network Watcher Next Hop  
+9. Microsoft Learn — Network Watcher Next Hop  
    https://learn.microsoft.com/en-us/azure/network-watcher/next-hop-overview
-9. Microsoft Learn — Diagnose VM routing with Azure CLI  
-   https://learn.microsoft.com/en-us/azure/network-watcher/diagnose-vm-network-routing-problem-cli
-10. Microsoft Learn — Hub-and-spoke topology  
+10. Microsoft Learn — Diagnose VM routing with Azure CLI  
+    https://learn.microsoft.com/en-us/azure/network-watcher/diagnose-vm-network-routing-problem-cli
+11. Microsoft Learn — Hub-and-spoke topology  
     https://learn.microsoft.com/en-us/azure/networking/design-guide/hub-spoke
