@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker></defs>
+<text x="40" y="48" font-family="Arial" font-size="28" font-weight="700" fill="#0f172a">Provider / Consumer Separation with Cross-Subscription Chaining</text>
+<rect x="40" y="180" width="210" height="90" rx="16" fill="#ddd6fe" stroke="#334155" stroke-width="2"/>
+<text x="145.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="145.0" dy="-10">Consumer subscription</tspan><tspan x="145.0" dy="22">App VNet</tspan></text>
+<rect x="300" y="180" width="210" height="90" rx="16" fill="#bfdbfe" stroke="#334155" stroke-width="2"/>
+<text x="405.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="405.0" dy="-10">Standard Public LB</tspan><tspan x="405.0" dy="22">or Public IP</tspan></text>
+<rect x="570" y="180" width="200" height="90" rx="16" fill="#bbf7d0" stroke="#334155" stroke-width="2"/>
+<text x="670.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="670.0" dy="-10">Provider subscription</tspan><tspan x="670.0" dy="22">Gateway LB</tspan></text>
+<rect x="830" y="180" width="210" height="90" rx="16" fill="#fed7aa" stroke="#334155" stroke-width="2"/>
+<text x="935.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="935.0" dy="-10">Provider VNet</tspan><tspan x="935.0" dy="22">NVA scale set</tspan></text>
+<rect x="1090" y="180" width="80" height="90" rx="16" fill="#ddd6fe" stroke="#334155" stroke-width="2"/>
+<text x="1130.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a">App</text>
+<line x1="250" y1="225" x2="300" y2="225" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="275.0" y="215.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">reference</text>
+<line x1="510" y1="225" x2="570" y2="225" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="540.0" y="215.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">cross-sub/tenant chain</text>
+<line x1="770" y1="225" x2="830" y2="225" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="800.0" y="215.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">VXLAN</text>
+<line x1="1040" y1="225" x2="1090" y2="225" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="1065.0" y="215.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">transparent return</text>
+</svg>
