@@ -66,19 +66,21 @@ This guide covers every major Azure-native way to combine those choices, without
 
 # 2. Quick decision matrix
 
+**Click any method name to jump directly to the section that explains it.**
+
 | Method | Typical inspector | Best for | East-west | Internet egress | Internet ingress | Hybrid/branch | Main steering mechanism |
 |---|---|---|---:|---:|---:|---:|---|
-| Hub VNet + Azure Firewall | Azure Firewall | Classic enterprise hub-spoke | Yes | Yes | Yes, DNAT | Yes | UDR + VNet peering/gateway transit |
-| Hub VNet + third-party NVA | Palo Alto/Fortinet/Check Point/Cisco/etc. | Feature-rich NGFW requirements | Yes | Yes | Yes | Yes | UDR, ILB, BGP, Route Server |
-| Virtual WAN secured hub | Azure Firewall | Managed global transit + centralized policy | Yes | Yes | Possible | Yes | Routing Intent / hub policy |
-| Virtual WAN integrated NGFW | Qualified integrated NVA | Managed vWAN + third-party NGFW | Yes | Yes | Vendor-dependent | Yes | Routing Intent |
-| Virtual WAN + security SaaS | Security partner service | Cloud-delivered internet/private inspection | Policy-dependent | Yes | Usually not app publication | Yes | Routing Intent |
-| Standard LB HA Ports + NVA pair | Third-party NVA | Active-active/active-passive firewall HA | Yes | Yes | Yes | Yes | UDR/BGP to ILB VIP |
-| Gateway Load Balancer | Third-party transparent NVA | Transparent insertion on public endpoints | Limited to chained path | Yes | Yes | Not general hub transit | Service chaining / VXLAN |
-| Azure Route Server + NVA | Third-party NVA | Dynamic BGP-based service insertion | Yes | Yes | Possible | Yes | BGP route exchange |
-| Forced tunneling to on-prem | Azure Firewall and/or on-prem NGFW | Centralized corporate internet egress | Yes locally | Yes, on-prem | Generally no Azure Firewall DNAT in FT design | Yes | Default route to gateway/on-prem |
-| Front Door WAF / App Gateway WAF | WAF | HTTP/HTTPS threat inspection | No generic L3/L4 east-west | No generic egress | Yes | No generic transit | Reverse proxy |
-| Private Endpoint inspection | Azure Firewall / NVA | Private Link governance | Yes for PE flows | N/A | N/A | Yes | UDR/routing intent + PE network policies |
+| [Hub VNet + Azure Firewall](#3-method-1--azure-firewall-in-a-customer-managed-hub-vnet) | Azure Firewall | Classic enterprise hub-spoke | Yes | Yes | Yes, DNAT | Yes | UDR + VNet peering/gateway transit |
+| [Hub VNet + third-party NVA](#4-method-2--third-party-ngfwnva-in-a-customer-managed-hub-vnet) | Palo Alto/Fortinet/Check Point/Cisco/etc. | Feature-rich NGFW requirements | Yes | Yes | Yes | Yes | UDR, ILB, BGP, Route Server |
+| [Virtual WAN secured hub](#6-method-4--azure-virtual-wan-secured-hub-with-azure-firewall) | Azure Firewall | Managed global transit + centralized policy | Yes | Yes | Possible | Yes | Routing Intent / hub policy |
+| [Virtual WAN integrated NGFW](#7-method-5--integrated-third-party-ngfw-directly-inside-the-virtual-wan-hub) | Qualified integrated NVA | Managed vWAN + third-party NGFW | Yes | Yes | Vendor-dependent | Yes | Routing Intent |
+| [Virtual WAN + security SaaS](#8-method-6--virtual-wan-security-saas-provider) | Security partner service | Cloud-delivered internet/private inspection | Policy-dependent | Yes | Usually not app publication | Yes | Routing Intent |
+| [Standard LB HA Ports + NVA pair](#42-redundant-nva-pair-behind-standard-load-balancer-ha-ports) | Third-party NVA | Active-active/active-passive firewall HA | Yes | Yes | Yes | Yes | UDR/BGP to ILB VIP |
+| [Gateway Load Balancer](#9-method-7--gateway-load-balancer-for-transparent-nva-insertion) | Third-party transparent NVA | Transparent insertion on public endpoints | Limited to chained path | Yes | Yes | Not general hub transit | Service chaining / VXLAN |
+| [Azure Route Server + NVA](#5-method-3--azure-route-server--third-party-nva-for-dynamic-service-insertion) | Third-party NVA | Dynamic BGP-based service insertion | Yes | Yes | Possible | Yes | BGP route exchange |
+| [Forced tunneling to on-prem](#10-method-8--forced-tunneling-inspect-internet-traffic-on-premises) | Azure Firewall and/or on-prem NGFW | Centralized corporate internet egress | Yes locally | Yes, on-prem | Generally no Azure Firewall DNAT in FT design | Yes | Default route to gateway/on-prem |
+| [Front Door WAF / App Gateway WAF](#11-method-9--layer-7-web-firewall-inspection-with-azure-front-door-waf-and-application-gateway-waf) | WAF | HTTP/HTTPS threat inspection | No generic L3/L4 east-west | No generic egress | Yes | No generic transit | Reverse proxy |
+| [Private Endpoint inspection](#12-method-10--inspect-traffic-to-azure-private-endpoints) | Azure Firewall / NVA | Private Link governance | Yes for PE flows | N/A | N/A | Yes | UDR/routing intent + PE network policies |
 
 **Additional explanation:** Network Security Groups (NSGs), Azure Virtual Network Manager security admin rules, service endpoints, Private Link itself, and DDoS Protection are important network-security controls, but they are **not substitutes for a routed firewall inspection point**. NSGs are stateful L3/L4 filters attached to NIC/subnet scope; they do not proxy, decrypt TLS, provide NGFW IDPS, or create a centralized service-insertion hop.
 
