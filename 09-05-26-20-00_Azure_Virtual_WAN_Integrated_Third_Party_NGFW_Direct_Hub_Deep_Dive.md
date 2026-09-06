@@ -28,9 +28,9 @@
 
 **Reasonable inference:** Treat internal load-balancer addresses and internal vHub next-hop addresses as implementation details unless the vendor or Microsoft explicitly exposes them. Design against supported resource abstractions—Virtual Hub, Network Virtual Appliance, Routing Intent, VNet/branch connections—not against undocumented internal IPs.
 
-![Integrated NGFW architecture](images/09-05-26-20-00_integrated_ngfw_architecture.svg)
+![Integrated NGFW architecture](images/09-05-26-20-00_integrated_ngfw_architecture_v2.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_integrated_ngfw_architecture.drawio)
+[Editable draw.io source](images/09-05-26-20-00_integrated_ngfw_architecture_v2.drawio)
 
 **What this image shows:** VNets and branches attach to the managed vHub. Routing Intent makes the integrated NGFW the service next hop for selected traffic classes.
 
@@ -94,9 +94,9 @@ Example reasoning:
 
 ## 6. The control plane: Routing Intent is the service-insertion mechanism
 
-![Routing Intent control plane](images/09-05-26-20-00_routing_intent_control_plane.svg)
+![Routing Intent control plane](images/09-05-26-20-00_routing_intent_control_plane_v2.svg)
 
-[Editable draw.io source](images/09-05-26-20-00_routing_intent_control_plane.drawio)
+[Editable draw.io source](images/09-05-26-20-00_routing_intent_control_plane_v2.drawio)
 
 **What this image shows:** Route sources feed the virtual hub router. Routing Intent makes the Integrated NGFW a next hop for a traffic class. After inspection, the hub performs the final destination lookup.
 
@@ -156,15 +156,29 @@ Example:
 - VM-B: `10.20.1.4`
 - Private Traffic policy: NVA
 
-![Private packet flow](images/09-05-26-20-00_private_packet_flow.svg)
+### Forward-path diagram
 
-[Editable draw.io source](images/09-05-26-20-00_private_packet_flow.drawio)
+![East-west forward packet flow](images/09-05-26-20-00_eastwest_forward.svg)
 
-**What this image shows:** Both forward and return directions cross the same logical NGFW insertion point.
+[Editable draw.io source](images/09-05-26-20-00_eastwest_forward.drawio)
 
-**What matters:** For a stateful firewall, forward and return traffic must reach compatible state. Azure's managed integration and the vendor's HA/session model jointly determine this behavior.
+**What this image shows:** Only the initiating VM-A → VM-B direction. Every blue arrow points in the packet's forward direction, so the service-insertion sequence is unambiguous.
 
-**What to verify:** Firewall session logs in both directions, route symmetry, and no spoke UDR bypassing vHub inspection.
+**What matters:** The vHub classifies the destination as Private Traffic, Routing Intent sends it through the Integrated NGFW, and only after inspection does the vHub resolve the destination spoke.
+
+**What to verify:** VM-A selects the vHub path, the NVA creates a session from `10.10.1.4` to `10.20.1.4`, and the post-inspection lookup resolves toward Spoke B.
+
+### Return-path diagram
+
+![East-west return packet flow](images/09-05-26-20-00_eastwest_return.svg)
+
+[Editable draw.io source](images/09-05-26-20-00_eastwest_return.drawio)
+
+**What this image shows:** Only VM-B → VM-A reply traffic. Orange arrows distinguish the return path from the initiating direction.
+
+**What matters:** The reply is reinserted through the same logical security service. The NGFW must match the existing session or synchronized state before the vHub forwards toward Spoke A.
+
+**What to verify:** The firewall sees the return packet in the established session/state and no alternate route bypasses the security next hop.
 
 ### Forward packet
 
@@ -204,12 +218,36 @@ For branch-to-branch inspection, ensure the Virtual WAN design enables the requi
 
 For VM-A `10.10.1.4` to `8.8.8.8:443`:
 
+### Forward-path diagram
+
+![Internet egress forward packet flow](images/09-05-26-20-00_internet_egress_forward.svg)
+
+[Editable draw.io source](images/09-05-26-20-00_internet_egress_forward.drawio)
+
+**What this image shows:** Only workload-to-Internet traffic. Blue arrows show the spoke default route entering the vHub, matching Internet Routing Intent, traversing the NGFW, and leaving after security policy and SNAT.
+
+**What matters:** The workload must actually learn/select the secured `0.0.0.0/0`; otherwise the diagrammed path is bypassed.
+
+**What to verify:** Effective routes contain the secured default route, the NGFW records the outbound session/NAT mapping, and the translated flow exits through the intended Internet path.
+
 1. The spoke must have a secured default route learned through the vHub connection.
 2. `0.0.0.0/0` matches the Internet routing policy.
 3. The vHub inserts the Integrated NGFW.
 4. The NGFW applies security policy and vendor-specific egress NAT.
 5. Traffic exits toward the Internet through the integrated security path.
 6. Return packets land on the security service, reverse NAT/state is applied, and the vHub returns traffic to the spoke.
+
+### Return-path diagram
+
+![Internet egress return packet flow](images/09-05-26-20-00_internet_egress_return.svg)
+
+[Editable draw.io source](images/09-05-26-20-00_internet_egress_return.drawio)
+
+**What this image shows:** Only Internet-to-workload response traffic. Orange arrows show the response reaching the security service, matching state, receiving reverse NAT, and returning through the vHub to VM-A.
+
+**What matters:** Return traffic must reach compatible firewall state; reverse NAT restores the original private client before the vHub performs the spoke lookup.
+
+**What to verify:** The response matches the existing firewall session/NAT entry and the final vHub lookup resolves `10.10.0.0/16` toward Spoke A.
 
 **Common failure:** `0.0.0.0/0` is absent from the workload NIC's effective route table because Internet security/default-route propagation was not enabled for the VNet connection.
 
@@ -223,15 +261,29 @@ Microsoft currently documents DNAT only for:
 
 Cisco FTDv is not currently listed on Microsoft's vHub NVA DNAT support page.
 
-![DNAT packet flow](images/09-05-26-20-00_dnat_packet_flow.svg)
+### Inbound / forward-path diagram
 
-[Editable draw.io source](images/09-05-26-20-00_dnat_packet_flow.drawio)
+![Internet inbound DNAT forward packet flow](images/09-05-26-20-00_dnat_inbound_forward.svg)
 
-**What this image shows:** Azure receives traffic on a Standard public IP associated with the Integrated NVA, load-balances to a healthy firewall instance, and the firewall performs DNAT plus usually SNAT for symmetry.
+[Editable draw.io source](images/09-05-26-20-00_dnat_inbound_forward.drawio)
 
-**What matters:** DNAT is not merely a firewall rule. The NVA deployment must have been created as Internet-Inbound capable so Azure programs supporting infrastructure.
+**What this image shows:** Only Internet-client-to-backend traffic. Blue arrows show the client reaching the Standard public IP, Azure selecting a healthy NVA instance, the NGFW applying DNAT and usually SNAT, and the vHub forwarding to the same-hub backend.
 
-**What to verify:** Same-region Standard IPv4 public IP, deployment-time DNAT eligibility, NVA health probes, NAT rules in vendor management, and same-hub destination routing.
+**What matters:** DNAT is not merely a firewall rule. The NVA deployment must have been created as Internet-Inbound capable so Azure programs the public-IP and health/load-balancing infrastructure.
+
+**What to verify:** Same-region Standard IPv4 public IP, deployment-time DNAT eligibility, healthy NVA probes, the expected pre/post-NAT tuple, and same-hub destination routing.
+
+### Return-path diagram
+
+![Internet inbound DNAT return packet flow](images/09-05-26-20-00_dnat_inbound_return.svg)
+
+[Editable draw.io source](images/09-05-26-20-00_dnat_inbound_return.drawio)
+
+**What this image shows:** Only backend-to-Internet-client response traffic. Orange arrows make the reverse direction explicit: backend → vHub/NVA → reverse DNAT/SNAT → Azure public-IP path → original client.
+
+**What matters:** This is why integrated inbound designs normally SNAT as well as DNAT: the backend replies to a firewall-owned translated source, keeping the response tied to the selected firewall instance/state.
+
+**What to verify:** The backend reply targets the translated source, the same firewall instance/state reverses NAT, and the client receives the response from the published public IP.
 
 ### 10.1 DNAT requirements and limits
 
