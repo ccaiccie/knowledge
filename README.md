@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Front Door WAF and Application Gateway WAF — Method 9 Deep Dive](09-06-26-10-24_Azure_Front_Door_Application_Gateway_WAF_Method_9_Deep_Dive.md)
+Deep dive into Layer-7 HTTP/HTTPS firewall inspection with Azure Front Door WAF and Application Gateway WAF v2. Covers global-edge versus regional reverse-proxy architecture, Front Door origin lockdown with Private Link or `AzureFrontDoor.Backend` plus `X-Azure-FDID`, managed/custom rules and anomaly scoring, rate limiting, three-leg TLS and client-IP behavior, Front Door-to-Application-Gateway layering, Azure CLI deployment, backend routing, Azure Firewall coexistence, HA/failover, verification, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [Azure Forced Tunneling — Inspect Internet Traffic On-Premises](09-05-26-20-53_Azure_Forced_Tunneling_On_Premises_Internet_Inspection_Deep_Dive.md)
 Deep dive into forcing Azure Internet-bound traffic to on-premises inspection using VPN Gateway BGP defaults, VPN Gateway Default Site, and ExpressRoute private peering. Covers exact packet and return paths, on-premises SNAT, stateful symmetry, route selection and BGP/UDR precedence, hub-spoke gateway transit, fail-open behavior when learned defaults disappear, optional Azure-Firewall-to-on-premises double inspection, effective-route/Network-Watcher verification, MTU considerations, failover, common mistakes, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
 
@@ -64,7 +67,7 @@ Deep dive into AWS Cloud WAN as a policy-driven global Layer 3 WAN. Covers Globa
 ### [AWS PrivateLink, VPC Endpoints, and GWLB Firewall Inspection](09-04-26-16-18_AWS_PrivateLink_GWLB_Firewall_Inspection_Study_Guide.md)
 Deep dive into AWS PrivateLink and VPC endpoint types, including interface endpoints, endpoint services, resource/service-network endpoints, and the distinction between gateway endpoints and PrivateLink. Covers Gateway Load Balancer Endpoints (GWLBE), route-table-based traffic steering, GENEVE-based appliance insertion, centralized and distributed firewall inspection, packet flows, security controls, limitations, and troubleshooting.
 
-### [AWS DNS for Network Experts — Route 53 VPC Resolver](09-04-26-15-43_AWS_DNS_Route53_Resolver_Network_Expert_Study_Guide.md)
+### [AWS DNS for Network Experts — Route 53 VPC Resolver](09-04-26-15-43_AWS_DNS_Route53_Resolver_Study_Guide.md)
 Advanced AWS DNS guide covering AmazonProvidedDNS/VPC+2, Route 53 VPC Resolver, inbound and outbound Resolver endpoints, forwarding and delegation rules, private hosted zones, hybrid on-premises DNS, Route 53 Profiles, DNS Firewall, query logging, DNS over HTTPS, DNSSEC-related concepts, centralized multi-account DNS, high availability, troubleshooting, and Route 53 Global Resolver.
 
 ## BGP, MPLS, and Routing
