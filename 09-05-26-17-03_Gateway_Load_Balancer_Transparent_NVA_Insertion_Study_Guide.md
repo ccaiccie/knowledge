@@ -86,6 +86,7 @@ Microsoft's own high-level architecture figure is useful for comparison:
 
 ---
 
+
 ## Configuration-level view: what “chaining” actually means
 
 **Source information:** Microsoft defines *chaining* very specifically: the **Standard Public Load Balancer frontend IP configuration** (or a supported VM NIC IP configuration) contains a **resource reference to the Gateway Load Balancer frontend IP configuration**. Once that reference is present, Azure inserts the GWLB/NVA path for traffic served by that consumer endpoint. No UDR is required, and the GWLB frontend cannot be used as a UDR next hop.
@@ -193,45 +194,135 @@ TCP SYN
 ```
 
 1. The packet reaches `app-frontend` because `52.160.10.10` belongs to that frontend.
-2. Azure reads the Gateway Load Balancer frontend reference on `app-frontend`; that reference causes Azure to invoke the GWLB service chain for the flow.
-3. GWLB selects a healthy NVA and sends the original traffic through the configured VXLAN tunnel.
-4. The NVA inspects the packet and returns allowed traffic through the complementary tunnel.
-5. GWLB returns the packet to the consumer Standard Public Load Balancer.
-6. The consumer Load Balancer applies its ordinary TCP/443 rule and selects the application backend.
+2. Azure sees that `app-frontend` contains a Gateway Load Balancer frontend reference.
+3. Azure invokes that GWLB service chain.
+4. GWLB selects a healthy NVA and sends the original traffic through the configured VXLAN tunnel.
+5. The NVA inspects the packet and returns allowed traffic through the complementary tunnel.
+6. GWLB returns the packet to the consumer Standard Public Load Balancer.
+7. The consumer Load Balancer applies its ordinary TCP/443 rule and selects the application backend.
 
-That is the precise meaning of the earlier sentence that Azure “redirects the flow into the Gateway Load Balancer service path”: the **frontend resource reference**, not a UDR route, triggers the insertion.
+That is the precise meaning of the earlier sentence that Azure “redirects the flow into the Gateway Load Balancer service path.”
 
 ---
 
-## Outbound inspection — the outbound-rule frontend must also be chained
+## Outbound inspection — two supported GWLB patterns, plus the NAT Gateway exception
 
-**Source information:** Gateway Load Balancer supports outbound inspection, but with a Standard Load Balancer the GWLB must be chained to the **frontend IP configuration selected by the outbound rule**. The outbound rule determines which frontend IP configuration performs outbound connectivity; that frontend must contain the GWLB reference.
+Gateway Load Balancer outbound inspection is **not limited to VMs that receive inbound traffic through a public Load Balancer**. Microsoft documents two supported consumer patterns for outbound inspection:
 
-![GWLB outbound-rule chaining flow](images/09-05-26-17-03_GWLB_Outbound_Rule_Chaining_Flow.svg)
+| VM / egress model | Can GWLB inspect outbound? | How the chain is created |
+|---|---|---|
+| VM has its own **Standard public IP** | **Yes** | Chain the VM NIC IP configuration directly to the GWLB frontend |
+| VM has **no public IP** | **Yes** | Put the VM in a Standard Public Load Balancer backend pool, create an outbound rule, and chain the **frontend selected by that outbound rule** to GWLB |
+| Subnet uses **NAT Gateway** for egress | **No, not through GWLB chaining** | NAT Gateway currently does not support GWLB chaining and takes precedence for new outbound connections |
 
-[Editable draw.io — outbound-rule chaining flow](images/09-05-26-17-03_GWLB_Outbound_Rule_Chaining_Flow.drawio)
+Microsoft reference: https://learn.microsoft.com/en-us/azure/load-balancer/tutorial-gateway-outbound-connectivity
 
-**What this image shows:** A backend workload belongs to a Standard Load Balancer backend pool. An outbound rule selects `myOutboundFrontend`. That frontend contains the GWLB frontend resource reference, so the outbound flow is sent through GWLB/NVA inspection before the consumer Load Balancer completes outbound translation and Internet egress.
+### Outbound patterns at a glance
 
-**What matters:** The service-chain trigger is still the frontend reference. The outbound rule does not point to the firewall. It points to a frontend IP configuration, and **that frontend** is chained to GWLB.
+![GWLB outbound supported patterns](images/09-05-26-17-03_GWLB_Outbound_Service_Chaining.svg)
 
-**What to verify:** Confirm the workload is in the backend pool used by the outbound rule; confirm the outbound rule selects the expected frontend; then confirm that exact frontend is chained to the intended GWLB frontend.
+[Editable draw.io — GWLB outbound supported patterns](images/09-05-26-17-03_GWLB_Outbound_Service_Chaining.drawio)
 
-### Outbound packet order
+**What this image shows:** Three distinct cases. Pattern A chains a VM NIC IP configuration that already has a Standard public IP. Pattern B keeps the VM private-only and uses a Standard Public Load Balancer outbound rule whose selected frontend is chained to GWLB. Pattern C shows the NAT Gateway exception: NAT Gateway-served outbound traffic does not traverse the GWLB chain.
 
-1. The workload creates an Internet-bound connection.
-2. The Standard Load Balancer outbound rule applies to the workload/backend pool.
-3. The outbound rule selects its configured frontend IP configuration, for example `myOutboundFrontend`.
-4. Because `myOutboundFrontend` references the GWLB frontend, Azure invokes the GWLB service chain.
-5. GWLB sends the flow by VXLAN to the selected NVA.
-6. The NVA inspects the flow and returns allowed traffic to GWLB.
-7. GWLB returns the flow to the consumer Standard Load Balancer.
-8. The consumer Load Balancer completes its outbound processing/SNAT and sends the packet to the Internet.
-9. Return traffic for that connection follows the corresponding consumer/GWLB service path so the stateful NVA sees the return direction.
+**What matters:** GWLB is not a subnet-wide next hop. A supported consumer resource must reference the GWLB frontend. For a private-only VM, the consumer resource is the **Standard Public Load Balancer frontend used by the outbound rule**, not the VM NIC itself.
 
-### Example outbound-rule configuration
+**What to verify:** Identify the actual outbound method used by the VM before troubleshooting GWLB. Check whether the VM has an instance-level public IP, belongs to a Load Balancer backend pool with an outbound rule, or resides in a subnet with NAT Gateway.
 
-Create or configure an outbound rule whose frontend is the frontend you chained to GWLB:
+### Pattern A — regular VM with its own Standard public IP
+
+Microsoft supports chaining a VM NIC IP configuration directly to GWLB, but the VM must already have a public IP assigned.
+
+```text
+VM
+NIC IP configuration
+    |
+    | Standard public IP attached
+    | gatewayLoadBalancer = <GWLB frontend resource ID>
+    v
+Gateway Load Balancer
+    |
+    | VXLAN
+    v
+NVA / firewall
+    |
+    v
+Gateway Load Balancer
+    |
+    v
+VM public-IP path
+    |
+    v
+Internet
+```
+
+Example:
+
+```cli
+GWLB_FE_ID=$(az network lb frontend-ip show \
+  --resource-group <SECURITY_RESOURCE_GROUP> \
+  --lb-name security-gwlb \
+  --name gwlb-frontend \
+  --query id \
+  --output tsv)
+
+az network nic ip-config update \
+  --resource-group <VM_RESOURCE_GROUP> \
+  --nic-name <NIC_NAME> \
+  --name <IP_CONFIG_NAME> \
+  --gateway-lb "$GWLB_FE_ID"
+```
+
+> **Prerequisite:** Microsoft states that the VM must have a public IP assigned before its NIC IP configuration can be chained to GWLB.
+
+### Pattern B — private-only VM with no public IP
+
+A VM **does not need its own public IP** to have outbound traffic inspected by GWLB. Instead:
+
+1. Put the VM NIC in a **Standard Public Load Balancer backend pool**.
+2. Create an **outbound rule** for that backend pool.
+3. The outbound rule selects a **public frontend IP configuration**.
+4. Chain that exact frontend IP configuration to the GWLB frontend.
+5. GWLB inserts the NVA before the Standard Load Balancer completes outbound SNAT and Internet egress.
+
+![GWLB private-only VM outbound-rule chaining](images/09-05-26-17-03_GWLB_Outbound_Rule_Chaining_Flow.svg)
+
+[Editable draw.io — private-only VM outbound-rule chaining](images/09-05-26-17-03_GWLB_Outbound_Rule_Chaining_Flow.drawio)
+
+**What this image shows:** The private VM has only `10.0.1.4`. It belongs to `app-backend-pool`. `myOutboundRule` selects `myOutboundFrontend`. That frontend owns the public IP used for outbound SNAT and contains the `gatewayLoadBalancer` reference that invokes GWLB/NVA inspection.
+
+**What matters:** The VM can be in the Load Balancer backend pool **only for outbound connectivity**. Microsoft documents an outbound-only Standard Load Balancer scenario where backend VMs need Internet egress but do not need inbound load-balancing rules.
+
+**What to verify:** The VM NIC is in the correct backend pool, the outbound rule references that backend pool, the rule selects the intended frontend, and that exact frontend is chained to the GWLB frontend.
+
+#### Detailed outbound packet walk
+
+Assume:
+
+```text
+VM private IP:          10.0.1.4
+VM public IP:           none
+LB backend pool:        app-backend-pool
+Outbound rule:          myOutboundRule
+Outbound frontend:      myOutboundFrontend
+Frontend public IP:     20.50.60.70
+GWLB frontend:          gwlb-frontend
+```
+
+Then:
+
+1. `10.0.1.4` initiates an Internet-bound connection.
+2. Because the VM is in `app-backend-pool`, the Standard Load Balancer outbound rule applies.
+3. `myOutboundRule` selects `myOutboundFrontend`.
+4. `myOutboundFrontend` contains a reference to `gwlb-frontend`.
+5. Azure invokes the GWLB service chain.
+6. GWLB selects a healthy NVA and encapsulates the flow in VXLAN.
+7. The NVA inspects the original flow and returns allowed traffic to GWLB.
+8. GWLB returns the flow to the Standard Public Load Balancer consumer path.
+9. The Standard Load Balancer performs outbound SNAT using its frontend public IP and sends the packet to the Internet.
+10. Return traffic follows the corresponding chained flow so the stateful NVA sees the response direction.
+
+#### Example outbound-rule configuration
 
 ```cli
 az network lb outbound-rule create \
@@ -243,7 +334,7 @@ az network lb outbound-rule create \
   --protocol All
 ```
 
-Then ensure `myOutboundFrontend` contains the GWLB reference:
+Then chain the frontend selected by that rule:
 
 ```cli
 GWLB_FE_ID=$(az network lb frontend-ip show \
@@ -260,7 +351,26 @@ az network lb frontend-ip update \
   --gateway-lb "$GWLB_FE_ID"
 ```
 
-> **NAT Gateway warning — source information:** Microsoft currently states that **Gateway Load Balancer does not support chaining with NAT Gateway**. If NAT Gateway serves outbound traffic for the subnet, NAT Gateway takes precedence over instance-level public IPs and Load Balancer outbound connectivity, and that outbound traffic goes directly to the Internet rather than through GWLB. A design can still use GWLB for inbound traffic while NAT Gateway handles outbound traffic directly.
+### Pattern C — NAT Gateway does not use GWLB chaining
+
+**Source information:** Microsoft currently states that **Gateway Load Balancer does not support chaining with NAT Gateway**. When NAT Gateway serves outbound traffic for a subnet, it takes precedence over Standard Load Balancer outbound rules and instance-level public IP addresses for new outbound connections.
+
+Therefore:
+
+```text
+Private VM -> NAT Gateway -> Internet
+```
+
+does **not** become:
+
+```text
+Private VM -> NAT Gateway -> GWLB -> NVA -> Internet
+```
+
+A design may still use GWLB for inbound traffic while NAT Gateway separately provides direct outbound Internet connectivity, but that outbound traffic is not inspected through the GWLB chain.
+
+> **Important nuance:** NAT Gateway precedence is about Azure outbound-connectivity methods. A traditional UDR that sends `0.0.0.0/0` to a routable NVA is a different architecture and can override NAT Gateway routing behavior, but that is **not Gateway Load Balancer chaining**.
+
 
 ---
 # 4. Why VXLAN is used
@@ -343,33 +453,34 @@ Microsoft's Quickstart sample explicitly documents a 12-step version of this flo
 
 # 6. Outbound inspection
 
-Gateway Load Balancer can also inspect outbound traffic, but the important question is: **which public consumer resource owns the outbound path?**
+The detailed outbound section above now separates the supported cases clearly.
 
-![GWLB outbound service chaining](images/09-05-26-17-03_GWLB_Outbound_Service_Chaining.svg)
+```text
+VM has Standard public IP
+    -> chain NIC IP configuration directly to GWLB
 
-[Editable draw.io — outbound service chaining](images/09-05-26-17-03_GWLB_Outbound_Service_Chaining.drawio)
+VM has no public IP
+    -> Standard Public LB backend pool
+    -> outbound rule
+    -> selected public frontend
+    -> frontend chained to GWLB
+    -> NVA inspection
+    -> Standard LB SNAT
+    -> Internet
 
-**What this image shows:** A workload's outbound flow reaches a supported consumer public endpoint configuration that is chained to GWLB; the flow is sent through the NVA before final Internet egress.
+Subnet uses NAT Gateway
+    -> NAT Gateway serves new outbound connections
+    -> no GWLB chaining in that outbound path
+```
 
-**What matters:** Outbound inspection is not achieved by placing a `0.0.0.0/0` UDR toward the GWLB. Microsoft states that when using Standard Load Balancer outbound rules, the GWLB must be chained to the frontend IP configuration selected by those outbound rules.
+The private-only VM case does **not** require an inbound load-balancing rule. The Standard Public Load Balancer can be used as an **outbound-only** consumer for those backend VMs.
 
-**What to verify:** Determine the actual egress mechanism—Standard Load Balancer outbound rule, VM public IP, NAT Gateway, or something else. Only the documented supported consumer chaining path invokes GWLB.
+See:
 
-## Standard Load Balancer outbound-rule case
+- https://learn.microsoft.com/en-us/azure/load-balancer/gateway-overview
+- https://learn.microsoft.com/en-us/azure/load-balancer/tutorial-gateway-outbound-connectivity
+- https://learn.microsoft.com/en-us/azure/load-balancer/outbound-rules
 
-**Source information:** To insert NVAs into outbound traffic when using Standard Load Balancer, chain GWLB to the frontend IP configuration referenced by the outbound rule.
-
-**Additional explanation:** The service chain operates before the consumer resource completes its normal outbound handling. The NVA sees the workload flow, returns an allowed packet to GWLB, and then the consumer resource continues its outbound translation/forwarding.
-
-## VM public-IP case
-
-Microsoft also supports chaining a VM NIC IP configuration to GWLB, but the VM must have a public IP assigned before the NIC IP configuration can be chained.
-
-This is useful when a workload is directly exposed through a Standard public IP rather than through a Standard Public Load Balancer.
-
-## NAT Gateway caveat
-
-**Source information:** Microsoft currently states that Gateway Load Balancer **does not support chaining with NAT Gateway**. If NAT Gateway serves outbound connectivity for a subnet, NAT Gateway takes precedence and the outbound traffic goes directly to the Internet rather than through the GWLB service chain. GWLB can still inspect inbound traffic while NAT Gateway separately provides direct outbound connectivity.
 
 ---
 
@@ -1028,6 +1139,7 @@ That second model is the wrong mental model for Azure Gateway Load Balancer.
 | How is traffic steered to GWLB? | By chaining a supported consumer endpoint, not by UDR next hop |
 | What does “chain” mean in configuration? | The consumer frontend or NIC IP configuration contains a reference to a GWLB frontend IP configuration |
 | How does Standard Load Balancer outbound inspection invoke GWLB? | The outbound rule selects a frontend IP configuration, and that frontend must be chained to GWLB |
+| Can a private-only VM use GWLB for outbound inspection? | Yes. Put it in a Standard Public Load Balancer backend pool, create an outbound rule, and chain the frontend selected by that outbound rule to GWLB. The VM itself does not need a public IP. |
 | Does NAT Gateway outbound traffic traverse GWLB? | No. NAT Gateway currently does not support GWLB chaining and takes precedence for outbound connectivity |
 | What protocol carries packets to NVAs? | VXLAN |
 | Why two tunnel interfaces? | Separate untrusted/not-yet-inspected and trusted/inspected directions |
