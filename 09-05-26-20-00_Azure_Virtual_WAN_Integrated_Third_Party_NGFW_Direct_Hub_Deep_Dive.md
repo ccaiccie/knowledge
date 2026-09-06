@@ -135,7 +135,11 @@ For spoke VNets, verify the connection's **Enable Internet Security / propagate 
 The Azure CLI routing-intent command group is currently documented as a **Preview extension** (Virtual WAN extension, Azure CLI 2.55.0+).
 
 ```cli
-az network vhub routing-intent show   --resource-group RG-Network   --vhub vhub-westus2   --name routingIntent   --output json
+az network vhub routing-intent show \
+  --resource-group RG-Network \
+  --vhub vhub-westus2 \
+  --name routingIntent \
+  --output json
 ```
 
 **Expected successful state:** The returned object contains the intended routing policies and next-hop resource IDs. Do not validate only that the command succeeds; confirm the Private/Internet destinations point to the expected NVA resource.
@@ -143,7 +147,11 @@ az network vhub routing-intent show   --resource-group RG-Network   --vhub vhub-
 A source-supported creation pattern is:
 
 ```cli
-az network vhub routing-intent create   --name routingIntent   --resource-group RG-Network   --vhub vhub-westus2   --routing-policies "[{name:InternetTraffic,destinations:[Internet],next-hop:<NVA_RESOURCE_ID>},{name:PrivateTrafficPolicy,destinations:[PrivateTraffic],next-hop:<NVA_RESOURCE_ID>}]"
+az network vhub routing-intent create \
+  --name routingIntent \
+  --resource-group RG-Network \
+  --vhub vhub-westus2 \
+  --routing-policies "[{name:InternetTraffic,destinations:[Internet],next-hop:<NVA_RESOURCE_ID>},{name:PrivateTrafficPolicy,destinations:[PrivateTraffic],next-hop:<NVA_RESOURCE_ID>}]"
 ```
 
 Replace `<NVA_RESOURCE_ID>` with the actual Integrated NVA Azure resource ID.
@@ -364,7 +372,10 @@ If a probe is blocked, Azure can stop sending traffic to an otherwise running ap
 ### Show the Integrated NVA resource
 
 ```cli
-az network virtual-appliance show   --resource-group RG-NVA   --name nva-vwan-west   --output json
+az network virtual-appliance show \
+  --resource-group RG-NVA \
+  --name nva-vwan-west \
+  --output json
 ```
 
 **Expected successful state:** The resource exists, references the expected virtual hub/vendor/version/scale configuration, and its provisioning state is successful. Field availability varies by offer/API version, so use the complete JSON rather than assuming a vendor-specific table schema.
@@ -372,7 +383,9 @@ az network virtual-appliance show   --resource-group RG-NVA   --name nva-vwan-we
 ### List NVAs
 
 ```cli
-az network virtual-appliance list   --resource-group RG-NVA   --output table
+az network virtual-appliance list \
+  --resource-group RG-NVA \
+  --output table
 ```
 
 **Success criteria:** The expected NVA resource is present in the intended region/resource group.
@@ -380,7 +393,10 @@ az network virtual-appliance list   --resource-group RG-NVA   --output table
 ### List NVA connections
 
 ```cli
-az network virtual-appliance connection list   --resource-group RG-NVA   --nva nva-vwan-west   --output json
+az network virtual-appliance connection list \
+  --resource-group RG-NVA \
+  --nva nva-vwan-west \
+  --output json
 ```
 
 **What it tests:** Azure-side connection objects under the NVA resource.
@@ -388,7 +404,10 @@ az network virtual-appliance connection list   --resource-group RG-NVA   --nva n
 ### Restart an instance
 
 ```cli
-az network virtual-appliance restart   --resource-group RG-NVA   --network-virtual-appliance-name nva-vwan-west   --instance-ids 0
+az network virtual-appliance restart \
+  --resource-group RG-NVA \
+  --network-virtual-appliance-name nva-vwan-west \
+  --instance-ids 0
 ```
 
 Use restart/reimage only after confirming the vendor's HA and state behavior. Restarting all instances simultaneously is a very different failure event from removing one unhealthy backend.
@@ -482,7 +501,10 @@ A spoke subnet UDR can still create a bypass if an operator has permission to at
 **Command:**
 
 ```cli
-az network virtual-appliance show -g RG-NVA -n nva-vwan-west -o json
+az network virtual-appliance show \
+  --resource-group RG-NVA \
+  --name nva-vwan-west \
+  --output json
 ```
 
 **What it tests:** Azure resource provisioning and hub/vendor association.
@@ -496,7 +518,11 @@ az network virtual-appliance show -g RG-NVA -n nva-vwan-west -o json
 ### 17.2 Confirm Routing Intent
 
 ```cli
-az network vhub routing-intent show   -g RG-Network   --vhub vhub-westus2   -n routingIntent   -o json
+az network vhub routing-intent show \
+  --resource-group RG-Network \
+  --vhub vhub-westus2 \
+  --name routingIntent \
+  --output json
 ```
 
 **Success criteria:** PrivateTraffic and/or Internet destinations are mapped to the intended NVA resource ID.
