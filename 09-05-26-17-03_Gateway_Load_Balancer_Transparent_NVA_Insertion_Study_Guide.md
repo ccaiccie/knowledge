@@ -318,9 +318,62 @@ Then:
 5. Azure invokes the GWLB service chain.
 6. GWLB selects a healthy NVA and encapsulates the flow in VXLAN.
 7. The NVA inspects the original flow and returns allowed traffic to GWLB.
-8. GWLB returns the flow to the Standard Public Load Balancer consumer path.
-9. The Standard Load Balancer performs outbound SNAT using its frontend public IP and sends the packet to the Internet.
-10. Return traffic follows the corresponding chained flow so the stateful NVA sees the response direction.
+8. GWLB returns the **inspected flow to the chained consumer resource** — specifically, back to the Standard Public Load Balancer frontend/outbound-rule processing context represented by `myOutboundFrontend`. This is the handoff that was previously described too vaguely as “the consumer path.”
+9. The Standard Public Load Balancer then resumes its normal outbound-rule processing and performs **SNAT** using the public IP bound to `myOutboundFrontend` (for example, `10.0.1.4` becomes `20.50.60.70:<SNAT_PORT>`).
+10. The Standard Public Load Balancer sends the translated packet to the Internet.
+11. Return traffic for that connection follows the corresponding chained service path so the stateful NVA sees the response direction.
+
+
+#### What exactly does “GWLB returns the flow to the Standard Load Balancer” mean?
+
+This is an **Azure service-chain handoff**, not an IP route from the GWLB frontend to the Standard Load Balancer frontend.
+
+The relationships are:
+
+```text
+VM 10.0.1.4
+   |
+   | member of
+   v
+app-backend-pool
+   |
+   | myOutboundRule applies
+   v
+myOutboundFrontend
+Public IP 20.50.60.70
+   |
+   | gatewayLoadBalancer property references
+   v
+gwlb-frontend
+   |
+   | VXLAN
+   v
+NVA
+   |
+   | inspected packet
+   v
+GWLB
+   |
+   | Azure returns the inspected flow to the
+   | chained Standard LB consumer context
+   v
+myOutboundFrontend / myOutboundRule
+   |
+   | Standard LB resumes outbound processing
+   | and performs SNAT
+   v
+20.50.60.70:<SNAT_PORT>
+   |
+   v
+Internet
+```
+
+**Source information:** Microsoft documents that traffic served by a frontend chained to GWLB is redirected to GWLB for NVA inspection and then returned to the consumer resource. For Standard Load Balancer outbound inspection, the frontend selected by the outbound rule must be the frontend chained to GWLB.
+
+**Additional explanation:** For the outbound-rule case, the practical meaning of “returned to the consumer resource” is that Azure resumes the Standard Load Balancer's outbound processing for that flow. The Load Balancer — not GWLB — owns the outbound frontend public IP and performs the outbound SNAT.
+
+**What this means operationally:** GWLB is the transparent inspection service. The Standard Public Load Balancer remains the egress/SNAT service.
+
 
 #### Example outbound-rule configuration
 
