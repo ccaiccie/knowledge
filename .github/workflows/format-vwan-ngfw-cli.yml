@@ -1,0 +1,74 @@
+name: Format vWAN NGFW CLI examples
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/format-vwan-ngfw-cli.yml'
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reformat CLI blocks
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md')
+          s = p.read_text()
+
+          replacements = {
+          '''```cli\naz network vhub routing-intent show   --resource-group RG-Network   --vhub vhub-westus2   --name routingIntent   --output json\n```''': '''```cli\naz network vhub routing-intent show \\\n  --resource-group RG-Network \\\n  --vhub vhub-westus2 \\\n  --name routingIntent \\\n  --output json\n```''',
+
+          '''```cli\naz network vhub routing-intent create   --name routingIntent   --resource-group RG-Network   --vhub vhub-westus2   --routing-policies "[{name:InternetTraffic,destinations:[Internet],next-hop:<NVA_RESOURCE_ID>},{name:PrivateTrafficPolicy,destinations:[PrivateTraffic],next-hop:<NVA_RESOURCE_ID>}]"\n```''': '''```cli\naz network vhub routing-intent create \\\n  --name routingIntent \\\n  --resource-group RG-Network \\\n  --vhub vhub-westus2 \\\n  --routing-policies "[{name:InternetTraffic,destinations:[Internet],next-hop:<NVA_RESOURCE_ID>},{name:PrivateTrafficPolicy,destinations:[PrivateTraffic],next-hop:<NVA_RESOURCE_ID>}]"\n```''',
+
+          '''```cli\naz network virtual-appliance show   --resource-group RG-NVA   --name nva-vwan-west   --output json\n```''': '''```cli\naz network virtual-appliance show \\\n  --resource-group RG-NVA \\\n  --name nva-vwan-west \\\n  --output json\n```''',
+
+          '''```cli\naz network virtual-appliance list   --resource-group RG-NVA   --output table\n```''': '''```cli\naz network virtual-appliance list \\\n  --resource-group RG-NVA \\\n  --output table\n```''',
+
+          '''```cli\naz network virtual-appliance connection list   --resource-group RG-NVA   --nva nva-vwan-west   --output json\n```''': '''```cli\naz network virtual-appliance connection list \\\n  --resource-group RG-NVA \\\n  --nva nva-vwan-west \\\n  --output json\n```''',
+
+          '''```cli\naz network virtual-appliance restart   --resource-group RG-NVA   --network-virtual-appliance-name nva-vwan-west   --instance-ids 0\n```''': '''```cli\naz network virtual-appliance restart \\\n  --resource-group RG-NVA \\\n  --network-virtual-appliance-name nva-vwan-west \\\n  --instance-ids 0\n```''',
+
+          '''```cli\naz network virtual-appliance show -g RG-NVA -n nva-vwan-west -o json\n```''': '''```cli\naz network virtual-appliance show \\\n  --resource-group RG-NVA \\\n  --name nva-vwan-west \\\n  --output json\n```''',
+
+          '''```cli\naz network vhub routing-intent show   -g RG-Network   --vhub vhub-westus2   -n routingIntent   -o json\n```''': '''```cli\naz network vhub routing-intent show \\\n  --resource-group RG-Network \\\n  --vhub vhub-westus2 \\\n  --name routingIntent \\\n  --output json\n```'''
+          }
+
+          changed = 0
+          for old, new in replacements.items():
+              if old in s:
+                  s = s.replace(old, new)
+                  changed += 1
+
+          if changed != len(replacements):
+              missing = len(replacements) - changed
+              raise SystemExit(f'Expected {len(replacements)} CLI replacements, applied {changed}; missing {missing}')
+
+          # Validation: no Azure CLI line in a cli fence should contain multiple options on one physical line.
+          in_cli = False
+          for n, line in enumerate(s.splitlines(), 1):
+              if line.strip() == '```cli':
+                  in_cli = True
+                  continue
+              if in_cli and line.strip() == '```':
+                  in_cli = False
+                  continue
+              if in_cli and line.startswith('az ') and line.count(' --') > 0:
+                  raise SystemExit(f'Unwrapped CLI command remains at line {n}: {line}')
+
+          p.write_text(s)
+          print(f'Reformatted {changed} CLI blocks successfully')
+          PY
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/format-vwan-ngfw-cli.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md .github/workflows/format-vwan-ngfw-cli.yml
+          git commit -m 'Format vWAN NGFW CLI commands across multiple lines'
+          git push
