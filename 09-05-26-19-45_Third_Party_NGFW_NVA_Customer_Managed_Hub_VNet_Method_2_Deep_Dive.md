@@ -1,6 +1,6 @@
 # Third-Party NGFW/NVA in a Customer-Managed Hub VNet — Method 2 Deep Dive
 
-Last validated: 2026-09-05
+Last validated: 2026-09-06
 
 > **Source information** = behavior explicitly documented by Microsoft or cited vendor-neutral Azure documentation.  
 > **Additional explanation** = networking context added to make the documented behavior easier to operationalize.  
@@ -20,6 +20,7 @@ Primary supporting Microsoft documentation:
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/hub-spoke
 - https://learn.microsoft.com/en-us/azure/architecture/networking/guide/network-virtual-appliance-high-availability
 - https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
+- https://learn.microsoft.com/en-us/azure/load-balancer/components
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-troubleshoot-nva
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
@@ -284,7 +285,7 @@ Microsoft documents HA Ports as the Standard Load Balancer feature intended to l
 **What to verify**  
 Standard SKU, internal frontend, HA Ports rule, backend pool membership, health probe, supported NIC topology, vendor support for HA Ports, UDR next hop = ILB VIP, and NVA state synchronization requirements.
 
-### 6.1 Route difference from single-NVA mode
+## 6.1 Route difference from single-NVA mode
 
 Single NVA:
 
@@ -300,7 +301,7 @@ HA-Ports pair:
 
 Do not leave some spokes pointing at an individual member while others point at the VIP unless that is an explicitly supported vendor design.
 
-### 6.2 HA Ports facts that matter operationally
+## 6.2 HA Ports facts that matter operationally
 
 Microsoft currently documents:
 
@@ -313,6 +314,134 @@ Microsoft currently documents:
 - Flow symmetry is not guaranteed when two or more load-balancer components make independent decisions.
 
 Microsoft's NVA HA architecture guidance also notes that dual-NIC and multi-load-balancer designs can require SNAT to preserve symmetry. Treat the appliance vendor's reference architecture as authoritative for the exact NIC, LB, floating-IP, and SNAT model.
+
+## 6.3 What “using an ILB VIP but forgetting HA Ports” actually means
+
+This warning is about confusing **having an Internal Load Balancer frontend IP** with **having a load-balancer rule that can act as a generic NVA service-insertion rule**.
+
+An Internal Load Balancer (ILB) frontend VIP such as `10.0.1.10` is only an address. The VIP does not, by itself, mean that every protocol and every destination port reaching that frontend will be distributed to the NVA backend pool. Azure Load Balancer forwards traffic according to its configured **load-balancing rules**.
+
+A conventional load-balancing rule is normally port-specific. For example:
+
+| Rule | Protocol | Frontend port | Backend port | What it covers |
+|---|---|---:|---:|---|
+| Ordinary rule | TCP | `443` | `443` | TCP/443 only |
+| Ordinary rule | TCP | `80` | `80` | TCP/80 only |
+| **HA Ports rule** | **All** | **`0`** | **`0`** | **All TCP/UDP ports; ICMP is also supported when HA Ports is enabled** |
+
+So this is **not** sufficient for generic firewall insertion:
+
+```text
+Spoke UDR
+0.0.0.0/0 -> VirtualAppliance 10.0.1.10
+                              ^
+                              ILB VIP
+
+ILB rule:
+TCP/443 -> NVA backend pool
+```
+
+That configuration only defines load balancing for the traffic covered by the configured rule. It does not turn the VIP into an all-protocol, all-port firewall next hop. A firewall/NVA transit path may need to carry HTTPS, HTTP, SSH, DNS, SMTP, database ports, arbitrary application ports, and other TCP/UDP flows. A TCP/443-only rule therefore cannot represent generic NVA service insertion.
+
+For the Microsoft HA-Ports NVA pattern, the intended logical configuration is:
+
+```text
+Spoke UDR
+0.0.0.0/0 -> VirtualAppliance 10.0.1.10
+                              ^
+                              ILB VIP
+
+Internal Standard Load Balancer
+Frontend VIP: 10.0.1.10
+Backend pool: NVA-1 10.0.1.4, NVA-2 10.0.1.5
+
+HA Ports load-balancing rule
+Protocol:      All
+Frontend port: 0   (any port)
+Backend port:  0   (any port)
+Health probe:  <vendor-supported probe>
+```
+
+The key concept is:
+
+```text
+ILB VIP = where the UDR sends the flow
+HA Ports rule = what makes that ILB frontend capable of distributing generic NVA transit flows across the healthy firewall backends
+```
+
+### Why an ordinary port-specific rule is usually wrong here
+
+Imagine these three sessions are all routed to the same ILB VIP:
+
+```text
+10.1.1.10:51001 -> 203.0.113.50:443   HTTPS
+10.1.1.10:51002 -> 198.51.100.53:53   DNS
+10.1.1.10:51003 -> 198.51.100.25:22   SSH
+```
+
+If the ILB only has a conventional TCP/443 rule, the configuration defines backend distribution for the HTTPS flow but not a generic all-port NVA path for DNS and SSH. The UDR pointing at the VIP does **not** automatically create the missing load-balancing behavior.
+
+With an HA Ports rule, the ILB has one all-port/all-protocol rule for the NVA backend pool and makes a per-flow selection using the documented five tuple:
+
+```text
+source IP
+source port
+destination IP
+destination port
+protocol
+```
+
+That is why HA Ports is suited to NVA/firewall transit while a normal web-server-style TCP/443 load-balancing rule is not.
+
+### Azure CLI example
+
+A Microsoft-documented HA-Ports rule uses `--protocol All`, `--frontend-port 0`, and `--backend-port 0`:
+
+```cli
+az network lb rule create \
+  --resource-group RG-Network \
+  --lb-name ILB-NVA \
+  --name HA-Ports \
+  --protocol All \
+  --frontend-port 0 \
+  --backend-port 0 \
+  --frontend-ip-name NVA-Frontend \
+  --backend-pool-name NVA-BackendPool \
+  --probe-name NVA-HealthProbe
+```
+
+**Important:** Floating IP can be enabled or disabled depending on the supported HA-Ports topology. Microsoft documents both floating and non-floating HA-Ports configurations. Follow the NVA vendor's reference architecture instead of enabling Floating IP merely because another firewall design uses it.
+
+### Verify the rule instead of assuming the VIP is enough
+
+```cli
+az network lb rule list \
+  --resource-group RG-Network \
+  --lb-name ILB-NVA \
+  --query "[].{name:name,protocol:protocol,frontendPort:frontendPort,backendPort:backendPort,floatingIP:enableFloatingIP}" \
+  --output table
+```
+
+For the HA-Ports rule, the important successful state is logically:
+
+```text
+Name      Protocol   FrontendPort   BackendPort
+--------  ---------  -------------  -----------
+HA-Ports  All        0              0
+```
+
+The exact table formatting can vary with Azure CLI version.
+
+**Failure indicators:**
+
+- The UDR points to the ILB VIP, but there is no load-balancing rule for the intended backend pool.
+- The only rule is something narrow such as TCP/443.
+- Protocol is `Tcp` or `Udp` when the design requires generic NVA transit.
+- Frontend/backend ports are specific application ports rather than `0`/`0`.
+- The backend pool does not contain all intended NVA dataplane interfaces.
+- The health probe does not reflect the vendor's actual active/healthy forwarding state.
+
+**Next action:** Correct the ILB rule and backend/probe configuration first; do not troubleshoot firewall security policy until Azure is actually delivering the flow to an NVA backend.
 
 ---
 
@@ -500,7 +629,7 @@ Measure both **new-session recovery** and **existing-session survival**. They ar
 # 14. Common mistakes
 
 1. **Pointing a UDR directly at NVA-1 in an HA design.** The NVA may fail while the route still points to its IP.
-2. **Using an ILB VIP but forgetting HA Ports.** A conventional port-specific rule is not generic firewall service insertion.
+2. **Using an ILB VIP but forgetting HA Ports.** The VIP is only the frontend address; it does not automatically make the ILB an all-port NVA next hop. A conventional rule such as TCP/443 only distributes the traffic matched by that rule. For generic NVA service insertion, the Microsoft HA-Ports pattern uses an Internal Standard Load Balancer rule with protocol `All`, frontend port `0`, and backend port `0`. See [Section 6.3](#63-what-using-an-ilb-vip-but-forgetting-ha-ports-actually-means).
 3. **Assuming `Allow forwarded traffic` creates routes.** Microsoft explicitly states that it permits forwarded traffic but does not create UDRs or NVAs.
 4. **Enabling Azure NIC IP forwarding but not enabling forwarding in the appliance OS.** Both are required.
 5. **Forcing only the forward path through the firewall.** Stateful symmetry must be designed in both directions.
@@ -560,6 +689,14 @@ Check:
 - NVA cluster/state-sync health.
 - Whether existing sessions are expected to survive failover for that vendor.
 
+## Symptom: ILB VIP works for HTTPS but other protocols fail
+
+**Where:** Internal Standard Load Balancer rules.  
+**What it tests:** Whether the VIP is backed by an HA-Ports rule or only by application-specific rules.  
+**Expected:** For generic NVA transit, an applicable rule uses `protocol=All`, `frontendPort=0`, and `backendPort=0`, subject to the vendor-supported topology.  
+**Failure means:** The route correctly reaches the ILB VIP, but the load balancer is not configured to distribute the full set of transit flows to the NVA backend pool.  
+**Next action:** Verify the rule with `az network lb rule list`, correct the HA-Ports/backend-pool/probe configuration, then retest multiple protocols before investigating firewall policy.
+
 ## Symptom: On-premises -> spoke bypasses the NVA
 
 Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effective hybrid routing path points directly to the spoke, the inbound leg can bypass inspection even if the spoke's outbound path uses the NVA.
@@ -593,6 +730,7 @@ Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effecti
 - [ ] `Allow forwarded traffic` is enabled where needed.
 - [ ] Gateway transit settings are correct if hybrid connectivity is used.
 - [ ] UDR next-hop IP matches the active architecture: appliance IP **or** HA frontend VIP.
+- [ ] If an ILB VIP is used for generic NVA insertion, the applicable HA-Ports rule is verified rather than inferred from the existence of the VIP.
 - [ ] Effective routes are validated on workload NICs.
 - [ ] Reverse paths traverse the same stateful inspection domain.
 - [ ] NAT behavior is explicitly documented.
@@ -609,6 +747,7 @@ Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effecti
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/hub-spoke
 - https://learn.microsoft.com/en-us/azure/architecture/networking/guide/network-virtual-appliance-high-availability
 - https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
+- https://learn.microsoft.com/en-us/azure/load-balancer/components
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-troubleshoot-nva
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
