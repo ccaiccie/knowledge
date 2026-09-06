@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Private Endpoint Inspection with Azure Firewall — Deep Dive](09-06-26-12-37_Azure_Private_Endpoint_Inspection_Azure_Firewall_Deep_Dive.md)
+Detailed guide to forcing Azure Private Endpoint traffic through Azure Firewall. Covers Private Endpoint network-policy requirements, why `0.0.0.0/0` alone does not override PE-specific routing, PE-VNet/subnet UDR design, application-rule SNAT for flow symmetry, Azure SQL proxy-versus-redirect considerations, Private DNS integration, complete Azure CLI deployment and verification commands, expected route/policy state, packet-by-packet forward and return paths, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [Azure Front Door WAF and Application Gateway WAF — Method 9 Deep Dive](09-06-26-10-24_Azure_Front_Door_Application_Gateway_WAF_Method_9_Deep_Dive.md)
 Deep dive into Layer-7 HTTP/HTTPS firewall inspection with Azure Front Door WAF and Application Gateway WAF v2. Covers global-edge versus regional reverse-proxy architecture, Front Door origin lockdown with Private Link or `AzureFrontDoor.Backend` plus `X-Azure-FDID`, managed/custom rules and anomaly scoring, rate limiting, three-leg TLS and client-IP behavior, Front Door-to-Application-Gateway layering, Azure CLI deployment, backend routing, Azure Firewall coexistence, HA/failover, verification, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
 
