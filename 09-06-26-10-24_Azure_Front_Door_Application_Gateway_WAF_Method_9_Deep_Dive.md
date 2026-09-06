@@ -26,7 +26,7 @@
 - https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-crs-rulegroups-rules
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/application-gateway-before-azure-firewall
-- https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure-front-door
+- https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure/front-door
 
 ---
 
@@ -971,6 +971,110 @@ PL_SUBNET_ID=$(az network vnet subnet show \
 
 echo "$PL_SUBNET_ID"
 ```
+
+#### What does Private Link actually attach to?
+
+This is the point that is easy to miss: **Private Link attaches Front Door to a supported origin-facing service endpoint, not automatically to the final web server behind that service.** The exact termination point depends on the origin type you choose.
+
+For the design in this section, the attachment point is the **Application Gateway frontend IP configuration** selected by `$APPGW_FRONTEND`:
+
+```text
+Front Door Premium
+   |
+   | Front Door-managed Private Endpoint
+   v
+Azure Private Link
+   |
+   v
+Application Gateway Private Link configuration
+   |
+   v
+Application Gateway frontend IP configuration   <-- Private Link lands here
+   |
+   v
+HTTPS listener / WAF / request-routing rule
+   |
+   v
+Application Gateway backend pool
+   |
+   +--> IIS / Apache / nginx VM
+   +--> VM Scale Set
+   +--> AKS ingress
+   +--> App Service or other HTTP(S) backend
+```
+
+The servers in the Application Gateway backend pool do **not** need to be Private Link-capable merely because Front Door reaches Application Gateway through Private Link. Once Application Gateway accepts the request, it uses its normal backend connectivity, routing, DNS, NSGs, UDRs, peering, TLS settings, probes, and backend pool configuration.
+
+So, for example, this is valid:
+
+```text
+Front Door Premium
+   |
+   | Private Link
+   v
+Application Gateway frontend
+   |
+   +--> WEB01 10.10.20.10:443
+   +--> WEB02 10.10.20.11:443
+```
+
+Here the Private Link connection stops at the Application Gateway frontend. Application Gateway then opens a **separate backend connection** to `WEB01` or `WEB02` according to its routing rule and backend health.
+
+Azure Front Door Premium can also use Private Link with other supported origin types. The service that Private Link terminates on changes with the architecture:
+
+| Origin design | What Front Door Private Link connects to | What can sit behind it |
+|---|---|---|
+| Application Gateway | Application Gateway frontend IP configuration / Private Link configuration | VMs, VMSS, AKS ingress, private web/API backends, other HTTP(S) targets reachable by App Gateway |
+| Azure Blob Storage / Storage static website | Storage service private origin endpoint | Blob content / static website content |
+| Azure App Service / Function App | App Service private origin endpoint | The application hosted by that PaaS service |
+| API Management | API Management private origin endpoint | APIs/services behind APIM |
+| Internal Standard Load Balancer | **Private Link Service** associated with the ILB frontend | VMs, VMSS, appliances, AKS or other services behind the ILB |
+
+Azure does not use the AWS term **bucket** for Storage; the comparable direct-origin case is typically **Blob Storage** or **Storage static website**.
+
+For ordinary web servers behind an internal load balancer, the pattern is different from Application Gateway. Front Door does not Private-Link directly to an arbitrary VM NIC. Instead, expose the internal Standard Load Balancer frontend through an Azure **Private Link Service**:
+
+```text
+Front Door Premium
+   |
+   | Front Door-managed Private Endpoint
+   v
+Azure Private Link
+   |
+   v
+Private Link Service
+   |
+   v
+Internal Standard Load Balancer
+   |
+   +--> WEB01
+   +--> WEB02
+```
+
+The easiest mental model is:
+
+```text
+Private Link provides a private entry point into the ORIGIN SERVICE.
+It does not define the entire backend topology behind that service.
+```
+
+In this Section 9.2 architecture specifically:
+
+```text
+                         PRIVATE LINK TERMINATES HERE
+                                    |
+                                    v
+Front Door Premium --------------> Application Gateway frontend
+                                           |
+                                           | normal App Gateway
+                                           | Layer-7 processing
+                                           v
+                                      Backend pool
+                                      /    |     \
+                                    VM    AKS    other HTTP(S) backend
+```
+
+That distinction is why the next command supplies both `--frontend-ip "$APPGW_FRONTEND"` and the dedicated Private Link subnet: you are enabling Private Link **on a specific Application Gateway frontend**, not attaching Front Door directly to the individual backend servers.
 
 ### 9.2.11 Add Private Link to Application Gateway
 
