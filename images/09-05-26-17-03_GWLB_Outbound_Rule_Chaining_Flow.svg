@@ -1,61 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="950" viewBox="0 0 1600 950">
-<!-- Generated from 09-05-26-17-03_GWLB_Outbound_Rule_Chaining_Flow.drawio -->
-<defs><marker id="b" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#2563eb"/></marker><marker id="p" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#7c3aed"/></marker><marker id="g" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#16a34a"/></marker><marker id="r" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#dc2626"/></marker><style>text{font-family:Arial,Helvetica,sans-serif;fill:#0f172a}</style></defs>
-<rect width="1600" height="950" fill="white"/>
-<path d="M 225,290 L 250,290 L 250,225 L 310,225 L 330,225" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" marker-end="url(#b)"/>
-<path d="M 550,225 L 440,285 L 440,300 L 330,375" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" marker-end="url(#b)"/>
-<path d="M 475,430 L 455,500" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" marker-end="url(#b)"/>
-<path d="M 580,545 L 820,545 L 840,545 L 840,260 L 890,260 L 910,260" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" marker-end="url(#b)"/>
-<path d="M 1090,260 L 1115,240 L 1115,175 L 1125,175 L 1125,240 L 1140,260" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#p)"/>
-<path d="M 1140,284.2 L 1125,290 L 1125,350 L 1105,350 L 1105,282 L 1090,279.8" fill="none" stroke="#16a34a" stroke-width="3" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#g)"/>
-<path d="M 1090,260 L 1110,260 L 1335,260 L 1370,290" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" marker-end="url(#b)"/>
-<path d="M 290,790 L 320,790 L 1275,790 L 1275,620 L 1445,620 L 1445,355 L 1445,335" fill="none" stroke="#dc2626" stroke-width="3" stroke-linejoin="round" marker-end="url(#r)"/>
-<text x="40" y="46" text-anchor="start" font-size="26" font-weight="700">GWLB Outbound Inspection: The Outbound Rule Must Select a Chained Frontend</text>
-<rect x="45" y="245" width="180" height="90" rx="16" fill="#ede9fe" stroke="#334155" stroke-width="2"/>
-<text x="135" y="285.167" text-anchor="middle" font-size="14" font-weight="400">Backend workload</text>
-<text x="135" y="304.167" text-anchor="middle" font-size="14" font-weight="400">10.0.1.4</text>
-<rect x="270" y="95" width="540" height="590" rx="16" fill="#eff6ff" stroke="#60a5fa" stroke-width="2" stroke-dasharray="10 8"/>
-<text x="540" y="394.667" text-anchor="middle" font-size="14" font-weight="400"></text>
-<text x="300" y="133" text-anchor="start" font-size="18" font-weight="700">Consumer: Standard Public Load Balancer</text>
-<rect x="330" y="185" width="220" height="80" rx="16" fill="#ede9fe" stroke="#334155" stroke-width="2"/>
-<text x="440" y="220.167" text-anchor="middle" font-size="14" font-weight="400">Backend pool</text>
-<text x="440" y="239.167" text-anchor="middle" font-size="14" font-weight="400">app-backend-pool</text>
-<rect x="330" y="320" width="290" height="110" rx="16" fill="#bfdbfe" stroke="#334155" stroke-width="2"/>
-<text x="475" y="360.667" text-anchor="middle" font-size="14" font-weight="400">Outbound rule</text>
-<text x="475" y="379.667" text-anchor="middle" font-size="14" font-weight="400">myOutboundRule</text>
-<text x="475" y="398.667" text-anchor="middle" font-size="14" font-weight="400">Frontend = myOutboundFrontend</text>
-<rect x="330" y="500" width="250" height="90" rx="16" fill="#dbeafe" stroke="#334155" stroke-width="2"/>
-<text x="455" y="540.167" text-anchor="middle" font-size="14" font-weight="400">Frontend IP configuration</text>
-<text x="455" y="559.167" text-anchor="middle" font-size="14" font-weight="400">myOutboundFrontend</text>
-<rect x="620" y="500" width="160" height="90" rx="16" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
-<text x="700" y="540.5" text-anchor="middle" font-size="12" font-weight="700">gatewayLoadBalancer reference</text>
-<text x="700" y="557.5" text-anchor="middle" font-size="12" font-weight="700">= GWLB frontend resource ID</text>
-<rect x="870" y="95" width="420" height="470" rx="16" fill="#faf5ff" stroke="#a78bfa" stroke-width="2" stroke-dasharray="10 8"/>
-<text x="1080" y="334.667" text-anchor="middle" font-size="14" font-weight="400"></text>
-<text x="900" y="133" text-anchor="start" font-size="18" font-weight="700">Provider: GWLB + NVAs</text>
-<rect x="910" y="215" width="180" height="90" rx="16" fill="#dcfce7" stroke="#334155" stroke-width="2"/>
-<text x="1000" y="264.667" text-anchor="middle" font-size="14" font-weight="400">Gateway Load Balancer</text>
-<rect x="1140" y="205" width="120" height="110" rx="16" fill="#ffedd5" stroke="#334155" stroke-width="2"/>
-<text x="1200" y="255.167" text-anchor="middle" font-size="14" font-weight="400">NVA pool</text>
-<text x="1200" y="274.167" text-anchor="middle" font-size="14" font-weight="400">NVA-1 / NVA-2</text>
-<rect x="1370" y="245" width="150" height="90" rx="16" fill="#dbeafe" stroke="#334155" stroke-width="2"/>
-<text x="1445" y="294.667" text-anchor="middle" font-size="14" font-weight="400">Internet</text>
-<rect x="60" y="745" width="230" height="90" rx="16" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
-<text x="175" y="785.167" text-anchor="middle" font-size="14" font-weight="700">NAT Gateway</text>
-<text x="175" y="804.167" text-anchor="middle" font-size="14" font-weight="700">attached to subnet</text>
-<rect x="350" y="720" width="730" height="120" rx="16" fill="#fff1f2" stroke="#fb7185" stroke-width="2"/>
-<text x="715" y="775.167" text-anchor="middle" font-size="14" font-weight="700">NAT Gateway currently does NOT support GWLB chaining.</text>
-<text x="715" y="794.167" text-anchor="middle" font-size="14" font-weight="700">If NAT Gateway serves the subnet outbound flow, NAT Gateway takes precedence and sends traffic directly to the Internet.</text>
-<rect x="55" y="170" width="230" height="42" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="170" y="195" text-anchor="middle" font-size="12" font-weight="700">1 Workload uses LB outbound rule</text>
-<rect x="350" y="270" width="230" height="42" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="465" y="295" text-anchor="middle" font-size="12" font-weight="700">2 Outbound rule selects frontend</text>
-<rect x="595" y="450" width="230" height="42" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="710" y="475" text-anchor="middle" font-size="12" font-weight="700">3 Frontend is chained to GWLB</text>
-<rect x="1080" y="130" width="225" height="42" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="1192.5" y="155" text-anchor="middle" font-size="12" font-weight="700">4 GWLB sends VXLAN to NVA</text>
-<rect x="1080" y="360" width="235" height="42" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="1197.5" y="385" text-anchor="middle" font-size="12" font-weight="700">5 NVA returns inspected traffic</text>
-<rect x="1190" y="190" width="330" height="42" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="1355" y="215" text-anchor="middle" font-size="12" font-weight="700">6 Consumer LB completes outbound SNAT / Internet egress</text>
-</svg>
+<defs>
+<marker id="ab" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#2563eb"/></marker>
+<marker id="ap" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#7c3aed"/></marker>
+<marker id="ag" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#16a34a"/></marker>
+<marker id="ar" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0 L0 6 L9 3 z" fill="#dc2626"/></marker>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#0f172a} .t{font-size:26px;font-weight:700} .h{font-size:17px;font-weight:700} .b{font-size:14px} .s{font-size:12px} .lab{font-size:13px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round}</style>
+</defs>
+<rect width="1600" height="950" fill="#ffffff"/>
+<text x="40" y="55" class="t">GWLB Outbound Inspection — Private-Only VM via Standard LB Outbound Rule</text><rect x="285" y="95" width="610" height="610" rx="14" fill="#eff6ff" stroke="#60a5fa" stroke-width="2" stroke-dasharray="10 8"/><text x="310" y="130" class="lab" fill="#0f172a">Consumer: Standard Public Load Balancer</text><rect x="960" y="95" width="420" height="440" rx="14" fill="#faf5ff" stroke="#a78bfa" stroke-width="2" stroke-dasharray="10 8"/><text x="985" y="130" class="lab" fill="#0f172a">Provider: GWLB + NVAs</text><rect x="40" y="225" width="190" height="100" rx="14" fill="#ede9fe" stroke="#334155" stroke-width="2"/><text x="135.0" y="260.0" text-anchor="middle" class="b">Private-only VM</text><text x="135.0" y="280.0" text-anchor="middle" class="b">10.0.1.4</text><text x="135.0" y="300.0" text-anchor="middle" class="b">No public IP</text><rect x="340" y="180" width="220" height="85" rx="14" fill="#ede9fe" stroke="#334155" stroke-width="2"/><text x="450.0" y="217.5" text-anchor="middle" class="b">Backend pool</text><text x="450.0" y="237.5" text-anchor="middle" class="b">app-backend-pool</text><rect x="340" y="325" width="220" height="85" rx="14" fill="#bfdbfe" stroke="#334155" stroke-width="2"/><text x="450.0" y="362.5" text-anchor="middle" class="b">Outbound rule</text><text x="450.0" y="382.5" text-anchor="middle" class="b">myOutboundRule</text><rect x="340" y="480" width="270" height="110" rx="14" fill="#dbeafe" stroke="#334155" stroke-width="2"/><text x="475.0" y="520.0" text-anchor="middle" class="b">Frontend IP configuration</text><text x="475.0" y="540.0" text-anchor="middle" class="b">myOutboundFrontend</text><text x="475.0" y="560.0" text-anchor="middle" class="b">Public IP 20.50.60.70</text><rect x="645" y="480" width="205" height="110" rx="14" fill="#fef3c7" stroke="#d97706" stroke-width="2"/><text x="747.5" y="530.0" text-anchor="middle" class="b" font-weight="700">gatewayLoadBalancer reference</text><text x="747.5" y="550.0" text-anchor="middle" class="b" font-weight="700">→ security-gwlb/gwlb-frontend</text><rect x="1005" y="205" width="175" height="90" rx="14" fill="#dcfce7" stroke="#334155" stroke-width="2"/><text x="1092.5" y="255.0" text-anchor="middle" class="b">Gateway Load Balancer</text><rect x="1230" y="195" width="120" height="110" rx="14" fill="#ffedd5" stroke="#334155" stroke-width="2"/><text x="1290.0" y="245.0" text-anchor="middle" class="b">NVA pool</text><text x="1290.0" y="265.0" text-anchor="middle" class="b">NVA-1 / NVA-2</text><rect x="1430" y="225" width="130" height="90" rx="14" fill="#dbeafe" stroke="#334155" stroke-width="2"/><text x="1495.0" y="275.0" text-anchor="middle" class="b">Internet</text><rect x="1000" y="600" width="430" height="100" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/><text x="1215.0" y="645.0" text-anchor="middle" class="b" font-weight="700">Return path follows the same chained consumer flow</text><text x="1215.0" y="665.0" text-anchor="middle" class="b" font-weight="700">so the stateful NVA sees both directions.</text><path d="M 230,275 L 255,275 L 255,222 L 320,222 L 340,222" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ab)"/><text x="55" y="205" class="lab" fill="#0f172a">1 VM is in backend pool</text><path d="M 450,265 L 450,290 L 450,305 L 450,325" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ab)"/><text x="470" y="300" class="lab" fill="#0f172a">2 Outbound rule applies</text><path d="M 450,410 L 450,435 L 450,460 L 450,480" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ab)"/><text x="470" y="450" class="lab" fill="#0f172a">3 Rule selects frontend</text><path d="M 610,535 L 630,535 L 900,535 L 900,250 L 985,250 L 1005,250" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ab)"/><text x="650" y="520" class="lab" fill="#0f172a">4 Chained frontend invokes GWLB</text><path d="M 1180,235 L 1205,235 L 1205,165 L 1215,165 L 1215,235 L 1230,235" fill="none" stroke="#7c3aed" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#ap)"/><text x="1170" y="155" class="lab" fill="#7c3aed">5 VXLAN to NVA</text><path d="M 1230,285 L 1215,285 L 1215,355 L 1195,355 L 1195,275 L 1180,275" fill="none" stroke="#16a34a" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#ag)"/><text x="1170" y="380" class="lab" fill="#16a34a">6 Inspected return</text><path d="M 1180,250 L 1400,250 L 1430,250" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ab)"/><text x="1220" y="225" class="lab" fill="#0f172a">7 LB completes SNAT / Internet egress</text></svg>
