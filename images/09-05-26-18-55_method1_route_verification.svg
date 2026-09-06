@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs>
+ <marker id="blueArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#0078D4"/></marker>
+ <marker id="greenArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#107C10"/></marker>
+ <marker id="redArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#D13438"/></marker>
+ <style>
+  .title{font:700 28px Arial;fill:#172B4D}.hdr{font:700 20px Arial;fill:#172B4D}.txt{font:16px Arial;fill:#24364B}.small{font:14px Arial;fill:#24364B}
+  .blue{fill:#EAF4FF;stroke:#0078D4;stroke-width:3}.green{fill:#E8F5E9;stroke:#107C10;stroke-width:3}.orange{fill:#FFF4E5;stroke:#FF8C00;stroke-width:3}.purple{fill:#F3E8FF;stroke:#8661C5;stroke-width:3}.red{fill:#FDE7E9;stroke:#D13438;stroke-width:3}.gray{fill:#F7F9FC;stroke:#7A869A;stroke-width:2}
+  .blueLine{stroke:#0078D4;stroke-width:4;fill:none;marker-end:url(#blueArrow)}.greenLine{stroke:#107C10;stroke-width:4;fill:none;marker-end:url(#greenArrow)}.redLine{stroke:#D13438;stroke-width:4;fill:none;marker-end:url(#redArrow);stroke-dasharray:10 7}
+ </style>
+</defs>
+<rect width="1600" height="900" fill="#FFFFFF"/>
+<text x="60" y="55" class="title">Method 1 Route Verification — Configured UDR → Effective NIC Route → Exact Next Hop</text>
+
+<rect x="60" y="110" width="430" height="220" rx="20" class="blue"/>
+<text x="90" y="150" class="hdr">1. Configured route-table object</text>
+<text x="90" y="190" class="txt">RT-SpokeA</text>
+<text x="90" y="225" class="txt">10.20.0.0/16 → VirtualAppliance</text>
+<text x="90" y="260" class="txt">Next-hop IP: 10.0.1.4</text>
+<text x="90" y="300" class="small">Command: az network route-table route list</text>
+
+<rect x="585" y="110" width="430" height="220" rx="20" class="purple"/>
+<text x="615" y="150" class="hdr">2. NIC effective route table</text>
+<text x="615" y="190" class="txt">Source: User</text>
+<text x="615" y="225" class="txt">State: Active</text>
+<text x="615" y="260" class="txt">10.20.0.0/16 → VirtualAppliance 10.0.1.4</text>
+<text x="615" y="300" class="small">Command: az network nic show-effective-route-table</text>
+
+<rect x="1110" y="110" width="430" height="220" rx="20" class="green"/>
+<text x="1140" y="150" class="hdr">3. Exact forwarding proof</text>
+<text x="1140" y="190" class="txt">Source VM: 10.10.1.10</text>
+<text x="1140" y="225" class="txt">Destination: 10.20.1.20</text>
+<text x="1140" y="260" class="txt">Result: VirtualAppliance 10.0.1.4</text>
+<text x="1140" y="300" class="small">Command: az network watcher show-next-hop</text>
+
+<path d="M490 220 H585" class="blueLine"/><text x="505" y="202" class="small">route is associated</text>
+<path d="M1015 220 H1110" class="greenLine"/><text x="1029" y="202" class="small">test exact destination</text>
+
+<rect x="95" y="420" width="650" height="320" rx="22" class="green"/>
+<text x="125" y="462" class="hdr">SUCCESS — Azure Firewall is inline for 10.20.1.20</text>
+<text x="125" y="510" class="txt">Configured UDR</text><text x="330" y="510" class="txt">10.20.0.0/16 → 10.0.1.4</text>
+<text x="125" y="555" class="txt">Effective route</text><text x="330" y="555" class="txt">User / Active / VirtualAppliance</text>
+<text x="125" y="600" class="txt">Next-hop result</text><text x="330" y="600" class="txt">VirtualAppliance / 10.0.1.4</text>
+<text x="125" y="660" class="txt">Packet path:</text>
+<text x="245" y="660" class="txt">Spoke A → Azure Firewall → Spoke B</text>
+<path d="M260 690 H600" class="greenLine"/>
+
+<rect x="855" y="420" width="650" height="320" rx="22" class="red"/>
+<text x="885" y="462" class="hdr">FAILURE — a more-specific/direct route bypasses firewall</text>
+<text x="885" y="510" class="txt">Example effective route</text>
+<text x="885" y="550" class="txt">Default / Active / 10.20.0.0/16 → VNetPeering</text>
+<text x="885" y="600" class="txt">or BGP / Active / 172.16.0.0/16 → VirtualNetworkGateway</text>
+<text x="885" y="650" class="txt">Meaning: policy is irrelevant because the packet never reaches Azure Firewall.</text>
+<text x="885" y="700" class="txt">Action: fix prefix/UDR/association/propagation, then retest.</text>
+<path d="M1030 730 H1370" class="redLine"/>
+
+<rect x="170" y="800" width="1260" height="60" rx="14" class="gray"/>
+<text x="210" y="838" class="txt">Operational rule: configured routes show intent; effective routes show installed state; show-next-hop proves the selected path for one destination.</text>
+</svg>
