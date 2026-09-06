@@ -21,6 +21,8 @@ Primary supporting Microsoft documentation:
 - https://learn.microsoft.com/en-us/azure/architecture/networking/guide/network-virtual-appliance-high-availability
 - https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
 - https://learn.microsoft.com/en-us/azure/load-balancer/components
+- https://learn.microsoft.com/en-us/azure/load-balancer/concepts
+- https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-outbound-connections
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-troubleshoot-nva
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
@@ -443,6 +445,135 @@ The exact table formatting can vary with Azure CLI version.
 
 **Next action:** Correct the ILB rule and backend/probe configuration first; do not troubleshoot firewall security policy until Azure is actually delivering the flow to an NVA backend.
 
+## 6.4 Does the ILB SNAT the client? Client source-IP preservation
+
+**Source information:** Azure Load Balancer preserves the **original source IP address** when the flow reaches the selected backend VM. The load balancer is a Layer-4 flow distributor; it does not behave like a proxy that originates a new client-side connection from the ILB VIP.
+
+For the NVA HA-Ports service-insertion pattern, this means the firewall backend should still see the original workload address. Using the reference addresses in this guide:
+
+```text
+Original client flow
+Src 10.1.1.10:51500
+Dst 10.2.1.20:443
+
+Spoke UDR next hop
+10.0.1.10  # ILB HA-Ports VIP
+
+NVA-1 receives the transit flow
+Src 10.1.1.10:51500
+Dst 10.2.1.20:443
+```
+
+The ILB does **not** normally transform that transit packet into this:
+
+```text
+Src 10.0.1.10:51500
+Dst 10.2.1.20:443
+```
+
+In other words, the ILB VIP is the Azure next hop and load-balancing frontend; it is **not** the source address that the NVA should see for the client-side transit flow.
+
+### Why this matters for NGFW visibility
+
+Preserving the source IP allows the NVA to make decisions and generate logs using the real workload identity, for example:
+
+```text
+Source IP:       10.1.1.10
+Destination IP:  10.2.1.20
+Destination port:443
+Protocol:        TCP
+```
+
+That source visibility is important for:
+
+- source-zone and source-prefix security policy;
+- User-ID / identity correlation when the vendor supports it;
+- threat and traffic logs;
+- application-control policy;
+- troubleshooting and packet captures;
+- per-client reporting and analytics.
+
+If the NVA unexpectedly sees `10.0.1.10` as the source instead of `10.1.1.10`, do **not** assume the internal HA-Ports ILB performed SNAT. Look for another translation point in the design.
+
+### ILB flow distribution versus outbound SNAT are different features
+
+Do not confuse **internal HA-Ports load balancing** with **outbound SNAT**.
+
+| Function | What it does | Effect on client source seen by NVA |
+|---|---|---|
+| Internal Standard LB + HA Ports | Selects a healthy NVA backend for the transit flow | Original client source IP is preserved |
+| NVA SNAT policy | NVA deliberately rewrites the source | Downstream systems see the NVA-translated source |
+| Public Standard Load Balancer outbound rule | Provides outbound Internet SNAT for backend VMs | Backend private source is translated to a public LB frontend IP for that outbound Internet flow |
+| Azure NAT Gateway | Provides subnet-level outbound SNAT | Internet destination sees the NAT Gateway public IP |
+
+Microsoft documents outbound rules as an explicit SNAT mechanism for a **public** Standard Load Balancer. That is a separate function from the internal HA-Ports transit rule used to distribute packets to an NVA pair.
+
+### Packet-flow example with client visibility
+
+```text
+Spoke A workload
+10.1.1.10:51500
+        |
+        | packet remains:
+        | Src 10.1.1.10:51500
+        | Dst 10.2.1.20:443
+        v
+UDR next hop = 10.0.1.10
+Internal Standard LB HA Ports VIP
+        |
+        | five-tuple backend selection
+        | original source preserved
+        v
+NVA-1 10.0.1.4
+Firewall log should identify source 10.1.1.10
+        |
+        | inspect / route / optionally NAT according to NVA policy
+        v
+Spoke B workload 10.2.1.20:443
+```
+
+The five-tuple used for normal Azure Load Balancer distribution includes source IP, source port, destination IP, destination port, and IP protocol. Preserving the original source is therefore also part of how per-flow backend selection is determined.
+
+### Where source visibility can actually be lost
+
+Client visibility can still disappear if something **before the NVA** intentionally rewrites the source. Examples include:
+
+- another firewall or NVA performing SNAT before this hop;
+- a proxy that terminates the client connection and creates a new connection;
+- a vendor architecture that deliberately SNATs for symmetry;
+- another NAT/load-balancing component whose documented path includes source translation.
+
+The NVA itself may also deliberately SNAT **after** inspection, especially for Internet egress or for a vendor-specific symmetry design. That does not change what the firewall saw on ingress before performing its own translation.
+
+### How to verify client source preservation
+
+Use a known test flow, for example:
+
+```text
+10.1.1.10:51500 -> 10.2.1.20:443
+```
+
+Then check the NVA traffic/session log or a packet capture on the NVA ingress dataplane interface.
+
+**Expected state:**
+
+```text
+Source IP:      10.1.1.10
+Destination IP: 10.2.1.20
+```
+
+**Failure indicator:** the NVA sees the ILB VIP `10.0.1.10` or another unexpected source address.
+
+**What failure means:** another component or policy is performing source translation, or the observed capture/log is taken after an NVA NAT stage rather than at ingress.
+
+**Next action:** trace the tuple hop by hop and compare:
+
+```text
+client NIC -> UDR -> ILB frontend -> NVA ingress -> NVA post-NAT -> destination
+```
+
+Record the source IP at each point. The first point where it changes identifies the component responsible for the translation.
+
 ---
 
 # 7. Hybrid VPN/ExpressRoute inspection
@@ -568,6 +699,8 @@ The most common symmetry tools are:
 
 Microsoft's HA guidance explicitly calls out SNAT in some NVA architectures where different load balancers would otherwise choose different members.
 
+**Important:** The internal HA-Ports ILB itself should not be confused with this optional appliance SNAT. The ILB preserves the original client source IP when delivering the transit flow to the selected NVA backend. See [Section 6.4](#64-does-the-ilb-snat-the-client-client-source-ip-preservation).
+
 ---
 
 # 11. Internet ingress / DNAT
@@ -630,14 +763,15 @@ Measure both **new-session recovery** and **existing-session survival**. They ar
 
 1. **Pointing a UDR directly at NVA-1 in an HA design.** The NVA may fail while the route still points to its IP.
 2. **Using an ILB VIP but forgetting HA Ports.** The VIP is only the frontend address; it does not automatically make the ILB an all-port NVA next hop. A conventional rule such as TCP/443 only distributes the traffic matched by that rule. For generic NVA service insertion, the Microsoft HA-Ports pattern uses an Internal Standard Load Balancer rule with protocol `All`, frontend port `0`, and backend port `0`. See [Section 6.3](#63-what-using-an-ilb-vip-but-forgetting-ha-ports-actually-means).
-3. **Assuming `Allow forwarded traffic` creates routes.** Microsoft explicitly states that it permits forwarded traffic but does not create UDRs or NVAs.
-4. **Enabling Azure NIC IP forwarding but not enabling forwarding in the appliance OS.** Both are required.
-5. **Forcing only the forward path through the firewall.** Stateful symmetry must be designed in both directions.
-6. **Mixing a single-NVA route and HA-VIP route in documentation without saying which architecture is active.** The next-hop IP is different and the failure behavior is different.
-7. **Assuming two load balancers will choose the same firewall.** Microsoft says independent LBs do not coordinate flow selection.
-8. **Assuming a default route solves hybrid inspection.** GatewaySubnet and reverse-direction routing still need deliberate design.
-9. **Ignoring BGP route propagation.** A learned route can alter the effective path.
-10. **Treating a vendor appliance like Azure Firewall.** DNAT/SNAT, HA, management NICs, licensing, upgrades, health checks, and state synchronization differ by product.
+3. **Assuming the ILB VIP becomes the source address seen by the firewall.** In the normal HA-Ports transit path, Azure Load Balancer preserves the original client source IP when delivering the flow to the selected NVA backend. If the firewall sees the VIP or another translated source, trace for an explicit NAT/proxy stage. See [Section 6.4](#64-does-the-ilb-snat-the-client-client-source-ip-preservation).
+4. **Assuming `Allow forwarded traffic` creates routes.** Microsoft explicitly states that it permits forwarded traffic but does not create UDRs or NVAs.
+5. **Enabling Azure NIC IP forwarding but not enabling forwarding in the appliance OS.** Both are required.
+6. **Forcing only the forward path through the firewall.** Stateful symmetry must be designed in both directions.
+7. **Mixing a single-NVA route and HA-VIP route in documentation without saying which architecture is active.** The next-hop IP is different and the failure behavior is different.
+8. **Assuming two load balancers will choose the same firewall.** Microsoft says independent LBs do not coordinate flow selection.
+9. **Assuming a default route solves hybrid inspection.** GatewaySubnet and reverse-direction routing still need deliberate design.
+10. **Ignoring BGP route propagation.** A learned route can alter the effective path.
+11. **Treating a vendor appliance like Azure Firewall.** DNAT/SNAT, HA, management NICs, licensing, upgrades, health checks, and state synchronization differ by product.
 
 ---
 
@@ -697,6 +831,14 @@ Check:
 **Failure means:** The route correctly reaches the ILB VIP, but the load balancer is not configured to distribute the full set of transit flows to the NVA backend pool.  
 **Next action:** Verify the rule with `az network lb rule list`, correct the HA-Ports/backend-pool/probe configuration, then retest multiple protocols before investigating firewall policy.
 
+## Symptom: Firewall logs show the ILB VIP as the client source
+
+**Where:** NVA ingress capture, NVA traffic/session logs, and any upstream NAT/proxy components.  
+**What it tests:** Whether source translation occurred before or inside the NVA.  
+**Expected:** For the normal ILB HA-Ports transit path, the NVA ingress should show the original client source, for example `10.1.1.10`, not the ILB VIP `10.0.1.10`.  
+**Failure means:** Another component or an NVA NAT stage is changing the source, or the log/capture point is post-NAT.  
+**Next action:** Record the packet tuple at each hop from client to NVA ingress and then post-NAT until the first source-IP change is identified.
+
 ## Symptom: On-premises -> spoke bypasses the NVA
 
 Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effective hybrid routing path points directly to the spoke, the inbound leg can bypass inspection even if the spoke's outbound path uses the NVA.
@@ -710,6 +852,7 @@ Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effecti
 | Lab / simple POC | Single NVA next hop |
 | Production stateful firewall | Vendor-supported HA pair |
 | Generic all-port NVA load balancing | Internal Standard LB HA Ports, if vendor supports it |
+| Preserve original client source at firewall ingress | Internal HA-Ports ILB transit path; avoid unintended upstream SNAT/proxying |
 | Spoke-to-spoke inspection | Reciprocal spoke UDRs through NVA/VIP |
 | Internet egress | `0.0.0.0/0` through NVA plus vendor-supported SNAT/public egress |
 | Hybrid inspection | Spoke UDRs plus symmetric gateway-side routing |
@@ -731,6 +874,8 @@ Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effecti
 - [ ] Gateway transit settings are correct if hybrid connectivity is used.
 - [ ] UDR next-hop IP matches the active architecture: appliance IP **or** HA frontend VIP.
 - [ ] If an ILB VIP is used for generic NVA insertion, the applicable HA-Ports rule is verified rather than inferred from the existence of the VIP.
+- [ ] NVA ingress logs/captures confirm the original client source IP is preserved through the ILB HA-Ports hop.
+- [ ] Any source NAT is attributed to the correct component: NVA policy, public LB outbound SNAT, NAT Gateway, proxy, or another explicit translation point.
 - [ ] Effective routes are validated on workload NICs.
 - [ ] Reverse paths traverse the same stateful inspection domain.
 - [ ] NAT behavior is explicitly documented.
@@ -748,6 +893,8 @@ Check the gateway-side route toward the spoke. If `GatewaySubnet` or the effecti
 - https://learn.microsoft.com/en-us/azure/architecture/networking/guide/network-virtual-appliance-high-availability
 - https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
 - https://learn.microsoft.com/en-us/azure/load-balancer/components
+- https://learn.microsoft.com/en-us/azure/load-balancer/concepts
+- https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-outbound-connections
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-troubleshoot-nva
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
