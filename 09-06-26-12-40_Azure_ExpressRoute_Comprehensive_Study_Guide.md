@@ -148,216 +148,108 @@ Do **not** confuse this with Route Server. Azure Route Server does not provide c
 
 **Source information:** New ExpressRoute circuits support **two** peering/routing domains: **Azure Private Peering** and **Microsoft Peering**. The older **Azure Public Peering** routing domain is deprecated and should not be designed into new deployments.
 
-This causes a great deal of terminology confusion because engineers still say “public peering” when they really mean **Microsoft Peering**.
-
-Use this terminology:
+This causes terminology confusion because engineers still sometimes say “public peering” when they really mean **Microsoft Peering**.
 
 | Term | Current status | What it means |
 |---|---|---|
 | **Azure Private Peering** | Current | Private connectivity to Azure VNets and resources reachable through private VNet addressing |
-| **Microsoft Peering** | Current | Connectivity over ExpressRoute to supported Microsoft services that expose **public IP endpoints** |
+| **Microsoft Peering** | Current | Connectivity over ExpressRoute to supported Microsoft services that expose public IP endpoints |
 | **Azure Public Peering / Public Peering** | Legacy/deprecated | Historical ExpressRoute routing domain; do not use it as the current design name |
 
-**Important:** “Microsoft Peering uses public IP addresses” does **not** mean the traffic is sent over the public Internet. The customer reaches the Microsoft edge over the ExpressRoute circuit, but the addressing/routing domain uses public prefixes.
+**Important:** Microsoft Peering uses public addressing, but the customer-to-Microsoft-edge path still traverses the ExpressRoute circuit rather than general Internet transit.
 
 ### 3.2 Azure Private Peering — private addressing into your VNets
 
 Use **Azure Private Peering** when the destination is a private resource inside an Azure virtual network.
 
-Typical destinations include:
-
-- Azure virtual machines using RFC1918/private addresses;
-- internal load balancers;
-- private IPs on Azure appliances;
-- Private Endpoints/Private Link resources when the VNet routing design supports them;
-- hub-and-spoke VNets reached through an ExpressRoute VNet gateway or Virtual WAN ExpressRoute gateway.
+Typical destinations include Azure VMs, internal load balancers, private IPs on Azure appliances, Private Endpoints/Private Link, and hub-and-spoke VNets reached through an ExpressRoute VNet gateway or Virtual WAN ExpressRoute gateway.
 
 Typical route exchange:
 
-- Customer advertises on-premises private prefixes to Microsoft.
+- Customer advertises on-premises prefixes to Microsoft.
 - Azure advertises VNet prefixes reachable through the ExpressRoute gateway.
 - A default route may be advertised **only** on private peering.
 
-Private-peering BGP interface addressing may use private or public addresses, but the peering subnets cannot overlap the Azure VNet address space.
-
-#### Private-peering packet example
-
-Assume:
-
-```text
-On-premises client: 10.10.10.25
-Azure VM:           10.50.20.10
-Protocol:           TCP/443
-```
-
-Path:
+Example:
 
 ```text
 10.10.10.25
    -> enterprise router
-   -> ExpressRoute private-peering BGP path
+   -> ExpressRoute private peering
    -> MSEE
    -> Microsoft backbone
-   -> ExpressRoute VNet/vWAN gateway or eligible FastPath data path
+   -> ER gateway / eligible FastPath path
    -> Azure VNet
    -> 10.50.20.10
 ```
 
-No Internet routing is required and ExpressRoute itself does not require SNAT for this flow.
+No Internet routing or SNAT is inherently required.
 
 ### 3.3 Microsoft Peering — public Microsoft service endpoints over ExpressRoute
 
-Use **Microsoft Peering** when the destination is a supported Microsoft service reached by a **public IP address**, but you want the path from your WAN to the Microsoft edge to use ExpressRoute rather than your normal Internet transit.
+Use **Microsoft Peering** when the destination is a supported Microsoft service reached by a public IP address but you want the WAN-to-Microsoft path to use ExpressRoute.
 
-Microsoft documents Microsoft Peering for services such as:
+Typical requirements include:
 
-- Microsoft 365, subject to Microsoft's ExpressRoute-for-Microsoft-365 guidance and approval/use-case requirements;
-- supported Azure PaaS public endpoints;
-- Microsoft PSTN/public Microsoft services supported by the peering;
-- Power Platform and other supported Microsoft online services where applicable.
+- two redundant BGP sessions;
+- public peering link addressing;
+- validated public prefixes;
+- public source addressing before entering the Microsoft public-service routing domain, commonly through SNAT;
+- route filters/BGP communities for the Microsoft service routes you intend to receive.
 
-Microsoft Peering is a separate BGP routing domain from Private Peering.
-
-Requirements include:
-
-- two redundant BGP sessions, just like Private Peering;
-- public `/30` IPv4 or `/126` IPv6 peering subnets for the MSEE-facing links;
-- public source prefixes owned by you or your provider and validated through the appropriate routing registry/authorization process;
-- public source addressing before traffic enters Microsoft, commonly implemented with SNAT;
-- route filters/BGP communities to select the Microsoft service routes you intend to receive.
-
-Microsoft accepts up to the documented Microsoft-peering prefix limit per BGP session; do not leak RFC1918 prefixes or a default route into Microsoft Peering.
-
-#### Microsoft-peering packet example
-
-Assume:
-
-```text
-On-premises client:       10.10.10.25
-Enterprise SNAT address:  203.0.113.25   (illustrative public prefix)
-Microsoft service:        public Microsoft endpoint
-```
-
-Conceptual flow:
+Example:
 
 ```text
 10.10.10.25
    -> enterprise firewall/proxy
-   -> SNAT 10.10.10.25 to enterprise-owned public IP
-   -> ExpressRoute Microsoft-peering BGP path
+   -> SNAT to enterprise-owned public IP
+   -> ExpressRoute Microsoft peering
    -> MSEE
    -> Microsoft network
    -> supported Microsoft public service
 ```
 
-The private client address normally cannot be presented directly as the source on Microsoft Peering because traffic entering the Microsoft public-service routing domain must use valid public source addressing.
+### 3.4 Why enable both on one circuit?
 
-### 3.4 Why would you enable both Private and Microsoft Peering on the same circuit?
-
-Because they solve **different reachability problems**.
-
-A typical enterprise might need all of the following at the same time:
+Because they solve different reachability problems:
 
 ```text
-Datacenter -> Azure VM 10.50.20.10
-           uses Azure Private Peering
+Datacenter -> Azure VM private IP
+           -> Azure Private Peering
 
-Datacenter -> Azure Private Endpoint 10.60.5.8
-           uses Azure Private Peering
+Datacenter -> Azure Private Endpoint
+           -> Azure Private Peering
 
 Datacenter -> supported Microsoft public SaaS/PaaS endpoint
-           uses Microsoft Peering
+           -> Microsoft Peering
 ```
 
-One ExpressRoute circuit can have **one or both** current peerings enabled. The circuit bandwidth is shared by the enabled peerings.
+One ExpressRoute circuit can carry both routing domains and shares its purchased bandwidth across enabled peerings.
 
-A useful mental model is:
+### 3.5 Private Endpoint versus public PaaS endpoint
+
+The same Azure service can use different routing domains depending on DNS and the resulting destination IP.
 
 ```text
-                    ExpressRoute circuit
-                           |
-                +----------+----------+
-                |                     |
-       Azure Private Peering    Microsoft Peering
-                |                     |
-        private IP routing       public IP routing
-                |                     |
-          VNets / private        Microsoft public
-          Azure resources        service endpoints
+Storage public endpoint
+   -> Microsoft Peering when supported/selected
+
+Storage Private Endpoint 10.50.40.5
+   -> Azure Private Peering
 ```
 
-### 3.5 When you need only Private Peering
+### 3.6 Security-zone separation
 
-Use only Private Peering when:
+A strong enterprise design typically places:
 
-- the goal is hybrid IaaS/VNet connectivity;
-- SaaS/public Microsoft traffic can continue to use the Internet;
-- you use Private Endpoints so key PaaS services are resolved to private VNet addresses;
-- you do not have a business requirement for Microsoft-service traffic to enter Microsoft's network through the ExpressRoute circuit.
+- **Private Peering** toward the private/core routing domain.
+- **Microsoft Peering** toward a controlled DMZ/perimeter with firewall, proxy, NAT, and route filtering.
 
-This is the most common ExpressRoute design for Azure infrastructure workloads.
+Do not redistribute all Microsoft-Peering routes blindly into the private core.
 
-### 3.6 When Microsoft Peering is useful
+### 3.7 SNAT and asymmetric-routing caution
 
-Microsoft Peering becomes valuable when:
-
-- a supported Microsoft public service must use the private carrier/ExpressRoute path to the Microsoft edge;
-- the enterprise wants deterministic WAN transport to Microsoft instead of relying solely on general Internet transit;
-- a supported application architecture requires public Microsoft endpoints but the organization wants those routes delivered over ExpressRoute;
-- you are implementing a documented Microsoft-Peering-specific architecture such as IPsec VPN over Microsoft Peering.
-
-It is **not** needed simply because you use Azure PaaS. If that PaaS service is consumed through a Private Endpoint, the traffic normally follows Private Peering because the destination resolves to a private VNet IP.
-
-### 3.7 Same Azure service, different peering depending on endpoint type
-
-This is one of the most useful distinctions to understand.
-
-Suppose Azure Storage can be reached through either:
-
-1. its normal public endpoint; or
-2. a Private Endpoint in your VNet.
-
-Then conceptually:
-
-```text
-On-prem -> Storage public IP/FQDN
-          -> Microsoft Peering (when supported/selected)
-
-On-prem -> Storage Private Endpoint 10.50.40.5
-          -> Azure Private Peering
-```
-
-The service name can be the same, but **DNS resolution and destination IP determine the routing domain**.
-
-### 3.8 Security-zone design: do not merge the two peerings blindly
-
-Microsoft recommends treating the routing domains differently:
-
-- **Private Peering** commonly terminates toward the enterprise core/private routing domain.
-- **Microsoft Peering** commonly terminates in a DMZ or controlled perimeter because it uses public addressing and reaches Microsoft public-service endpoints.
-
-A strong design therefore looks like:
-
-```text
-                    ExpressRoute circuit
-                           |
-                  Provider / MSEE pair
-                    /             \
-                   /               \
-          Private Peering       Microsoft Peering
-                |                     |
-          Enterprise core          DMZ / edge
-                |                     |
-       private RFC1918 WAN       firewall / proxy / SNAT
-```
-
-Do not simply redistribute all Microsoft-Peering routes into the private core without policy. Keep route filtering, firewall policy, NAT, and failure behavior explicit.
-
-### 3.9 Why SNAT is common on Microsoft Peering
-
-Assume the user is `10.10.10.25`. Microsoft Peering requires valid public source addressing before traffic enters Microsoft's public-service network.
-
-A perimeter firewall might perform:
+For a private client reaching Microsoft Peering:
 
 ```text
 Before SNAT:
@@ -365,51 +257,26 @@ Src 10.10.10.25:53000
 Dst <Microsoft-public-IP>:443
 
 After SNAT:
-Src 203.0.113.25:62001
+Src <customer-owned-public-IP>:62001
 Dst <Microsoft-public-IP>:443
 ```
 
-The Microsoft service returns traffic to `203.0.113.25`; the firewall performs reverse NAT and delivers it to `10.10.10.25`.
+Avoid advertising the same public NAT prefix with identical specificity to both the Internet and Microsoft Peering unless you have explicitly engineered the return path. Otherwise stateful devices can see asymmetric traffic.
 
-### 3.10 Internet routing and asymmetric-path warning
+### 3.8 Microsoft Peering is not general Internet transit
 
-Do **not** casually advertise the same public source/NAT prefix with equal specificity to both:
+Microsoft Peering carries supported Microsoft service prefixes; it is not a generic private Internet service. General Internet destinations still use normal Internet connectivity unless another architecture provides them.
 
-- the public Internet; and
-- ExpressRoute Microsoft Peering.
+### 3.9 Practical decision table
 
-Microsoft specifically warns that this can create asymmetric routing.
-
-Safer approaches include:
-
-- dedicate a public prefix to Microsoft Peering that is not advertised to the Internet; or
-- advertise a more-specific prefix over ExpressRoute so the Microsoft return path is deterministic.
-
-This becomes especially important when a stateful firewall performs SNAT.
-
-### 3.11 Can Microsoft Peering replace Internet access?
-
-No. Microsoft Peering is not a general-purpose private Internet connection.
-
-It advertises supported Microsoft service routes according to the ExpressRoute Microsoft-Peering model and route filters. General Internet destinations still require normal Internet connectivity unless another architecture provides them.
-
-### 3.12 Can Private Peering reach Microsoft public services?
-
-Not merely because those services are hosted in Azure.
-
-Private Peering routes private VNet-connected address space. A public Microsoft endpoint remains a public destination unless you deliberately change the application architecture, for example by deploying a Private Endpoint and resolving the service name to that private address.
-
-### 3.13 Practical decision table
-
-| Destination/use case | Peering to use | Source addressing | Key Azure component |
-|---|---|---|---|
-| Azure VM private IP | **Private** | Private IP | ExpressRoute VNet/vWAN gateway |
-| Internal Load Balancer | **Private** | Private IP | VNet routing |
-| Azure Private Endpoint | **Private** | Private IP | Private Endpoint + DNS |
-| Supported Azure PaaS public endpoint | **Microsoft** | Public/SNAT | Microsoft Peering + route filter |
-| Microsoft 365 approved ExpressRoute scenario | **Microsoft** | Public/SNAT | Microsoft Peering + route filter |
-| General Internet website | Neither peering as a general rule | Public/NAT | Internet edge |
-| IPsec VPN carried over Microsoft Peering | **Microsoft** under the documented design | Public tunnel endpoints | VPN Gateway/NVA + Microsoft Peering |
+| Destination/use case | Peering to use | Source addressing |
+|---|---|---|
+| Azure VM private IP | **Private** | Private |
+| Internal Load Balancer | **Private** | Private |
+| Azure Private Endpoint | **Private** | Private |
+| Supported Azure PaaS public endpoint | **Microsoft** | Public/SNAT |
+| Microsoft 365 approved ExpressRoute scenario | **Microsoft** | Public/SNAT |
+| General Internet website | Neither as generic transit | Public/NAT |
 
 ---
 
@@ -674,53 +541,380 @@ Current Microsoft guidance states that FastPath is enabled automatically for eli
 
 ---
 
-## 8. ExpressRoute with Azure Route Server
+## 8. ExpressRoute with Azure Route Server, branch-to-branch, and SD-WAN
 
-Azure Route Server (**ARS**) solves a different problem from Virtual WAN.
+Azure Route Server (**ARS**) is a managed **BGP control-plane** service for a customer-managed VNet. It is especially useful when the hub contains both:
 
-Use ARS when a **customer-managed VNet** contains:
+- an ExpressRoute and/or VPN virtual network gateway; and
+- BGP-speaking network virtual appliances (**NVAs**) such as SD-WAN routers or firewalls.
 
-- an ExpressRoute VNet gateway and/or VPN gateway; and
-- one or more BGP-speaking NVAs such as SD-WAN or firewall appliances.
+Route Server does **not** forward user packets. It learns and advertises routes; the data plane flows directly through the gateway or NVA selected by Azure routing.
 
-ARS exchanges routes dynamically so these components can learn from one another.
+![ExpressRoute, Route Server, and SD-WAN branch-to-branch](images/09-06-26-13-15_expressroute_sdwan_branch_to_branch.svg)
 
-![ExpressRoute with Azure Route Server](images/09-06-26-12-40_expressroute_ars_integration.svg)
+[Download/edit the matching draw.io source](images/09-06-26-13-15_expressroute_sdwan_branch_to_branch.drawio)
 
-[Download/edit the matching draw.io source](images/09-06-26-12-40_expressroute_ars_integration.drawio)
+**What this image shows:** Branch A reaches Azure through ExpressRoute while Branch B reaches an SD-WAN NVA through the vendor overlay. Route Server exchanges the two branch route sets with the ExpressRoute gateway and SD-WAN NVA after branch-to-branch is enabled.
 
-**What this image shows:** The ExpressRoute gateway, Route Server, and NVA coexist in the same hub VNet. Route Server peers with the NVA and integrates with the virtual network gateway.
+**What matters:** Route Server is not in the packet path. It makes the ExpressRoute gateway aware of SD-WAN prefixes and makes the SD-WAN NVA aware of ExpressRoute prefixes.
 
-**What matters:** ARS is primarily a routing control-plane service. It does not inspect traffic and it does not become an ExpressRoute-to-ExpressRoute transit router.
+**What to verify:** Both NVA-to-Route-Server BGP sessions are Established, `allowBranchToBranchTraffic` is enabled, Branch A's prefixes are advertised toward the NVA, Branch B's prefixes are advertised toward the ExpressRoute gateway, and forwarding/security policy permits the actual traffic.
 
-**What to verify:** NVA peers are Established to both Route Server instance IPs, branch-to-branch route exchange is enabled when required, and learned/advertised routes contain the expected prefixes.
+### 8.1 What “branch-to-branch” means
 
-### 8.1 Route exchange / branch-to-branch
+The name can be misleading. In Route Server, **branch-to-branch** means **route exchange between different routing peers attached to the hub**, such as:
 
-By default, Route Server does not simply leak every route between every component.
+- NVA ↔ ExpressRoute gateway
+- NVA ↔ VPN gateway
+- ExpressRoute gateway ↔ VPN gateway
 
-When route exchange (also called branch-to-branch) is enabled, it can facilitate route sharing among:
+By default, Route Server does **not** propagate the routes learned from an NVA into a virtual network gateway, nor gateway-learned routes toward the NVA.
 
-- NVA and ExpressRoute gateway;
-- NVA and VPN gateway;
-- ExpressRoute gateway and VPN gateway.
+When branch-to-branch is enabled, Route Server can re-advertise those routes.
 
-### 8.2 What ARS does not do
+Example:
 
-**Source information:** ExpressRoute circuit-to-circuit connectivity is not supported through Azure Route Server. Routes from one ExpressRoute circuit are not advertised into another circuit through ARS.
+```text
+Branch A behind ExpressRoute:
+10.10.0.0/16
 
-For circuit-to-circuit private WAN connectivity, use **ExpressRoute Global Reach** where supported.
+Branch B behind SD-WAN:
+10.20.0.0/16
+```
 
-### 8.3 Routing preference when VPN and ExpressRoute coexist
+Control plane:
 
-Route Server exposes hub routing preference choices such as ExpressRoute, VPN Gateway, or AS path behavior.
+```text
+Branch A advertises 10.10.0.0/16
+  -> ExpressRoute circuit
+  -> ExpressRoute gateway
+  -> Route Server learns the route
 
-Design this explicitly when the same prefix can arrive from both:
+Branch B advertises 10.20.0.0/16
+  -> SD-WAN overlay
+  -> Azure SD-WAN NVA
+  -> eBGP to Route Server
+  -> Route Server learns the route
+```
 
-- ExpressRoute; and
-- VPN/SD-WAN/NVA.
+With branch-to-branch enabled:
 
-Otherwise, you may accidentally make an emergency backup path active.
+```text
+Route Server advertises 10.20.0.0/16
+  -> ExpressRoute gateway
+  -> ExpressRoute
+  -> Branch A
+
+Route Server advertises 10.10.0.0/16
+  -> SD-WAN NVA
+  -> SD-WAN overlay
+  -> Branch B
+```
+
+The result is that both branches can have a route to each other through the Azure hub.
+
+### 8.2 Actual Branch A -> Branch B packet path
+
+For a packet:
+
+```text
+Source:      10.10.10.25
+Destination: 10.20.20.25
+```
+
+a representative path is:
+
+```text
+Branch A
+  -> customer CE
+  -> ExpressRoute private peering
+  -> MSEE
+  -> ExpressRoute VNet gateway
+  -> Azure VNet forwarding
+  -> SD-WAN NVA
+  -> vendor SD-WAN tunnel
+  -> Branch B edge
+  -> 10.20.20.25
+```
+
+**Route Server is absent from that data path.**
+
+The return packet follows the corresponding reverse route:
+
+```text
+Branch B
+  -> SD-WAN edge
+  -> SD-WAN tunnel
+  -> Azure SD-WAN NVA
+  -> Azure VNet forwarding
+  -> ExpressRoute VNet gateway
+  -> ExpressRoute
+  -> Branch A
+```
+
+Stateful firewalls/NAT inserted in either direction must see a symmetric path.
+
+### 8.3 Why branch-to-branch is disabled by default
+
+Automatic route leaking between an ExpressRoute gateway, VPN gateway, and third-party NVAs could unintentionally create transit paths.
+
+For example, without deliberate policy you could accidentally turn Azure into:
+
+- SD-WAN-to-ExpressRoute transit;
+- VPN-to-ExpressRoute transit;
+- a bypass around an inspection firewall;
+- a route-leak point between otherwise segmented branch domains.
+
+Enable branch-to-branch only when the topology intentionally requires this route exchange.
+
+### 8.4 Enable branch-to-branch
+
+```cli
+az network routeserver update \
+  --name ARS-Hub \
+  --resource-group RG-Hub \
+  --allow-b2b-traffic true
+```
+
+Verify:
+
+```cli
+az network routeserver show \
+  --resource-group RG-Hub \
+  --name ARS-Hub \
+  --query "{asn:virtualRouterAsn,peerIPs:virtualRouterIps,allowB2B:allowBranchToBranchTraffic,preference:hubRoutingPreference}" \
+  --output json
+```
+
+**Success criteria:** `allowB2B` is `true`.
+
+### 8.5 Verify what the NVA learns and advertises
+
+```cli
+az network routeserver peering list-learned-routes \
+  --resource-group RG-Hub \
+  --routeserver ARS-Hub \
+  --name SDWAN-NVA \
+  --output table
+```
+
+```cli
+az network routeserver peering list-advertised-routes \
+  --resource-group RG-Hub \
+  --routeserver ARS-Hub \
+  --name SDWAN-NVA \
+  --output table
+```
+
+**Expected state:**
+
+- NVA-originated branch prefixes appear as learned routes.
+- ExpressRoute/on-premises prefixes intended for the NVA appear in advertised routes.
+
+### 8.6 Route preference when the same prefix exists on ExpressRoute and SD-WAN
+
+If Route Server learns the same destination through multiple connection types, selection matters.
+
+Microsoft documents that, by default, ExpressRoute-learned routes have preference over VPN/SD-WAN-learned routes. Route Server hub routing preference can be configured to influence this behavior.
+
+This matters for designs such as:
+
+```text
+Primary: ExpressRoute
+Backup:  SD-WAN Internet overlay
+```
+
+or the reverse.
+
+Do not assume that advertising a backup route is enough. Verify the selected effective route and the failure behavior.
+
+### 8.7 AS-path nuance
+
+Route Server preserves the AS path it receives from NVA peers. However, when routes ultimately traverse the ExpressRoute gateway and are advertised toward on-premises, ExpressRoute has specific AS-path behavior and may remove private ASN information before presenting the route to the customer.
+
+Therefore, validate the **actual route seen by the on-premises router** rather than assuming every NVA-side AS prepend will remain visible end to end.
+
+### 8.8 Route Server is not ExpressRoute-circuit-to-circuit transit
+
+This restriction is critical:
+
+```text
+ExpressRoute Circuit 1
+      X
+Azure Route Server
+      X
+ExpressRoute Circuit 2
+```
+
+Route Server does not provide ExpressRoute-circuit-to-circuit transit.
+
+For site-to-site connectivity between networks attached to separate ExpressRoute circuits, evaluate **ExpressRoute Global Reach**.
+
+### 8.9 Can ExpressRoute be integrated with Fortinet, Palo Alto, and Cisco SD-WAN?
+
+**Yes — but ExpressRoute does not directly “speak the vendor SD-WAN protocol.”** Integration happens by combining Azure routing with a vendor NVA/SD-WAN gateway.
+
+There are three common architectures.
+
+#### Model A — Customer-managed hub VNet + Route Server
+
+```text
+ExpressRoute
+    |
+ER VNet Gateway
+    |
+Azure Route Server <--- eBGP ---> SD-WAN NVA
+                                /    |     \
+                         Fortinet  Palo Alto  Cisco
+                                |
+                         SD-WAN overlay
+                                |
+                             branches
+```
+
+This is the most general architecture.
+
+Requirements:
+
+- NVA supports BGP, including the Route Server peering requirements.
+- NVA peers with **both** Route Server instance IPs.
+- NVA ASN differs from Route Server ASN 65515.
+- Branch-to-branch is enabled if ExpressRoute routes and SD-WAN routes must be exchanged.
+- Security/UDR/effective-route design sends data to the intended NVA.
+- NVA HA and stateful symmetry are handled by the vendor architecture.
+
+#### Model B — Integrated NVA in Azure Virtual WAN
+
+Some vendors support deployment directly into a Virtual WAN hub.
+
+```text
+ExpressRoute branch
+      |
+vWAN ExpressRoute Gateway
+      |
+Azure Virtual Hub Router
+      |
+Integrated SD-WAN / NGFW NVA
+      |
+SD-WAN branches
+```
+
+The virtual hub provides Azure route exchange and Microsoft-backbone connectivity between hub-connected spokes.
+
+This is often cleaner for multi-region SD-WAN because you avoid building and maintaining a separate transit VNet.
+
+#### Model C — SD-WAN NVA in a normal VNet connected to Virtual WAN
+
+A vendor virtual CPE can also be deployed in an enterprise VNet and connected toward Virtual WAN, commonly using IPsec/BGP depending on the architecture.
+
+This gives the customer more direct control of the NVA but also more responsibility for scale, HA, routing, and lifecycle.
+
+### 8.10 Fortinet
+
+Fortinet documents FortiGate-VM NVAs deployed **inside Azure Virtual WAN hubs** for combined SD-WAN and next-generation firewall functionality.
+
+```text
+FortiGate branch
+   -> Fortinet SD-WAN overlay
+   -> FortiGate-VM NVA in Azure vHub
+   -> vHub route exchange
+   -> Azure VNet / ExpressRoute-connected site
+```
+
+FortiManager can manage the FortiGate hub NVAs and branch FortiGates.
+
+This means an ExpressRoute-connected datacenter can coexist with Fortinet SD-WAN branches through the Azure routing fabric, provided the relevant hub route tables/route exchange are configured.
+
+Fortinet also supports ordinary FortiGate VMs in customer-managed VNets, where BGP to Azure Route Server is another valid integration pattern.
+
+### 8.11 Palo Alto Networks
+
+Palo Alto Networks supports Azure integration through **Prisma SD-WAN virtual ION (vION)** architectures and VM-Series firewall/NVA designs.
+
+Prisma SD-WAN documents Azure Virtual WAN integration where vION connectivity extends branch SD-WAN into the Azure hub-and-spoke transit architecture.
+
+```text
+Prisma SD-WAN branch
+   -> Prisma SD-WAN overlay
+   -> vION / Palo Alto cloud NVA
+   -> Azure routing
+   -> VNet or ExpressRoute-connected network
+```
+
+For a customer-managed VNet, a BGP-capable Palo Alto NVA can also exchange dynamic routes with Azure Route Server when deployed according to Route Server requirements.
+
+Do not confuse:
+
+- **Prisma SD-WAN** — branch/connectivity overlay; and
+- **VM-Series NGFW** — firewall/NVA.
+
+They can participate in the same Azure architecture but serve different functions.
+
+### 8.12 Cisco
+
+Cisco has a documented, automated **Catalyst SD-WAN + Azure Virtual WAN** integration using **Catalyst 8000V** NVAs deployed inside Azure virtual hubs.
+
+Cisco SD-WAN Manager/Cloud OnRamp can automate the deployment and mapping between branch VPNs and Azure VNets.
+
+```text
+Cisco branch / Catalyst SD-WAN edge
+   -> Catalyst SD-WAN overlay
+   -> Catalyst 8000V in Azure vHub
+   -> Azure vHub routing
+   -> Azure VNet or ExpressRoute-connected site
+```
+
+Cisco documents branch-to-VNet and inter-region vHub connectivity, plus service chaining with Azure Firewall in supported designs.
+
+A manually deployed Catalyst 8000V in a customer-managed hub can also use BGP with Route Server where the chosen design satisfies Route Server requirements.
+
+### 8.13 Vendor comparison
+
+| Vendor | Azure SD-WAN integration examples | ExpressRoute coexistence model |
+|---|---|---|
+| **Fortinet** | FortiGate-VM SD-WAN/NGFW NVA in vWAN hub; FortiGate in customer VNet | vHub routing or Route Server BGP |
+| **Palo Alto Networks** | Prisma SD-WAN vION Azure integration; VM-Series NVA | vWAN/vION architecture or Route Server with BGP-capable NVA |
+| **Cisco** | Catalyst SD-WAN Cloud OnRamp + Catalyst 8000V in vWAN hub | vHub routing or customer-hub Route Server BGP |
+
+### 8.14 Example hybrid design: ExpressRoute as primary, SD-WAN as backup
+
+```text
+Branch/datacenter
+   |\
+   | \__ Internet -> SD-WAN tunnel -> Azure NVA
+   |
+   +---- ExpressRoute ----------------> Azure
+```
+
+For the same Azure prefix:
+
+- ExpressRoute can be preferred during normal operation.
+- SD-WAN remains a backup path.
+- If ExpressRoute is withdrawn, the SD-WAN route becomes active.
+
+You must coordinate Route Server hub routing preference, NVA BGP advertisements, on-premises BGP/SD-WAN policy, firewall state/symmetry, and convergence timers.
+
+### 8.15 Common mistakes with SD-WAN + ExpressRoute
+
+1. **Assuming Route Server carries packets.** It only exchanges routes.
+2. **Enabling branch-to-branch without understanding the new transit paths.**
+3. **Expecting Route Server to provide ExpressRoute-circuit-to-circuit transit.**
+4. **Advertising the same prefix from ER and SD-WAN without defining preference.**
+5. **Forgetting that stateful firewalls need a symmetric forwarding design.**
+6. **Using one NVA BGP session instead of peering to both Route Server instances.**
+7. **Assuming all vendors use the same Azure integration model.**
+8. **Confusing Virtual WAN integrated NVA routing with a normal NVA VM in a VNet.**
+
+### 8.16 Sources for this section
+
+- Microsoft: https://learn.microsoft.com/azure/route-server/expressroute-vpn-support
+- Microsoft: https://learn.microsoft.com/azure/route-server/route-server-faq
+- Microsoft: https://learn.microsoft.com/azure/route-server/configure-route-server
+- Microsoft: https://learn.microsoft.com/azure/virtual-wan/about-nva-hub
+- Microsoft: https://learn.microsoft.com/azure/virtual-wan/sd-wan-connectivity-architecture
+- Fortinet: https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-sd-wan-ngfw-deployment-guide/372408
+- Palo Alto Networks: https://docs.paloaltonetworks.com/prisma-sd-wan/cloudblades/cloudblade-integrations/azure-virtual-wan-with-vion-cloudblade-integration
+- Cisco: https://www.cisco.com/c/en/us/td/docs/routers/sdwan/26x-later/cloud-onramp/cloud-onramp-configuration-guide/cloud-onramp-multi-cloud-azure.html
 
 ---
 
