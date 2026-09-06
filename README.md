@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure ExpressRoute — Comprehensive Routing, Multi-Circuit, Virtual WAN, and Route Server Study Guide](09-06-26-12-40_Azure_ExpressRoute_Comprehensive_Study_Guide.md)
+Deep dive into ExpressRoute circuit anatomy, Azure private and Microsoft peering, connectivity models, Local/Standard/Premium SKUs, ExpressRoute Direct, Metro, Global Reach, BGP route engineering, multi-site/multi-circuit ECMP and active/standby failover using AS-path prepending and LOCAL_PREF, Virtual WAN ExpressRoute gateways and vHub route-table propagation, Azure Route Server/NVA integration, FastPath, packet flow, Azure CLI configuration, verification, troubleshooting, and four matching SVG/editable draw.io diagrams.
+
 ### [Azure Private Endpoint Inspection — Azure Firewall and ILB-Backed Third-Party NVA Deep Dive](09-06-26-12-37_Azure_Private_Endpoint_Inspection_Azure_Firewall_Deep_Dive.md)
 Detailed Private Endpoint inspection guide covering both Azure Firewall and Standard Internal Load Balancer + HA Ports + third-party NVA designs. Includes PE network-policy requirements, route-precedence behavior, UDR-to-ILB frontend service insertion, NVA IP forwarding, SNAT/state symmetry, exact forward/return packet walks, HA and health-probe behavior, backend-to-own-frontend hairpin caveats, Azure CLI deployment/verification commands, failover analysis, and matching SVG/editable draw.io diagrams.
 
