@@ -8,9 +8,11 @@
 - https://learn.microsoft.com/en-us/azure/firewall-manager/secure-cloud-network
 - https://learn.microsoft.com/en-us/azure/virtual-wan/routing-deep-dive
 - https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
+- https://learn.microsoft.com/en-us/azure/virtual-wan/third-party-integrations
 - https://learn.microsoft.com/en-us/azure/virtual-wan/howto-firewall
 - https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
 - https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
+- https://learn.microsoft.com/en-us/azure/virtual-wan/howto-connect-vnet-hub
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 - https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
 
@@ -51,6 +53,80 @@ The key operational difference from a customer-managed hub VNet is that you do *
 | Licensing | Azure service pricing | Azure infrastructure + vendor entitlement/Marketplace plan |
 
 **Caveat:** “NVA in Azure” does not mean “NVA supported in a Virtual WAN hub.” Direct vHub deployment is restricted to approved partner offers.
+
+### 3.1 How can an integrated NVA have multiple instances? Do you need your own ILB?
+
+**No. For an NVA integrated directly into the Virtual WAN hub, you do not deploy your own Internal Load Balancer (ILB) inside the vHub.**
+
+This is one of the most important differences between an **integrated NVA in a managed vHub** and an **NVA pair that you deploy as ordinary VMs in a customer-owned VNet**.
+
+**Source information:** Microsoft documents integrated Virtual WAN NVAs as Microsoft-managed Infrastructure-as-a-Service solutions jointly developed with supported NVA vendors. The backing infrastructure is deployed **inside the Virtual WAN hub as a Microsoft-owned and managed Virtual Machine Scale Set (VMSS) with Azure Load Balancers**. You select an NVA scale/infrastructure unit, while Microsoft and the partner integration manage the underlying VM and load-balancer construction.
+
+The customer-facing logical model is therefore:
+
+| Component | Who owns/configures it? | What you interact with |
+|---|---|---|
+| Virtual WAN hub router | Microsoft | Hub routing, route tables, Routing Intent |
+| Integrated NVA resource | Microsoft + NVA vendor integration | NVA resource, scale units, vendor policy/orchestrator |
+| NVA backend instances | Microsoft-managed infrastructure + vendor software | Normally not individual customer-built firewall VMs |
+| Azure Load Balancer(s) backing the integrated NVA | Microsoft-managed as part of the integration | You normally do **not** create or point UDRs at this ILB |
+| NVA policy / security configuration | Vendor-specific | Vendor manager/orchestrator/firewall policy |
+
+The Microsoft documentation currently maps NVA scale units to backend instance counts as follows:
+
+| NVA scale units | Integrated NVA instances |
+|---:|---:|
+| `2-20` | `2` |
+| `30-40` | `3` |
+| `60` | `4` |
+| `80` | `5` |
+
+So when the guide says an integrated NVA can have **multiple NVAs/instances**, it does **not** mean that you manually deploy NVA-1, NVA-2, NVA-3 and then create your own ILB VIP in the vHub. It means that **one integrated NVA deployment can be backed by multiple Microsoft-managed NVA instances according to the selected scale unit**.
+
+Microsoft's NVA hub documentation also shows that integrated NVA deployments consume hub IP addresses for both NVA interfaces and load-balancer infrastructure. For integrated NVA types that are not compatible with Internet Inbound, Microsoft documents an IP address allocated to the **Internal Load Balancer**. This is another indication that the load-balancer layer exists, but it is part of the managed integrated-NVA implementation rather than a customer-created service-insertion hop.
+
+#### What Routing Intent points to
+
+Routing Intent does **not** require you to configure a route such as:
+
+```text
+Private traffic -> customer ILB VIP -> NVA-1/NVA-2
+```
+
+Instead, the vHub security/routing integration selects the **integrated NVA security provider/resource**. The internal VMSS/load-balancer implementation is underneath that service abstraction.
+
+Conceptually:
+
+```text
+Spoke / Branch
+      |
+      v
+Managed vHub router
+      |
+      | Routing Intent / security policy
+      v
+Integrated NVA resource
+      |
+      | Microsoft/vendor-managed distribution
+      v
+One of the healthy NVA backend instances
+```
+
+The important operational point is that the **customer does not need to know or configure the internal load-balancer VIP as the next hop** in the same way that a customer-managed hub-VNet NVA design would.
+
+#### Do not confuse this with an NVA in a connected VNet
+
+Microsoft also documents a separate architecture where an **NVA Spoke VNet** contains ordinary customer-managed NVA VMs and a customer-managed load balancer. In that design, a Virtual WAN VNet connection can use a static route whose next-hop IP is the load balancer in the connected VNet.
+
+That is a different architecture:
+
+| Design | NVA location | Who creates the ILB? | How traffic is steered |
+|---|---|---|---|
+| **Integrated NVA in vHub** | Directly inside managed Virtual WAN hub | **Microsoft/integration** | Routing Intent / integrated vHub routing |
+| **NVA VMs in connected VNet** | Customer-owned VNet attached to vHub | **Customer** | Custom vWAN connection routes/static next hop/UDRs as documented for that design |
+| **NVA VMs in customer-managed hub VNet** | Customer-owned hub VNet | **Customer** | UDR/BGP/Route Server/ILB depending on architecture |
+
+**Design rule:** If you are using the supported **integrated NVA directly in the Virtual WAN hub**, do not try to recreate the customer-managed hub pattern by adding your own ILB inside the vHub. The hub is Microsoft-managed and does not expose arbitrary customer subnet/VM placement for that purpose.
 
 ## 4. Routing Intent — the key mechanism
 
@@ -96,7 +172,7 @@ Example:
 
 **What this image shows:** The vHub receives the packet, applies the Private Traffic routing policy, inserts the security provider, then performs the onward lookup to Spoke B.
 
-**What matters:** Stateful inspection requires the return direction to traverse the same logical state domain.
+**What matters:** Stateful inspection requires the return direction to traverse the same logical state domain. For an integrated NVA, the exact backend instance selection and state synchronization are implementation/vendor details beneath the integrated NVA service abstraction; you do not point the spoke at a customer-created ILB VIP.
 
 **What to verify:** Firewall logs should show the expected source/destination and both directions; there should be no alternate UDR or branch route that bypasses inspection.
 
@@ -107,23 +183,25 @@ Example:
 3. The packet enters the vHub routing fabric.
 4. The vHub identifies `10.20.0.0/16` as private traffic.
 5. The Private Traffic policy selects the firewall/NVA as service next hop.
-6. The security provider evaluates network/application policy, threat controls, logging, and NAT where applicable.
-7. If allowed, the packet returns to the vHub forwarding fabric.
-8. The vHub resolves `10.20.0.0/16` through the Spoke B connection.
-9. The packet enters Spoke B and reaches VM-B.
+6. For an integrated NVA, the managed NVA infrastructure delivers the flow to a healthy backend instance according to the Microsoft/vendor implementation; this is not a customer-created ILB next-hop decision.
+7. The security provider evaluates network/application policy, threat controls, logging, and NAT where applicable.
+8. If allowed, the packet returns to the vHub forwarding fabric.
+9. The vHub resolves `10.20.0.0/16` through the Spoke B connection.
+10. The packet enters Spoke B and reaches VM-B.
 
 ### Return path
 
 1. VM-B replies to `10.10.1.4`.
 2. The reply enters the vHub.
 3. Private Traffic policy again inserts the security provider.
-4. The firewall matches the stateful session/policy.
-5. The vHub forwards the packet to Spoke A.
-6. VM-A receives the reply.
+4. The integrated security service/vendor HA design ensures the return flow reaches the appropriate logical state domain; exact instance/state behavior is vendor-specific.
+5. The firewall matches the stateful session/policy.
+6. The vHub forwards the packet to Spoke A.
+7. VM-A receives the reply.
 
 ### NAT caveat
 
-For private-to-private traffic, unnecessary SNAT makes troubleshooting and source-based policy harder. Azure Firewall NAT behavior depends on destination classification and the configured private IP ranges. If the enterprise uses non-RFC1918 space internally, validate how those ranges are classified and add them where required.
+For private-to-private traffic, unnecessary SNAT makes troubleshooting and source-based policy harder. Azure Firewall NAT behavior depends on destination classification and the configured private IP ranges. If the enterprise uses non-RFC1918 space internally, validate how those ranges are classified and add them where required. For third-party integrated NVAs, source-preservation/NAT behavior must be confirmed from that vendor's Virtual WAN integration documentation.
 
 ## 7. Branch to spoke flow
 
@@ -273,15 +351,16 @@ Check:
 The exact workflow is vendor-specific, but the architecture is consistent:
 
 1. Confirm the appliance is on Microsoft’s current supported Virtual WAN NVA partner list.
-2. Deploy the vendor’s **managed application** from Azure Marketplace.
+2. Deploy the vendor’s **managed application** from Azure Marketplace or the documented vendor orchestration workflow.
 3. Select the Virtual WAN and target hub.
-4. Select the vendor’s required NVA infrastructure/scale units.
-5. Complete licensing/bootstrap in the vendor orchestrator.
-6. Confirm the NVA integrates/peers with the vHub router.
-7. Configure Routing Intent for the traffic classes that the offer supports.
-8. If it also provides SD-WAN, terminate branch overlays and validate branch route exchange into the vHub.
-9. Build vendor firewall policy.
-10. Test HA, upgrade behavior, and convergence.
+4. Select the vendor’s required NVA infrastructure/scale units. Understand that the selected scale can result in multiple Microsoft-managed NVA backend instances.
+5. **Do not create a customer ILB inside the vHub.** The integrated NVA's VMSS/load-balancer backing infrastructure is part of the Microsoft/vendor-managed service integration.
+6. Complete licensing/bootstrap in the vendor orchestrator.
+7. Confirm the NVA resource is healthy and integrated with the vHub routing fabric.
+8. Configure Routing Intent for the traffic classes that the offer supports.
+9. If it also provides SD-WAN, terminate branch overlays and validate branch route exchange into the vHub.
+10. Build vendor firewall policy.
+11. Test HA, upgrade behavior, backend-instance failure, and convergence.
 
 **Licensing caveat:** Azure consumption and vendor licensing are separate. Depending on the offer, the vendor may use PAYG, Marketplace subscription, or BYOL. Verify the current Marketplace plan and support entitlement.
 
@@ -291,10 +370,15 @@ For **this method**, yes: to get integrated Virtual WAN NVA behavior, use one of
 
 A generic pair of firewall VMs in a connected VNet can still inspect traffic, but that becomes a different service-insertion architecture. It commonly involves custom Virtual WAN routes, static routes, load balancers, and/or Azure Route Server depending on the design.
 
-Keep these two designs separate in your mental model:
+Keep these designs separate in your mental model:
 
-1. **Integrated NVA in the vHub** — supported managed application with direct Virtual WAN routing integration.
-2. **NVA in a connected VNet** — customer-managed routing/service insertion.
+| Architecture | Placement | Load balancer responsibility | Routing/service insertion |
+|---|---|---|---|
+| **Integrated NVA in vHub** | Supported NVA directly in managed hub | **Microsoft/vendor-managed** | Routing Intent / integrated vHub routing |
+| **NVA in a connected VNet** | Customer VNet attached to vHub | **Customer-managed if architecture requires one** | Custom Virtual WAN connection routes/static next hop and vendor design |
+| **NVA in customer-managed hub VNet** | Customer hub VNet | **Customer-managed if architecture requires one** | UDR, BGP, Route Server, ILB, or vendor clustering model |
+
+A useful test is: **If you are typing the private IP of your own ILB into a route as the next hop, you are probably no longer describing the integrated-NVA-in-vHub architecture.**
 
 ## 15. Route tables, association, propagation, and labels
 
@@ -339,6 +423,12 @@ A normal Marketplace firewall cannot simply be dropped into the managed vHub.
 
 **Mitigation:** Use the current Microsoft supported-NVA list.
 
+### Treating an integrated vHub NVA like customer-managed firewall VMs behind your own ILB
+
+This mixes two different service-insertion architectures. The integrated vHub NVA already uses Microsoft-managed VMSS/load-balancer infrastructure underneath the service.
+
+**Mitigation:** For the integrated-vHub method, configure the supported NVA resource, scale units, vendor policy, and Routing Intent. Only build your own ILB when you are intentionally deploying customer-managed NVA VMs in a customer-owned VNet architecture that requires it.
+
 ## 17. Asymmetric routing
 
 Stateful inspection depends on forward and return traffic crossing the same state domain. Asymmetry can be introduced by:
@@ -358,7 +448,7 @@ For one test flow record:
 - source/destination IP;
 - source/destination port;
 - protocol;
-- firewall instance/session ID;
+- firewall instance/session ID where exposed by the vendor;
 - branch path;
 - vHub path;
 - effective route in each direction.
@@ -373,7 +463,11 @@ Availability is platform-managed. Do not model it as two ordinary firewall VMs b
 
 ### Integrated NVA
 
-Microsoft describes integrated NVAs as Availability Zone aware and highly available, but exact lifecycle, state synchronization, and upgrade behavior are partner-specific.
+Microsoft documents the integrated-NVA backing infrastructure as a **Microsoft-owned and managed VM scale set with Azure Load Balancers in the Virtual WAN hub**. The selected NVA scale unit determines how many NVA instances are deployed; current Microsoft documentation lists two through five instances depending on scale.
+
+This means there can be multiple NVA instances without you provisioning an ILB. The load-balancer and instance-distribution layer is part of the integrated service. However, exact firewall state synchronization, connection persistence, failover behavior, upgrade behavior, and long-lived-session survival remain partner/vendor specific.
+
+Do not assume that “Microsoft-managed load balancing” automatically means every existing firewall session survives an instance failure. Validate the vendor's Virtual WAN HA documentation and test real sessions.
 
 ### Failure test plan
 
@@ -385,7 +479,9 @@ Measure:
 4. branch tunnel failover;
 5. state synchronization;
 6. long-lived TCP survival;
-7. logging continuity.
+7. logging continuity;
+8. behavior when one integrated NVA backend instance becomes unhealthy;
+9. behavior while scaling NVA infrastructure units.
 
 Do not equate “HA” with guaranteed stateful session preservation unless the vendor explicitly documents it.
 
@@ -409,7 +505,7 @@ Check BGP received/advertised routes, active tunnel/circuit, path preference, an
 
 ### NVA
 
-Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA status, dataplane utilization, and overlay tunnel tools.
+Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA status, dataplane utilization, and overlay tunnel tools. For an integrated NVA, also verify the Azure-side NVA resource health and configured infrastructure/scale units rather than looking for a customer-owned ILB resource.
 
 ## 20. Troubleshooting by symptom
 
@@ -449,6 +545,18 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 **Failure means:** asymmetry is likely.
 
+### Integrated NVA shows multiple instances and you cannot find the ILB in your resources
+
+**Where:** Virtual WAN hub → integrated NVA resource and vendor management plane.
+
+**What it tests:** Whether you are expecting customer-owned infrastructure that is actually part of the Microsoft-managed integrated-NVA backing service.
+
+**Expected:** The NVA resource is healthy and scaled to the configured infrastructure units. You should not need a customer-created ILB resource or ILB VIP as the Routing Intent next hop.
+
+**Failure means:** If the design documentation tells you to deploy your own ILB and point vWAN static routes at it, you may be looking at the separate **NVA-in-connected-VNet** architecture rather than an integrated NVA directly in the hub.
+
+**Next action:** Confirm the deployment type first, then troubleshoot the correct architecture.
+
 ### Inter-region traffic bypasses inspection
 
 **Where:** both hub Security configuration blades.
@@ -467,6 +575,9 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 - Virtual WAN must be **Standard** for the secured-hub architecture described here.
 - Only supported integrated third-party NVA offers can be deployed directly inside a vHub.
+- Integrated NVAs are backed by Microsoft-owned/managed VMSS and Azure Load Balancer infrastructure in the vHub; customers do not create an ILB inside the vHub for this integrated model.
+- NVA scale units determine the number of integrated NVA instances; current Microsoft documentation lists `2` instances for scale units `2-20`, `3` for `30-40`, `4` for `60`, and `5` for `80`.
+- Size the vHub address space for future NVA scale and multiple integrated NVA deployments because the NVA interfaces and load-balancer infrastructure consume hub IP addresses.
 - Routing Intent is required when you need secured inter-hub and branch-to-branch traffic behavior.
 - If internal networks use public IP ranges, add them to **Private Traffic Prefixes**.
 - Microsoft documents that secured-hub Azure Firewall supports up to **80 public IP addresses** in standard deployments; a Bring Your Own Public IP preview can raise the documented limit to **250**. Validate current limits before production design.
@@ -481,6 +592,8 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 - [ ] Virtual WAN is Standard.
 - [ ] Required regional hubs exist and are sized appropriately.
 - [ ] Azure Firewall or supported integrated NVA is healthy.
+- [ ] For integrated NVA, selected scale units and expected instance count are understood.
+- [ ] For integrated NVA, no customer ILB is being incorrectly introduced into the managed vHub design.
 - [ ] Private Traffic policy enabled.
 - [ ] Internet Traffic policy enabled where required.
 - [ ] Inter-hub inspection enabled where required.
@@ -504,11 +617,11 @@ Prefer a customer-managed hub VNet when you require arbitrary appliances not sup
 
 ## 24. Source information, explanation, and inference
 
-**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, and Private Endpoint inspection requirements.
+**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, and Private Endpoint inspection requirements.
 
-**Additional explanation:** The packet walks and control-plane diagrams in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → stateful inspection → second lookup → egress → symmetric return.
+**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA distribution → stateful inspection → second lookup → egress → symmetric return.
 
-**Reasonable inference:** Exact convergence, session preservation, and scale of a third-party integrated NVA depend on the vendor implementation, selected scale units, topology, and active traffic. Test those rather than assuming them from the generic Virtual WAN architecture.
+**Reasonable inference:** Exact convergence, per-flow backend selection details, state synchronization, session preservation, and scale behavior of a third-party integrated NVA depend on the vendor implementation, selected scale units, topology, and active traffic. Test those rather than assuming them from the generic Virtual WAN architecture.
 
 ## Sources
 
@@ -520,13 +633,17 @@ Prefer a customer-managed hub VNet when you require arbitrary appliances not sup
    https://learn.microsoft.com/en-us/azure/virtual-wan/routing-deep-dive
 4. Microsoft Learn — About NVAs in a Virtual WAN hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
-5. Microsoft Learn — Configure Azure Firewall in a Virtual WAN hub  
+5. Microsoft Learn — About third-party integrations in Virtual WAN  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/third-party-integrations
+6. Microsoft Learn — Configure Azure Firewall in a Virtual WAN hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/howto-firewall
-6. Microsoft Learn — Apply Zero Trust principles to Azure Virtual WAN  
+7. Microsoft Learn — Apply Zero Trust principles to Azure Virtual WAN  
    https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
-7. Microsoft Learn — Configure Destination NAT for NVA in the hub  
+8. Microsoft Learn — Configure Destination NAT for NVA in the hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
-8. Microsoft Learn — Azure Virtual WAN network topology  
+9. Microsoft Learn — Connect a VNet to a Virtual WAN hub  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/howto-connect-vnet-hub
+10. Microsoft Learn — Azure Virtual WAN network topology  
    https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
-9. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
+11. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
    https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
