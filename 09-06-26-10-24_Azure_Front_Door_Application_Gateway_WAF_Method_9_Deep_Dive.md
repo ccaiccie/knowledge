@@ -568,12 +568,197 @@ Front Door origin health, Private Link approval or public-origin lockdown, `Azur
 
 ## 9.1 Public App Gateway origin
 
-Use both of these controls:
+When Application Gateway has a **public frontend IP** and is used as an Azure Front Door origin, use both of these controls:
 
-- NSG/edge access restriction for `AzureFrontDoor.Backend`.
-- WAF custom rule validating `X-Azure-FDID`.
+- An NSG rule that permits `AzureFrontDoor.Backend` to the Application Gateway listener ports and denies ordinary Internet clients.
+- An Application Gateway WAF custom rule that blocks requests when `X-Azure-FDID` does not equal the expected Azure Front Door profile ID.
 
-This prevents ordinary Internet clients and unrelated Front Door profiles from directly using the Application Gateway origin.
+The controls are complementary: the service tag proves the TCP connection came from Azure Front Door infrastructure, while `X-Azure-FDID` proves that the request came through **your intended Front Door profile** rather than another Front Door customer.
+
+### 9.1.1 Variables
+
+```cli
+APPGW_RG="RG-AppGateway"
+APPGW_NSG="nsg-appgateway-subnet"
+APPGW_WAF_POLICY="waf-agw-contoso-prod"
+AFD_RG="RG-WebEdge"
+AFD_PROFILE="afd-contoso-prod"
+APPGW_SUBNET_PREFIX="10.10.1.0/24"
+```
+
+### 9.1.2 Retrieve the Front Door profile ID
+
+Front Door inserts its profile identifier into `X-Azure-FDID` when it sends a request to an origin. Retrieve the expected value from the profile:
+
+```cli
+EXPECTED_FDID=$(az afd profile show \
+  --resource-group "$AFD_RG" \
+  --profile-name "$AFD_PROFILE" \
+  --query frontDoorId \
+  --output tsv)
+
+echo "$EXPECTED_FDID"
+```
+
+Use the returned `frontDoorId` GUID. Do not substitute the Azure Resource Manager resource ID of the profile.
+
+### 9.1.3 Inspect existing inbound NSG rules first
+
+```cli
+az network nsg rule list \
+  --resource-group "$APPGW_RG" \
+  --nsg-name "$APPGW_NSG" \
+  --query "[?direction=='Inbound'].{Priority:priority,Name:name,Access:access,Source:sourceAddressPrefix,DestinationPorts:destinationPortRange}" \
+  --output table
+```
+
+Choose unused priorities. Lower numeric priorities are evaluated first.
+
+### 9.1.4 Allow `AzureFrontDoor.Backend` to the listener
+
+For an HTTPS-only Application Gateway listener:
+
+```cli
+az network nsg rule create \
+  --resource-group "$APPGW_RG" \
+  --nsg-name "$APPGW_NSG" \
+  --name Allow-AzureFrontDoor-Backend-HTTPS \
+  --priority 100 \
+  --direction Inbound \
+  --access Allow \
+  --protocol Tcp \
+  --source-address-prefixes AzureFrontDoor.Backend \
+  --source-port-ranges "*" \
+  --destination-address-prefixes "$APPGW_SUBNET_PREFIX" \
+  --destination-port-ranges 443 \
+  --description "Allow Azure Front Door backend infrastructure to Application Gateway HTTPS listener"
+```
+
+If the gateway also intentionally listens on HTTP/80, use `--destination-port-ranges 80 443` instead.
+
+### 9.1.5 Deny ordinary Internet clients from reaching the listener
+
+Create a lower-precedence rule after the Front Door Allow rule:
+
+```cli
+az network nsg rule create \
+  --resource-group "$APPGW_RG" \
+  --nsg-name "$APPGW_NSG" \
+  --name Deny-Direct-Internet-HTTPS \
+  --priority 120 \
+  --direction Inbound \
+  --access Deny \
+  --protocol Tcp \
+  --source-address-prefixes Internet \
+  --source-port-ranges "*" \
+  --destination-address-prefixes "$APPGW_SUBNET_PREFIX" \
+  --destination-port-ranges 443 \
+  --description "Prevent direct Internet bypass of Azure Front Door"
+```
+
+The intended decision order is:
+
+```text
+Priority 100: AzureFrontDoor.Backend -> TCP/443 -> Allow
+Priority 120: Internet               -> TCP/443 -> Deny
+```
+
+Do not overwrite or block Application Gateway platform traffic that your deployment requires. For conventional Application Gateway v2/WAF_v2 deployments without Network Isolation, verify the required `GatewayManager` and `AzureLoadBalancer` allowances remain intact.
+
+### 9.1.6 Create the Application Gateway WAF custom rule
+
+The safest pattern is a **negated Equal + Block** rule:
+
+```text
+IF X-Azure-FDID != expected Front Door profile ID
+THEN Block
+```
+
+Create the custom rule:
+
+```cli
+az network application-gateway waf-policy custom-rule create \
+  --resource-group "$APPGW_RG" \
+  --policy-name "$APPGW_WAF_POLICY" \
+  --name blockNonAFDTraffic \
+  --priority 2 \
+  --rule-type MatchRule \
+  --action Block \
+  --state Enabled
+```
+
+Add the header condition:
+
+```cli
+az network application-gateway waf-policy custom-rule match-condition add \
+  --resource-group "$APPGW_RG" \
+  --policy-name "$APPGW_WAF_POLICY" \
+  --name blockNonAFDTraffic \
+  --match-variables RequestHeaders.X-Azure-FDID \
+  --operator Equal \
+  --values "$EXPECTED_FDID" \
+  --negate true
+```
+
+`--negate true` is critical: requests whose `X-Azure-FDID` equals the expected value do **not** match this Block rule and continue through the rest of the WAF policy. Requests with a missing or different value are blocked according to the WAF match behavior.
+
+This is preferable to a broad custom `Allow` rule because an Allow rule can terminate evaluation and unintentionally bypass managed WAF inspection.
+
+### 9.1.7 Verify the WAF custom rule
+
+```cli
+az network application-gateway waf-policy custom-rule show \
+  --resource-group "$APPGW_RG" \
+  --policy-name "$APPGW_WAF_POLICY" \
+  --name blockNonAFDTraffic \
+  --output jsonc
+
+az network application-gateway waf-policy custom-rule match-condition list \
+  --resource-group "$APPGW_RG" \
+  --policy-name "$APPGW_WAF_POLICY" \
+  --name blockNonAFDTraffic \
+  --output jsonc
+```
+
+**Expected successful state:**
+
+- `action` = `Block`.
+- `state` = `Enabled`.
+- Match variable targets request header `X-Azure-FDID`.
+- Operator = `Equal`.
+- Match value = the expected Front Door `frontDoorId`.
+- Negation = `true`.
+
+### 9.1.8 Verify the NSG rules
+
+```cli
+az network nsg rule show \
+  --resource-group "$APPGW_RG" \
+  --nsg-name "$APPGW_NSG" \
+  --name Allow-AzureFrontDoor-Backend-HTTPS \
+  --output jsonc
+
+az network nsg rule show \
+  --resource-group "$APPGW_RG" \
+  --nsg-name "$APPGW_NSG" \
+  --name Deny-Direct-Internet-HTTPS \
+  --output jsonc
+```
+
+**Success criteria:**
+
+- Azure Front Door can establish the origin-side TCP/443 connection.
+- A normal Internet client cannot establish a direct TCP/443 connection to the Application Gateway public frontend.
+- Requests from an unrelated Front Door profile are blocked by the `X-Azure-FDID` WAF rule.
+- Requests from the intended Front Door profile continue through the remaining WAF managed/custom rules.
+
+**Failure indicators:**
+
+- Direct access to the Application Gateway public IP still works.
+- Front Door origin health becomes unhealthy after the NSG change.
+- All Front Door traffic gets a WAF-generated 403.
+
+**Next actions:** verify NSG priority order, confirm the NSG is associated with the Application Gateway subnet, re-read `frontDoorId` from the correct Front Door profile, and inspect Application Gateway WAF logs for the actual header match.
 
 ## 9.2 Private Link App Gateway origin
 
@@ -975,4 +1160,4 @@ If Application Gateway must be a public Front Door origin, lock it down with the
 - https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-crs-rulegroups-rules
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/application-gateway-before-azure-firewall
-- https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure-front-door
+- https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure-frontdoor
