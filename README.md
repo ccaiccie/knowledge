@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Azure Forced Tunneling — Inspect Internet Traffic On-Premises](09-05-26-20-53_Azure_Forced_Tunneling_On_Premises_Internet_Inspection_Deep_Dive.md)
+Deep dive into forcing Azure Internet-bound traffic to on-premises inspection using VPN Gateway BGP defaults, VPN Gateway Default Site, and ExpressRoute private peering. Covers exact packet and return paths, on-premises SNAT, stateful symmetry, route selection and BGP/UDR precedence, hub-spoke gateway transit, fail-open behavior when learned defaults disappear, optional Azure-Firewall-to-on-premises double inspection, effective-route/Network-Watcher verification, MTU considerations, failover, common mistakes, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [Integrated Third-Party NGFW Directly Inside an Azure Virtual WAN Hub — Deep Dive](09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md)
 Focused deep dive into Microsoft/vendor-qualified Integrated NVAs deployed directly inside a Standard Azure Virtual WAN hub. Covers current Check Point, Fortinet, and Cisco NGFW eligibility, the Palo Alto SaaS distinction, Routing Intent for private and Internet traffic, NVA Infrastructure Units, managed VMSS/load-balancer/health behavior, east-west/branch/Internet packet flows, Internet-inbound DNAT and SNAT symmetry limits, Azure health probes, MANA migration considerations, Azure CLI verification, vendor-specific notes, common mistakes, and symptom-based troubleshooting, with redesigned color-coded architecture/control-plane diagrams and independent forward/return SVG + editable draw.io packet-flow pairs for east-west, branch/ExpressRoute, Internet egress, and Internet-inbound DNAT.
 
