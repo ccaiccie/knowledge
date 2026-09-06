@@ -17,6 +17,9 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
+### [Third-Party NGFW/NVA in a Customer-Managed Hub VNet — Method 2 Deep Dive](09-05-26-19-45_Third_Party_NGFW_NVA_Customer_Managed_Hub_VNet_Method_2_Deep_Dive.md)
+Deep dive into customer-managed hub/spoke inspection with third-party VM-based firewalls and NVAs. Covers single-appliance versus HA-Ports next-hop models, UDRs, VNet peering and forwarded-traffic settings, Azure NIC IP forwarding, stateful symmetry, east-west inspection, Internet egress and vendor-specific SNAT, hybrid VPN/ExpressRoute reverse-path routing, Internal Standard Load Balancer HA Ports, effective-route and Network Watcher verification, expected CLI results, failover, common mistakes, and symptom-based troubleshooting, with three focused matching SVG and editable draw.io diagrams.
+
 ### [Azure Gateway Load Balancer for Transparent NVA Insertion — Comprehensive Study Guide](09-05-26-17-03_Gateway_Load_Balancer_Transparent_NVA_Insertion_Study_Guide.md)
 Deep dive into Azure Gateway Load Balancer as a transparent bump-in-the-wire service for third-party NVAs. Covers the exact `gatewayLoadBalancer` frontend resource reference that creates the service chain, Standard Public Load Balancer and VM public-IP chaining, inbound and outbound packet walks, outbound-rule frontend selection, NAT Gateway precedence/bypass behavior, VXLAN internal/external tunnel interfaces, HA Ports, flow symmetry and stateful-firewall stickiness, provider/consumer separation across subscriptions or tenants, MTU requirements, portal and Azure CLI deployment, limitations, verification, failover behavior, common mistakes, and troubleshooting, with matching SVG and editable draw.io diagrams.
 
@@ -104,4 +107,4 @@ Covers GitHub repository rulesets and classic branch protection, including requi
 Explains and documents a five-router FRRouting/GNS3 lab that demonstrates conventional route-reflector path hiding and uses BGP ADD-PATH to reproduce the client-appropriate path-selection outcome that ORR is designed to provide. Includes OSPF underlay costs, equal-attribute BGP paths, prerequisites, expected behavior, validation, and automation details.
 
 ### [Runnable FRR BGP ORR-Behavior / ADD-PATH GNS3 Lab](labs/bgp-orr-frr-gns3-lab/README.md)
-Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and the boundary between native ORR and the lab's ADD-PATH emulation.
+Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and the boundary between native ORR and the lab's ADD-PATH emulation.
