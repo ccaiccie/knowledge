@@ -1,25 +1,96 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="620" viewBox="0 0 1500 620"><defs>
-<marker id="ab" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#0078D4"/></marker>
-<marker id="ag" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#107C10"/></marker>
-<marker id="ao" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#D83B01"/></marker>
-<marker id="ap" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#6B4EFF"/></marker>
-</defs><rect width="100%" height="100%" fill="white"/>
-<text x="750.0" y="34" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="24" font-weight="700" fill="#17324D">ExpressRoute circuit anatomy: redundant BGP and separate peerings</text>
-<rect x="30" y="80" width="310" height="480" rx="18" fill="#F7F9FC" stroke="#C7D4E2" stroke-width="2"/><text x="46" y="108" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#5B6573">On-premises</text>
-<rect x="360" y="80" width="310" height="480" rx="18" fill="#FFF8F3" stroke="#C7D4E2" stroke-width="2"/><text x="376" y="108" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#5B6573">Provider / exchange</text>
-<rect x="700" y="80" width="320" height="480" rx="18" fill="#F1F8FF" stroke="#C7D4E2" stroke-width="2"/><text x="716" y="108" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#5B6573">Microsoft peering location</text>
-<rect x="1060" y="80" width="370" height="480" rx="18" fill="#F5FAFF" stroke="#C7D4E2" stroke-width="2"/><text x="1076" y="108" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#5B6573">Microsoft cloud</text>
-<polyline points="310,250 350,250 350,160 390,160" fill="none" stroke="#0078D4" stroke-width="4" marker-end="url(#ab)"/><text x="350" y="160" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" font-weight="600" fill="#17324D">L2 primary</text>
-<polyline points="310,270 350,270 350,380 390,380" fill="none" stroke="#0078D4" stroke-width="4" marker-end="url(#ab)"/><text x="350" y="380" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" font-weight="600" fill="#17324D">L2 secondary</text>
-<polyline points="640,160 735,160" fill="none" stroke="#107C10" stroke-width="4" marker-end="url(#ag)"/><text x="687" y="150" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" font-weight="600" fill="#17324D">eBGP #1</text>
-<polyline points="640,380 735,380" fill="none" stroke="#107C10" stroke-width="4" marker-end="url(#ag)"/><text x="687" y="370" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" font-weight="600" fill="#17324D">eBGP #2</text>
-<polyline points="1005,160 1050,160 1050,210 1100,210" fill="none" stroke="#0078D4" stroke-width="4" marker-end="url(#ab)"/><text x="1050" y="205" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" font-weight="600" fill="#17324D">Private</text>
-<polyline points="1005,380 1050,380 1050,410 1100,410" fill="none" stroke="#D83B01" stroke-width="4" marker-end="url(#ao)"/><text x="1050" y="405" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11" font-weight="600" fill="#17324D">Microsoft</text>
-<rect x="60" y="210" width="250" height="100" rx="16" fill="#F1F8EE" stroke="#107C10" stroke-width="3"/><rect x="76" y="227" width="42" height="42" rx="8" fill="#107C10"/><text x="97" y="254" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white">CE</text><text x="130" y="246" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">Customer Edge routers</text><text x="130" y="269" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">ASN 65010 • redundant CEs</text>
-<rect x="390" y="110" width="250" height="100" rx="16" fill="#FFF5EE" stroke="#D83B01" stroke-width="3"/><text x="460" y="146" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">Provider PE</text><text x="460" y="169" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">Primary handoff / VLAN</text>
-<rect x="390" y="330" width="250" height="100" rx="16" fill="#FFF5EE" stroke="#D83B01" stroke-width="3"/><text x="460" y="366" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">Provider PE</text><text x="460" y="389" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">Secondary handoff / VLAN</text>
-<rect x="735" y="110" width="270" height="100" rx="16" fill="#EAF4FB" stroke="#0078D4" stroke-width="3"/><text x="805" y="146" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">Microsoft Enterprise Edge</text><text x="805" y="169" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">MSEE-A • AS 12076</text>
-<rect x="735" y="330" width="270" height="100" rx="16" fill="#EAF4FB" stroke="#0078D4" stroke-width="3"/><text x="805" y="366" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">Microsoft Enterprise Edge</text><text x="805" y="389" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">MSEE-B • AS 12076</text>
-<rect x="1100" y="160" width="290" height="100" rx="16" fill="#EAF4FB" stroke="#0078D4" stroke-width="3"/><text x="1170" y="196" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">ExpressRoute VNet gateway</text><text x="1170" y="219" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">Azure private peering</text>
-<rect x="1100" y="360" width="290" height="100" rx="16" fill="#EAF4FB" stroke="#0078D4" stroke-width="3"/><text x="1170" y="396" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#17324D">Microsoft public services</text><text x="1170" y="419" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#5B6573">Microsoft peering</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="980" viewBox="0 0 1700 980">
+<defs>
+  <marker id="ab" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#0078D4"/></marker>
+  <marker id="ag" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#107C10"/></marker>
+  <marker id="ao" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#D83B01"/></marker>
+  <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15"/></filter>
+</defs>
+<rect width="100%" height="100%" fill="white"/>
+<text x="850.0" y="40" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="26" font-weight="700" fill="#17324D"><tspan x="850.0" dy="0">Azure ExpressRoute circuit anatomy — physical redundancy and logical peerings</tspan></text>
+<text x="850.0" y="70" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="400" fill="#5B6573"><tspan x="850.0" dy="0">One circuit • two redundant paths • two eBGP sessions per peering • Microsoft ASN 12076</tspan></text>
+<rect x="30" y="110" width="300" height="720" rx="20" fill="#F7F9FC" stroke="#C8D6E5" stroke-width="2"/>
+<text x="48" y="140" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#5B6573"><tspan x="48" dy="0">Customer network</tspan></text>
+<rect x="360" y="110" width="330" height="720" rx="20" fill="#FFF4EC" stroke="#C8D6E5" stroke-width="2"/>
+<text x="378" y="140" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#5B6573"><tspan x="378" dy="0">Provider / exchange</tspan></text>
+<rect x="720" y="110" width="390" height="720" rx="20" fill="#EEF6FC" stroke="#C8D6E5" stroke-width="2"/>
+<text x="738" y="140" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#5B6573"><tspan x="738" dy="0">ExpressRoute peering location</tspan></text>
+<rect x="1140" y="110" width="530" height="720" rx="20" fill="#F8FAFD" stroke="#C8D6E5" stroke-width="2"/>
+<text x="1158" y="140" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#5B6573"><tspan x="1158" dy="0">Microsoft cloud</tspan></text>
+<rect x="385" y="155" width="700" height="575" rx="22" fill="none" stroke="#0078D4" stroke-width="3" stroke-dasharray="10 8"/>
+<text x="735" y="180" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" fill="#0078D4"><tspan x="735" dy="0">LOGICAL EXPRESSROUTE CIRCUIT</tspan></text>
+<line x1="385" y1="440" x2="1085" y2="440" stroke="#C8D6E5" stroke-width="2" stroke-dasharray="6 6"/>
+<text x="400" y="215" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" fill="#107C10"><tspan x="400" dy="0">Primary path</tspan></text>
+<text x="400" y="500" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" fill="#107C10"><tspan x="400" dy="0">Secondary path</tspan></text>
+<rect x="70" y="245" width="220" height="110" rx="16" fill="#F2F8EF" stroke="#107C10" stroke-width="2.5"/>
+<rect x="86" y="261" width="46" height="46" rx="10" fill="#107C10"/>
+<text x="109" y="290" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="109" dy="0">CE</tspan></text>
+<text x="148" y="281" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="148" dy="0">CE Router 1</tspan></text>
+<text x="148" y="307" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="148" dy="0">Customer ASN 65010</tspan></text>
+<rect x="70" y="530" width="220" height="110" rx="16" fill="#F2F8EF" stroke="#107C10" stroke-width="2.5"/>
+<rect x="86" y="546" width="46" height="46" rx="10" fill="#107C10"/>
+<text x="109" y="575" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="109" dy="0">CE</tspan></text>
+<text x="148" y="566" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="148" dy="0">CE Router 2</tspan></text>
+<text x="148" y="592" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="148" dy="0">Customer ASN 65010</tspan></text>
+<rect x="420" y="245" width="220" height="110" rx="16" fill="#FFF8F3" stroke="#D83B01" stroke-width="2.5"/>
+<rect x="436" y="261" width="46" height="46" rx="10" fill="#D83B01"/>
+<text x="459" y="290" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="459" dy="0">PE</tspan></text>
+<text x="498" y="281" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="498" dy="0">Provider PE 1</tspan></text>
+<text x="498" y="307" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="498" dy="0">Primary L2 handoff</tspan></text>
+<rect x="420" y="530" width="220" height="110" rx="16" fill="#FFF8F3" stroke="#D83B01" stroke-width="2.5"/>
+<rect x="436" y="546" width="46" height="46" rx="10" fill="#D83B01"/>
+<text x="459" y="575" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="459" dy="0">PE</tspan></text>
+<text x="498" y="566" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="498" dy="0">Provider PE 2</tspan></text>
+<text x="498" y="592" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="498" dy="0">Secondary L2 handoff</tspan></text>
+<rect x="785" y="245" width="250" height="110" rx="16" fill="#DCEEFF" stroke="#0078D4" stroke-width="2.5"/>
+<rect x="801" y="261" width="46" height="46" rx="10" fill="#0078D4"/>
+<text x="824" y="290" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="824" dy="0">AZ</tspan></text>
+<text x="863" y="281" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="863" dy="0">MSEE 1</tspan></text>
+<text x="863" y="307" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="863" dy="0">Microsoft AS 12076</tspan></text>
+<rect x="785" y="530" width="250" height="110" rx="16" fill="#DCEEFF" stroke="#0078D4" stroke-width="2.5"/>
+<rect x="801" y="546" width="46" height="46" rx="10" fill="#0078D4"/>
+<text x="824" y="575" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="824" dy="0">AZ</tspan></text>
+<text x="863" y="566" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="863" dy="0">MSEE 2</tspan></text>
+<text x="863" y="592" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="863" dy="0">Microsoft AS 12076</tspan></text>
+<line x1="290" y1="300" x2="420" y2="300" stroke="#107C10" stroke-width="4" marker-end="url(#ag)"/>
+<line x1="640" y1="300" x2="785" y2="300" stroke="#107C10" stroke-width="4" marker-end="url(#ag)"/>
+<text x="355" y="288" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="#5B6573"><tspan x="355" dy="0">L2 access</tspan></text>
+<text x="712" y="288" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="#107C10"><tspan x="712" dy="0">eBGP session #1</tspan></text>
+<line x1="290" y1="585" x2="420" y2="585" stroke="#107C10" stroke-width="4" marker-end="url(#ag)"/>
+<line x1="640" y1="585" x2="785" y2="585" stroke="#107C10" stroke-width="4" marker-end="url(#ag)"/>
+<text x="355" y="573" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="#5B6573"><tspan x="355" dy="0">L2 access</tspan></text>
+<text x="712" y="573" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="#107C10"><tspan x="712" dy="0">eBGP session #2</tspan></text>
+<rect x="1165" y="185" width="460" height="250" rx="18" fill="#EEF7FF" stroke="#0078D4" stroke-width="2.5"/>
+<text x="1190" y="215" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="18" font-weight="700" fill="#0078D4"><tspan x="1190" dy="0">Azure private peering</tspan></text>
+<text x="1190" y="242" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#5B6573"><tspan x="1190" dy="0">Private VNet prefixes • no inherent NAT</tspan></text>
+<text x="1190" y="265" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="#0078D4">Two redundant BGP sessions: MSEE 1 + MSEE 2</text>
+<rect x="1215" y="285" width="180" height="95" rx="16" fill="#fff" stroke="#0078D4" stroke-width="2.5"/>
+<rect x="1231" y="301" width="46" height="46" rx="10" fill="#0078D4"/>
+<text x="1254" y="330" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="1254" dy="0">ER</tspan></text>
+<text x="1293" y="321" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="1293" dy="0">ER VNet Gateway</tspan></text>
+<text x="1293" y="347" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="1293" dy="0">GatewaySubnet</tspan></text>
+<rect x="1430" y="285" width="160" height="95" rx="16" fill="#fff" stroke="#0078D4" stroke-width="2.5"/>
+<rect x="1446" y="301" width="46" height="46" rx="10" fill="#0078D4"/>
+<text x="1469" y="330" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="1469" dy="0">VNet</tspan></text>
+<text x="1508" y="321" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="1508" dy="0">Azure VNet</tspan></text>
+<text x="1508" y="347" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="1508" dy="0">10.50.0.0/16</tspan></text>
+<line x1="1395" y1="332" x2="1430" y2="332" stroke="#0078D4" stroke-width="4" marker-end="url(#ab)"/>
+<rect x="1165" y="485" width="460" height="250" rx="18" fill="#FFF5EF" stroke="#D83B01" stroke-width="2.5"/>
+<text x="1190" y="515" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="18" font-weight="700" fill="#D83B01"><tspan x="1190" dy="0">Microsoft peering</tspan></text>
+<text x="1190" y="542" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#5B6573"><tspan x="1190" dy="0">Supported Microsoft public services • public IP routing</tspan></text>
+<text x="1190" y="565" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="#D83B01">Two redundant BGP sessions: MSEE 1 + MSEE 2</text>
+<rect x="1260" y="585" width="280" height="95" rx="16" fill="#fff" stroke="#D83B01" stroke-width="2.5"/>
+<rect x="1276" y="601" width="46" height="46" rx="10" fill="#D83B01"/>
+<text x="1299" y="630" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" fill="white"><tspan x="1299" dy="0">MS</tspan></text>
+<text x="1338" y="621" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" fill="#17324D"><tspan x="1338" dy="0">Microsoft public services</tspan></text>
+<text x="1338" y="647" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#5B6573"><tspan x="1338" dy="0">e.g. Microsoft 365 / Azure PaaS</tspan></text>
+<polyline points="1035,300 1100,300 1100,270 1165,270" fill="none" stroke="#0078D4" stroke-width="4" marker-end="url(#ab)"/>
+<polyline points="1035,585 1120,585 1120,365 1165,365" fill="none" stroke="#0078D4" stroke-width="4" marker-end="url(#ab)"/>
+<polyline points="1035,320 1080,320 1080,610 1165,610" fill="none" stroke="#D83B01" stroke-width="4" marker-end="url(#ao)"/>
+<polyline points="1035,605 1100,605 1100,680 1165,680" fill="none" stroke="#D83B01" stroke-width="4" marker-end="url(#ao)"/>
+<rect x="55" y="855" width="1590" height="90" rx="16" fill="#FBFCFE" stroke="#C8D6E5" stroke-width="2"/>
+<text x="80" y="883" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#17324D"><tspan x="80" dy="0">Key:</tspan></text>
+<text x="140" y="883" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#107C10"><tspan x="140" dy="0">green = customer/provider transport + BGP adjacency</tspan></text>
+<text x="600" y="883" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#0078D4"><tspan x="600" dy="0">blue = Azure private peering</tspan></text>
+<text x="910" y="883" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#D83B01"><tspan x="910" dy="0">orange = Microsoft peering</tspan></text>
+<text x="80" y="915" text-anchor="start" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" fill="#17324D"><tspan x="80" dy="0">Both peerings ride the same redundant circuit paths. The VNet gateway belongs only to Azure private peering; Microsoft peering terminates on Microsoft public-service routing.</tspan></text>
 </svg>
