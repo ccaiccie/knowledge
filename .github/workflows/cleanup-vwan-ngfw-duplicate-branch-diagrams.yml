@@ -1,0 +1,39 @@
+name: Cleanup duplicate vWAN NGFW branch diagrams
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cleanup-vwan-ngfw-duplicate-branch-diagrams.yml'
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove stale duplicate branch diagram block
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md')
+          s=p.read_text()
+          start=s.find('### Forward-path diagram\n\n![Branch-to-spoke forward packet flow](images/09-05-26-20-00_branch_spoke_forward.svg)')
+          if start != -1:
+              end=s.find('\n1. Branch traffic arrives through', start)
+              if end == -1: raise SystemExit('Could not locate end of stale branch block')
+              s=s[:start]+s[end+1:]
+          if 'branch_spoke_forward' in s or 'branch_spoke_return' in s:
+              raise SystemExit('Stale branch diagram references remain')
+          for required in ['branch_forward_v3.svg','branch_return_v3.svg','eastwest_forward_v3.svg','internet_forward_v3.svg','dnat_forward_v3.svg','routing_intent_v3.svg']:
+              if required not in s: raise SystemExit('Missing required reference '+required)
+          p.write_text(s)
+          PY
+      - name: Remove temporary workflow
+        run: rm -f .github/workflows/cleanup-vwan-ngfw-duplicate-branch-diagrams.yml
+      - name: Commit cleanup
+        run: |
+          git config user.name "ccaiccie"
+          git config user.email "20251042+ccaiccie@users.noreply.github.com"
+          git add 09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md .github/workflows/cleanup-vwan-ngfw-duplicate-branch-diagrams.yml
+          git commit -m "Remove stale duplicate branch diagrams from vWAN NGFW guide"
+          git push
