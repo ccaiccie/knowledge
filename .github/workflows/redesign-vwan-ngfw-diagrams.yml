@@ -212,3 +212,5 @@ jobs:
           git add 09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md README.md
           git commit -m 'Redesign vWAN NGFW packet-flow diagrams'
           git push
+
+# trigger second push after workflow exists on main
