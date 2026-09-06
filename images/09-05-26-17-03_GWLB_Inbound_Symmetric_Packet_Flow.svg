@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker></defs>
+<text x="40" y="48" font-family="Arial" font-size="28" font-weight="700" fill="#0f172a">Inbound and Return Packet Flow — Same Stateful NVA</text>
+<rect x="35" y="180" width="145" height="80" rx="16" fill="#dbeafe" stroke="#334155" stroke-width="2"/>
+<text x="107.5" y="220.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="107.5" dy="-10">Internet</tspan><tspan x="107.5" dy="22">Client</tspan></text>
+<rect x="220" y="180" width="190" height="80" rx="16" fill="#bfdbfe" stroke="#334155" stroke-width="2"/>
+<text x="315.0" y="220.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="315.0" dy="-10">Standard Public LB</tspan><tspan x="315.0" dy="22">Frontend</tspan></text>
+<rect x="450" y="180" width="180" height="80" rx="16" fill="#bbf7d0" stroke="#334155" stroke-width="2"/>
+<text x="540.0" y="220.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a">Gateway LB</text>
+<rect x="680" y="180" width="180" height="80" rx="16" fill="#fed7aa" stroke="#334155" stroke-width="2"/>
+<text x="770.0" y="220.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a">Selected NVA</text>
+<rect x="910" y="180" width="210" height="80" rx="16" fill="#ddd6fe" stroke="#334155" stroke-width="2"/>
+<text x="1015.0" y="220.0" text-anchor="middle" font-family="Arial" font-size="17" fill="#0f172a"><tspan x="1015.0" dy="-10">Application VM</tspan><tspan x="1015.0" dy="22">Backend</tspan></text>
+<line x1="180" y1="220" x2="220" y2="220" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="200.0" y="210.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">1</text>
+<line x1="410" y1="220" x2="450" y2="220" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="430.0" y="210.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">2 chain</text>
+<line x1="630" y1="205" x2="680" y2="205" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="655.0" y="195.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">3 VXLAN ext</text>
+<line x1="860" y1="235" x2="630" y2="235" stroke="#334155" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<text x="745.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">4 VXLAN int</text>
+<line x1="630" y1="220" x2="910" y2="220" stroke="#334155" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="770.0" y="210.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">5/6 LB delivers</text>
+<line x1="910" y1="300" x2="680" y2="300" stroke="#334155" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<text x="795.0" y="290.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">7/8 response</text>
+<line x1="680" y1="340" x2="450" y2="340" stroke="#334155" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<text x="565.0" y="330.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">9/10 same NVA</text>
+<line x1="450" y1="380" x2="220" y2="380" stroke="#334155" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<text x="335.0" y="370.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">11 return</text>
+<line x1="220" y1="420" x2="35" y2="420" stroke="#334155" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<text x="127.5" y="410.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">12 Internet</text>
+</svg>
