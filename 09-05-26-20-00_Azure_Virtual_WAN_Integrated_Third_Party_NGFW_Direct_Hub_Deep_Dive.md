@@ -5,6 +5,7 @@
 ## Source URLs
 
 - https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
+- https://learn.microsoft.com/en-us/azure/virtual-wan/sd-wan-connectivity-architecture
 - https://learn.microsoft.com/en-us/azure/virtual-wan/third-party-integrations
 - https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-nva-hub
 - https://learn.microsoft.com/en-us/azure/virtual-wan/about-virtual-hub-routing
@@ -27,6 +28,19 @@
 **Additional explanation:** The virtual hub is a managed transit router. Routing Intent inserts the NGFW into the forwarding path. Azure manages the plumbing between the hub router and the NVA instances; the vendor management plane manages firewall policy, licensing, signatures, and vendor-specific lifecycle functions.
 
 **Reasonable inference:** Treat internal load-balancer addresses and internal vHub next-hop addresses as implementation details unless the vendor or Microsoft explicitly exposes them. Design against supported resource abstractions—Virtual Hub, Network Virtual Appliance, Routing Intent, VNet/branch connections—not against undocumented internal IPs.
+
+
+### Authoritative Microsoft architecture figure
+
+![Microsoft — Direct Interconnect model with NVA in the Virtual WAN hub](https://raw.githubusercontent.com/MicrosoftDocs/azure-docs/main/articles/virtual-wan/media/sd-wan-connectivity-architecture/direct-nva.png)
+
+**Source:** Microsoft Learn — [SD-WAN connectivity architecture with Azure Virtual WAN](https://learn.microsoft.com/en-us/azure/virtual-wan/sd-wan-connectivity-architecture).
+
+**What this image shows:** Microsoft's supported **Direct Interconnect model with NVA-in-VWAN-hub**, where the partner NVA is deployed directly into the managed Virtual WAN hub rather than into a customer-owned hub VNet.
+
+**What matters:** This is the vendor-neutral Microsoft reference for the deployment model itself. It establishes that the NVA is a Virtual WAN hub service integration and that branch/vendor connectivity can terminate directly on the integrated appliance.
+
+**What to verify:** Confirm that the selected partner offer is an Integrated NVA, that the target hub is Standard, and that the design is not accidentally using the separate customer-managed-NVA-in-a-VNet model.
 
 ![Integrated NGFW architecture](images/architecture_v5.svg)
 
@@ -164,6 +178,19 @@ Example:
 - VM-B: `10.20.1.4`
 - Private Traffic policy: NVA
 
+
+### Cisco authoritative east-west topology
+
+![Cisco — FTDv East-West Traffic Inspection Topology in Azure Virtual WAN Hub](https://www.cisco.com/c/dam/en/us/td/i/400001-500000/470001-480000/479001-480000/479697.jpg)
+
+**Source:** Cisco Secure Firewall Threat Defense Virtual Getting Started Guide 7.7 — *Deploy the Firewall Threat Defense Virtual on Azure Virtual WAN*.
+
+**What this image shows:** Cisco's supported east-west topology for branch-to-branch and VNet-to-VNet inspection through FTDv in a single Virtual WAN hub, including the internal load-balancing stage and the stateful return path.
+
+**What matters:** Cisco documents the forwarding sequence as VNet/branch → internal load balancer → active FTDv instance → destination, with return traffic again presented to the load-balanced firewall service so compatible state can be used.
+
+**What to verify:** For Cisco deployments, validate that the expected VNet/branch prefixes are learned, the internal load-balancer path is healthy, and return traffic reaches the firewall stateful path rather than bypassing it.
+
 ### Forward-path diagram
 
 ![East-west forward packet flow](images/eastwest_forward_v5.svg)
@@ -250,6 +277,19 @@ For branch-to-branch inspection, ensure the Virtual WAN design enables the requi
 
 For VM-A `10.10.1.4` to `8.8.8.8:443`:
 
+
+### Cisco authoritative north-south topology
+
+![Cisco — FTDv North-South Traffic Inspection Topology in Azure Virtual WAN Hub](https://www.cisco.com/c/dam/en/us/td/i/400001-500000/470001-480000/479001-480000/479698.jpg)
+
+**Source:** Cisco Secure Firewall Threat Defense Virtual Getting Started Guide 7.7 — *Deploy the Firewall Threat Defense Virtual on Azure Virtual WAN*.
+
+**What this image shows:** Cisco's north-south topology for branch/VNet Internet access through FTDv, including the Azure gateway, internal load balancer, firewall instances, public interface, SNAT, and Internet destination.
+
+**What matters:** The vendor figure makes the infrastructure sequence visible: gateway/hub traffic is load-balanced to an FTDv instance, the firewall applies policy and SNAT, and the return packet is de-NATed before being returned toward the private source.
+
+**What to verify:** Check the branch/VNet default route, internal load-balancer health, FTDv egress public IP/SNAT behavior, and the return session/NAT entry.
+
 ### Forward-path diagram
 
 ![Internet egress forward packet flow](images/internet_forward_v5.svg)
@@ -292,6 +332,33 @@ Microsoft currently documents DNAT only for:
 - `fortinet-sdwan-and-ngfw`
 
 Cisco FTDv is not currently listed on Microsoft's vHub NVA DNAT support page.
+
+
+### Microsoft authoritative DNAT packet-flow figures
+
+#### Inbound connection
+
+![Microsoft — Integrated NVA DNAT inbound traffic flow](https://raw.githubusercontent.com/MicrosoftDocs/azure-docs/main/articles/virtual-wan/media/virtual-wan-network-virtual-appliance-inbound/example-inbound-flow.png)
+
+**Source:** Microsoft Learn — [How to configure Destination NAT for Network Virtual Appliance in an Azure Virtual WAN hub](https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound).
+
+**What this image shows:** The official Microsoft inbound sequence from an Internet client to an NVA Internet Inbound public IP, Azure load balancing to a healthy firewall instance, DNAT plus the commonly required SNAT, and delivery to the backend application.
+
+**What matters:** This figure is authoritative for the Azure-managed portion of the feature. Microsoft explicitly documents that Azure load-balances the connection to an NVA instance and that the NVA commonly translates the source to its trusted/private IP to preserve return-path symmetry.
+
+**What to verify:** Capture the untrusted side before NAT and trusted side after NAT; confirm both destination and source translations, the selected backend, and that the destination is attached to the same vHub.
+
+#### Outbound response / return path
+
+![Microsoft — Integrated NVA DNAT outbound response flow](https://raw.githubusercontent.com/MicrosoftDocs/azure-docs/main/articles/virtual-wan/media/virtual-wan-network-virtual-appliance-inbound/example-outbound-flow.png)
+
+**Source:** Same Microsoft DNAT article.
+
+**What this image shows:** The backend replies to the firewall private/SNAT address, the selected firewall instance reverses the NAT translations, and Azure returns the packet directly to the Internet client.
+
+**What matters:** This is the clearest source-backed explanation of why the additional SNAT is normally required: it forces the reply back through the state-holding NVA instance rather than allowing an asymmetric route.
+
+**What to verify:** Confirm the backend reply destination is the translated firewall-private address, the original session/NAT state still exists, and the client sees the response sourced from the published public IP.
 
 ### Inbound / forward-path diagram
 
@@ -478,6 +545,19 @@ Use the dual-role offer when the same Fortinet service must terminate the propri
 
 ### Cisco Secure Firewall Threat Defense Virtual
 
+### Cisco sample ingress topology
+
+![Cisco — Sample ingress topology for FTDv on Azure Virtual WAN](https://www.cisco.com/c/dam/en/us/td/i/400001-500000/480001-490000/488001-489000/488995.jpg)
+
+**Source:** Cisco Secure Firewall Threat Defense Virtual Getting Started Guide 7.7 — *Sample Topology for Ingress Traffic*.
+
+**What this image shows:** Cisco's public-facing application publishing topology, including the Standard Load Balancer, NVA untrusted interfaces, customer VNet backend, and the relevant public/private addressing relationships.
+
+**What matters:** This is vendor-specific and should not be generalized to every Integrated NVA. It is useful because it exposes Cisco's actual interface and ingress architecture rather than an abstract service-insertion box.
+
+**What to verify:** Use the Cisco software/version-specific guide for supported ingress behavior and do not assume Cisco supports Microsoft's current Integrated-NVA DNAT feature merely because the topology contains a public-facing load-balancer path.
+
+
 Cisco documents FTDv deployment directly in Azure Virtual WAN and currently states that the vWAN deployment model supports **three interfaces**. Use Cisco's deployment guide for FMC/CDO registration, interface/zone mapping, and policy deployment. Do not assume Microsoft vHub DNAT integration is supported simply because FTDv is a supported Routing Intent NGFW.
 
 ## 15. Route maps and BGP caveats
@@ -659,6 +739,8 @@ The **vHub router controls the Azure routing plane**, while the **NGFW controls 
 ---
 
 ## Sources
+
+- Microsoft Learn — SD-WAN connectivity architecture with Azure Virtual WAN: https://learn.microsoft.com/en-us/azure/virtual-wan/sd-wan-connectivity-architecture
 
 - Microsoft Learn — About NVAs in a Virtual WAN hub: https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
 - Microsoft Learn — Third-party integrations with Virtual WAN Hub: https://learn.microsoft.com/en-us/azure/virtual-wan/third-party-integrations
