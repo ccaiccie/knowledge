@@ -1,21 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
-  <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#333"/></marker>
-    <style>.box{fill:#fff;stroke:#333;stroke-width:2}.group{fill:#f7f7f7;stroke:#777;stroke-width:2;stroke-dasharray:8 6}.t{font:20px Arial,sans-serif;fill:#111}.s{font:16px Arial,sans-serif;fill:#222}.a{stroke:#333;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
-  </defs>
-  <rect x="420" y="70" width="560" height="650" rx="18" class="group"/><text x="625" y="105" class="t">Hub VNet 10.0.0.0/16</text>
-  <rect x="525" y="145" width="350" height="120" rx="14" class="box"/><text x="618" y="182" class="t">Azure Firewall</text><text x="577" y="215" class="s">AzureFirewallSubnet 10.0.1.0/26</text><text x="618" y="242" class="s">Private IP 10.0.1.4</text>
-  <rect x="525" y="320" width="350" height="100" rx="14" class="box"/><text x="585" y="360" class="t">VPN / ExpressRoute Gateway</text><text x="602" y="390" class="s">GatewaySubnet 10.0.2.0/27+</text>
-  <rect x="525" y="470" width="350" height="100" rx="14" class="box"/><text x="607" y="510" class="t">Shared Services</text><text x="592" y="540" class="s">DNS / Bastion / Monitoring</text>
-  <rect x="40" y="175" width="300" height="180" rx="18" class="group"/><text x="105" y="210" class="t">Spoke A 10.10.0.0/16</text><rect x="85" y="245" width="210" height="70" rx="12" class="box"/><text x="118" y="277" class="s">AppSubnet 10.10.1.0/24</text><text x="118" y="302" class="s">UDR → 10.0.1.4</text>
-  <rect x="1060" y="175" width="300" height="180" rx="18" class="group"/><text x="1123" y="210" class="t">Spoke B 10.20.0.0/16</text><rect x="1105" y="245" width="210" height="70" rx="12" class="box"/><text x="1138" y="277" class="s">AppSubnet 10.20.1.0/24</text><text x="1138" y="302" class="s">UDR → 10.0.1.4</text>
-  <rect x="65" y="610" width="250" height="90" rx="14" class="box"/><text x="118" y="647" class="t">On-premises</text><text x="108" y="678" class="s">172.16.0.0/16</text>
-  <rect x="1085" y="610" width="250" height="90" rx="14" class="box"/><text x="1168" y="647" class="t">Internet</text><text x="1133" y="678" class="s">Public destinations</text>
-  <path d="M340 265 H525" class="a"/><text x="365" y="248" class="s">VNet peering</text>
-  <path d="M1060 265 H875" class="a"/><text x="900" y="248" class="s">VNet peering</text>
-  <path d="M700 265 V320" class="a"/><text x="715" y="300" class="s">private/hybrid</text>
-  <path d="M525 370 H315 V655" class="a"/><text x="345" y="390" class="s">VPN / ER</text>
-  <path d="M875 205 H1210 V610" class="a"/><text x="900" y="190" class="s">egress / DNAT via public IP</text>
-  <path d="M700 265 V470" class="a"/><text x="715" y="455" class="s">optional inspected shared services path</text>
-  <text x="420" y="760" class="s">Key: spokes are not transitively connected by peering; UDRs steer selected traffic to Azure Firewall.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940">
+<defs>
+ <marker id="blue" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto"><path d="M0,0 L0,10 L11,5 z" fill="#0078D4"/></marker>
+ <marker id="purple" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto"><path d="M0,0 L0,10 L11,5 z" fill="#7B61FF"/></marker>
+ <marker id="green" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto"><path d="M0,0 L0,10 L11,5 z" fill="#16A085"/></marker>
+ <style>
+ .title{font:700 27px Arial,sans-serif;fill:#16233A}.h{font:700 20px Arial,sans-serif;fill:#16233A}.s{font:16px Arial,sans-serif;fill:#24364B}.tiny{font:14px Arial,sans-serif;fill:#36516C}
+ .hub{fill:#EAF4FF;stroke:#0078D4;stroke-width:3}.spokeA{fill:#E8F7F0;stroke:#16A085;stroke-width:3}.spokeB{fill:#EEF1FF;stroke:#5B65D8;stroke-width:3}
+ .fw{fill:#FFF1E8;stroke:#F26B38;stroke-width:3}.gw{fill:#F1EBFF;stroke:#7B61FF;stroke-width:3}.shared{fill:#E8FAFB;stroke:#20A4B8;stroke-width:3}.onprem{fill:#F1F3F5;stroke:#56606B;stroke-width:3}.internet{fill:#E9F4FF;stroke:#1784D5;stroke-width:3}
+ .flow{fill:none;stroke:#0078D4;stroke-width:4;marker-end:url(#blue)}.hybrid{fill:none;stroke:#7B61FF;stroke-width:4;marker-end:url(#purple)}.public{fill:none;stroke:#16A085;stroke-width:4;marker-end:url(#green)}
+ .label{fill:#fff;stroke:#D9E2EC;stroke-width:1.5;rx:7}
+ </style>
+</defs>
+<rect width="1600" height="940" fill="#FFFFFF"/>
+<text x="60" y="55" class="title">Method 1 — Azure Firewall in a Customer-Managed Hub VNet</text>
+<text x="60" y="85" class="s">Colored traffic lanes keep peering, hybrid, and Internet paths visually separate.</text>
+
+<rect x="455" y="120" width="690" height="690" rx="28" class="hub"/>
+<text x="690" y="158" class="h">Hub VNet 10.0.0.0/16</text>
+
+<rect x="615" y="205" width="370" height="125" rx="18" class="fw"/>
+<text x="718" y="247" class="h">Azure Firewall</text><text x="675" y="278" class="s">AzureFirewallSubnet 10.0.1.0/26</text><text x="726" y="305" class="s">Private IP 10.0.1.4</text>
+
+<rect x="615" y="430" width="370" height="110" rx="18" class="gw"/>
+<text x="675" y="472" class="h">VPN / ExpressRoute Gateway</text><text x="700" y="505" class="s">GatewaySubnet 10.0.2.0/27+</text>
+
+<rect x="615" y="635" width="370" height="105" rx="18" class="shared"/>
+<text x="713" y="675" class="h">Shared Services</text><text x="685" y="707" class="s">DNS · Bastion · Monitoring</text>
+
+<rect x="65" y="190" width="315" height="250" rx="25" class="spokeA"/>
+<text x="122" y="228" class="h">Spoke A 10.10.0.0/16</text>
+<rect x="105" y="275" width="235" height="105" rx="16" fill="#FFFFFF" stroke="#16A085" stroke-width="2"/>
+<text x="135" y="310" class="s">AppSubnet 10.10.1.0/24</text><text x="150" y="340" class="s">VM 10.10.1.10</text><text x="137" y="368" class="tiny">UDR next hop 10.0.1.4</text>
+
+<rect x="1220" y="190" width="315" height="250" rx="25" class="spokeB"/>
+<text x="1277" y="228" class="h">Spoke B 10.20.0.0/16</text>
+<rect x="1260" y="275" width="235" height="105" rx="16" fill="#FFFFFF" stroke="#5B65D8" stroke-width="2"/>
+<text x="1290" y="310" class="s">AppSubnet 10.20.1.0/24</text><text x="1305" y="340" class="s">VM 10.20.1.20</text><text x="1292" y="368" class="tiny">UDR next hop 10.0.1.4</text>
+
+<rect x="70" y="690" width="300" height="115" rx="18" class="onprem"/>
+<text x="155" y="732" class="h">On-premises</text><text x="156" y="765" class="s">172.16.0.0/16</text>
+<rect x="1230" y="690" width="300" height="115" rx="18" class="internet"/>
+<text x="1338" y="732" class="h">Internet</text><text x="1299" y="765" class="s">Public destinations</text>
+
+<!-- peering lanes: separate y coordinates -->
+<path d="M380 315 H500 V267 H615" class="flow"/>
+<rect x="430" y="244" width="150" height="30" class="label"/><text x="447" y="265" class="tiny">1  VNet peering + UDR</text>
+<path d="M1220 350 H1100 V295 H985" class="flow"/>
+<rect x="1020" y="332" width="165" height="30" class="label"/><text x="1035" y="353" class="tiny">2  Return via firewall</text>
+
+<!-- firewall to gateway uses center lane -->
+<path d="M800 330 V430" class="hybrid"/>
+<rect x="820" y="366" width="170" height="30" class="label"/><text x="835" y="387" class="tiny">3  Private / hybrid path</text>
+
+<!-- gateway to onprem routed left below hub -->
+<path d="M615 485 H520 V610 H220 V690" class="hybrid"/>
+<rect x="295" y="590" width="165" height="30" class="label"/><text x="310" y="611" class="tiny">4  VPN / ExpressRoute</text>
+
+<!-- public lane routed around top/right to avoid nodes -->
+<path d="M985 245 H1100 V130 H1460 V690" class="public"/>
+<rect x="1180" y="112" width="240" height="30" class="label"/><text x="1195" y="133" class="tiny">Internet egress / DNAT public path</text>
+
+<!-- shared services straight isolated lane -->
+<path d="M800 330 V390 H1055 V687 H985" class="flow"/>
+<rect x="1002" y="530" width="225" height="30" class="label"/><text x="1018" y="551" class="tiny">Optional inspected shared-services path</text>
+
+<rect x="70" y="850" width="1460" height="55" rx="12" fill="#F8FAFC" stroke="#CAD6E2" stroke-width="1.5"/>
+<text x="95" y="882" class="s">Key: blue = inspected spoke/shared path · purple = hybrid path · green = Internet/public path. UDRs—not peering alone—insert Azure Firewall.</text>
 </svg>
