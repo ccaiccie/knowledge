@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
+Comprehensive AWS firewall-insertion guide covering AWS Network Firewall, third-party NGFW/NVAs behind Gateway Load Balancer, distributed GWLBE, centralized Transit Gateway inspection VPCs, Direct Connect transit-VIF/DXGW/TGW inspection, Internet ingress and egress, ALB/NLB placement, ELB sandwich and direct-NVA legacy designs, Cloud WAN Network Function Group service insertion, VPC Route Server/BGP active-standby patterns, NAT/source-IP behavior, appliance mode and symmetry, AWS CLI verification, failover, MTU, common mistakes, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+
 ### [AWS VPC Traffic Mirroring — Missing Inbound Packets and Source-Side Policy](09-05-26-11-22_AWS_VPC_Traffic_Mirroring_Missing_Inbound_Packets_Study_Guide.md)
 Explains why an analyzer can miss inbound packets in AWS VPC Traffic Mirroring, including the documented behavior that traffic dropped at the mirror source by inbound Security Group or Network ACL rules is not mirrored. Covers source/filter/target architecture, VXLAN/UDP 4789 transport, TLS misconceptions, the important nuance when a workload claims it received the exact packet, AWS CLI configuration patterns, verification, bandwidth/PPS limitations, and symptom-based troubleshooting, with matching SVG and editable draw.io packet-flow diagrams.
 
