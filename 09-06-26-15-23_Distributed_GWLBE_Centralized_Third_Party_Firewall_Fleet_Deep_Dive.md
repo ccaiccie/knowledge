@@ -129,7 +129,7 @@ Examples:
 - Internet to public ALB: IGW edge RT → GWLBE; GWLBE-subnet RT → VPC local route to ALB subnet.
 - On-prem to workload: TGW attachment-subnet RT → GWLBE; GWLBE-subnet RT → VPC local route to workload.
 - Workload to on-prem: workload-subnet RT → GWLBE; GWLBE-subnet RT → TGW.
-- Spoke A to Spoke B: Spoke-A workload RT → GWLBE-A; GWLBE-A RT → TGW. Optional Spoke-B TGW subnet RT → GWLBE-B for destination-side enforcement.
+- Spoke A to Spoke B in the composed source-side distributed model: Spoke-A workload RT → GWLBE-A; after inspection GWLBE-A RT → TGW; TGW transports directly to Spoke B. The return flow re-enters Spoke A through its TGW attachment subnet and is redirected to GWLBE-A before reaching EC2-A.
 
 ---
 
@@ -185,76 +185,152 @@ Do not configure an ordinary EC2 firewall image behind GWLB unless the vendor ex
 
 ---
 
-# 5. East-west VPC-to-VPC enforcement
+# 5. East-west VPC-to-VPC enforcement — do not mix the two architectures
 
 ![Distributed GWLBE east-west flow](images/09-06-26-15-23_distributed_gwlbe_east_west_flow.svg)
 
 [Editable draw.io source](images/09-06-26-15-23_distributed_gwlbe_east_west_flow.drawio)
 
-**What this image shows:** Spoke A locally inspects traffic before TGW. Spoke B can optionally perform destination-side inspection after TGW. The same centralized NGFW fleet services both distributed GWLBE endpoints.
+**What this image shows:** The primary path is a **source-side distributed GWLBE enforcement design**. Spoke A inserts the firewall service locally through `GWLBE-A`; after inspection, TGW is used only to transport the packet to Spoke B. The Security VPC is reached through the GWLB endpoint service/PrivateLink data plane, not through a TGW Security-VPC attachment.
 
-**What matters:** A distributed-endpoint design does not require a centralized TGW inspection attachment merely to inspect east-west traffic. TGW can directly route between VPC attachments because service insertion already happened in the spoke.
+**What matters:** There are two different east-west architectures and they must not be described as one flow:
 
-**What to verify:** If both VPCs enforce both egress and ingress, expect two inspection traversals per direction. Decide whether that is intentional.
+1. **Distributed GWLBE + TGW transport:** workload route → local GWLBE → centralized GWLB/NGFW service → same local GWLBE → TGW → destination VPC.
+2. **Canonical centralized TGW inspection VPC:** workload → TGW → Security/Inspection VPC attachment → GWLBE/GWLB/NGFW → TGW → destination VPC.
 
-## 5.1 Source-side-only model
+The second design is the AWS reference architecture commonly shown for TGW-based VPC-to-VPC inspection and normally uses **TGW appliance mode** on the appliance VPC attachment. It is **not** the path described in this guide's distributed-GWLBE section.
 
-Traffic:
+**Source information:** AWS's published GWLB/TGW east-west reference sends the source VPC to TGW, then from a TGW route table into a Security VPC attachment containing GWLBE/GWLB/appliances, and back to TGW before the destination VPC. AWS separately documents distributed GWLBE insertion for local VPC traffic paths.  
+**Reasonable inference:** The source-side design below composes supported VPC route-to-GWLBE behavior, VPC more-specific routing, and ordinary TGW inter-VPC routing. Treat it as a deliberately engineered distributed enforcement pattern rather than claiming it is the same AWS reference topology as centralized TGW inspection.
+
+## 5.1 Pattern A — source-side distributed GWLBE enforcement
+
+Example connection:
 
 ```text
-EC2-A 10.10.10.10
- → RT-A-App-a: 10.20.0.0/16 → GWLBE-A-a
- → centralized GWLB/NGFW
- → RT-A-GWLBE-a: 10.20.0.0/16 → TGW
- → TGW: 10.20.0.0/16 → Spoke-B attachment
+EC2-A 10.10.10.10:49152 → EC2-B 10.20.10.20:443
+```
+
+Forward path:
+
+```text
+EC2-A
+ → RT-A-App-a
+      10.20.0.0/16 → vpce-gwlb-A-a
+ → GWLBE-A-a
+ → GWLB endpoint service / PrivateLink
+ → centralized GWLB
+ → NGFW fleet
+ → centralized GWLB
+ → same GWLBE-A-a service-chain context
+ → RT-A-GWLBE-a
+      10.20.0.0/16 → tgw-1
+ → Spoke-A TGW attachment
+ → TGW route lookup
+      10.20.0.0/16 → att-Spoke-B
+ → Spoke-B TGW attachment subnet
+ → RT-B-TGW-a
+      10.20.0.0/16 → local
  → EC2-B 10.20.10.20
 ```
 
-Return:
+The important separation is:
 
 ```text
-EC2-B
- → TGW
- → Spoke-A TGW attachment subnet
- → RT-A-TGW-a: 10.10.10.0/24 → GWLBE-A-a
- → centralized GWLB/NGFW
- → GWLBE-A-a
- → VPC local route
- → EC2-A
+Inspection function:  GWLBE-A → PrivateLink → GWLB → NGFW
+Inter-VPC transport:   TGW att-Spoke-A → TGW → att-Spoke-B
 ```
 
-This makes the **source VPC's endpoint** the enforcement point for both directions of the connection.
+**TGW does not point to the Security VPC in this pattern.**
 
 ### Spoke A workload route table
 
-| Destination | Target | Reason |
+| Destination | Target | Meaning |
 |---|---|---|
-| `10.10.0.0/16` | `local` | Native VPC reachability |
-| `10.20.0.0/16` | `vpce-gwlb-A-a` | Inspect remote-spoke traffic |
-| `172.16.0.0/16` | `vpce-gwlb-A-a` | Inspect hybrid traffic |
-| `0.0.0.0/0` | `vpce-gwlb-A-a` | Optional Internet egress inspection |
+| `10.10.0.0/16` | `local` | Native local VPC destinations |
+| `10.20.0.0/16` | `vpce-gwlb-A-a` | Remote VPC traffic must first enter local inspection |
 
 ### Spoke A GWLBE subnet route table
 
-| Destination | Target | Reason |
+| Destination | Target | Meaning |
 |---|---|---|
-| `10.10.0.0/16` | `local` | Return allowed inbound traffic to local workload |
-| `10.20.0.0/16` | `tgw-1` | Continue east-west after inspection |
-| `172.16.0.0/16` | `tgw-1` | Continue hybrid after inspection |
-| `0.0.0.0/0` | `nat-a` | Internet-egress variant |
+| `10.10.0.0/16` | `local` | Reach local resources after GWLBE service return |
+| `10.20.0.0/16` | `tgw-1` | After inspection, hand packet to TGW for inter-VPC transport |
 
-### Spoke A TGW attachment subnet route table
+### TGW route table associated with Spoke A
 
-| Destination | Target | Reason |
+| Destination | Target | Meaning |
 |---|---|---|
-| `10.10.0.0/16` | `local` | Default VPC local route |
-| `10.10.10.0/24` | `vpce-gwlb-A-a` | Force remote-to-local traffic through GWLBE before workload |
+| `10.20.0.0/16` | `att-Spoke-B` | Deliver directly to Spoke B attachment |
+| `10.10.0.0/16` | `att-Spoke-A` | Return destination toward Spoke A |
 
-The more-specific `10.10.10.0/24 → GWLBE` route can override the broader `10.10.0.0/16 local` route for the targeted application subnet. This is the routing-enhancement technique that makes intra-VPC service insertion possible.
+There is intentionally **no** entry such as:
 
-## 5.2 Both-VPC enforcement model
+```text
+0.0.0.0/0 or 10.20.0.0/16 → att-Security-VPC
+```
 
-Spoke B also installs:
+If that next hop exists and packets are deliberately sent there for inspection, you have moved into the centralized TGW inspection-VPC method.
+
+## 5.2 Return path — how Spoke A remains the enforcement point
+
+For a stateful firewall, the reverse direction must also traverse the source-side service chain.
+
+Return packet:
+
+```text
+10.20.10.20:443 → 10.10.10.10:49152
+```
+
+Return path:
+
+```text
+EC2-B
+ → RT-B-App-a
+      10.10.0.0/16 → tgw-1
+ → Spoke-B TGW attachment
+ → TGW route lookup
+      10.10.0.0/16 → att-Spoke-A
+ → Spoke-A TGW attachment subnet 10.10.200.0/28
+ → RT-A-TGW-a
+      10.10.10.0/24 → vpce-gwlb-A-a
+ → GWLBE-A-a
+ → centralized GWLB / same firewall service
+ → GWLBE-A-a
+ → RT-A-GWLBE-a
+      10.10.0.0/16 → local
+ → EC2-A
+```
+
+### Spoke A TGW attachment-subnet route table
+
+| Destination | Target | Meaning |
+|---|---|---|
+| `10.10.0.0/16` | `local` | Broad VPC local route |
+| `10.10.10.0/24` | `vpce-gwlb-A-a` | More-specific route forces packets for the protected application subnet through the local GWLBE |
+
+The more-specific `10.10.10.0/24 → GWLBE-A` route wins over the broader `10.10.0.0/16 → local` route. That is the return-path enforcement point.
+
+### Spoke B route tables in source-side-only enforcement
+
+Spoke B does **not** need to invoke its own GWLBE for this connection.
+
+```text
+RT-B-TGW-a
+10.20.0.0/16 → local
+
+RT-B-App-a
+10.20.0.0/16 → local
+10.10.0.0/16 → tgw-1
+```
+
+So Spoke B is simply the remote destination VPC for this particular trust-boundary decision.
+
+## 5.3 Pattern B — optional destination-side GWLBE enforcement
+
+This is a **separate policy choice**, not a TGW inspection-VPC hop.
+
+If Spoke B also wants an ingress/egress trust boundary, add local B-side steering such as:
 
 ```text
 RT-B-TGW-a
@@ -264,23 +340,66 @@ RT-B-App-a
 10.10.0.0/16 → vpce-gwlb-B-a
 
 RT-B-GWLBE-a
-10.10.0.0/16 → tgw-1
 10.20.0.0/16 → local
+10.10.0.0/16 → tgw-1
 ```
 
-Then the forward path becomes:
+The forward path then becomes:
 
 ```text
-A workload
- → GWLBE-A / central NGFW
- → TGW
- → GWLBE-B / central NGFW
- → B workload
+EC2-A
+ → GWLBE-A / central NGFW      # source-side policy
+ → TGW                          # transport only
+ → GWLBE-B / central NGFW      # destination-side policy
+ → EC2-B
 ```
 
-The return direction reverses the two service chains.
+Return traffic reverses both local service chains.
 
-**Additional explanation:** This is not inherently wrong. It can represent separate trust-boundary policies: egress policy at the source VPC and ingress policy at the destination VPC. But it doubles inspection traversals and can duplicate logs/events.
+This can be valid when the source and destination VPCs represent independent trust zones, but the operational consequence is important:
+
+- the same connection is inspected twice per direction;
+- the centralized NGFW fleet can generate duplicate-looking traffic/security logs;
+- policy must be consistent enough that the second inspection does not unexpectedly deny traffic already allowed by the first;
+- cost and processing load increase;
+- troubleshooting must identify **which GWLBE service-chain traversal** produced a deny or reset.
+
+## 5.4 Pattern C — centralized TGW inspection VPC, shown only for contrast
+
+Do not implement the following route path and still call it the distributed-GWLBE east-west model:
+
+```text
+EC2-A
+ → TGW
+ → TGW route table: remote/default → att-Security-VPC
+ → Security VPC TGW subnet
+ → GWLBE in Security VPC
+ → GWLB / NGFW
+ → GWLBE
+ → TGW
+ → Spoke B
+```
+
+That is a different architecture: **centralized service insertion through a TGW-connected inspection VPC**.
+
+Typical characteristics are:
+
+- GWLBE resides in the central Inspection/Security VPC rather than the workload VPC.
+- Spoke TGW route tables deliberately point remote/default traffic to the inspection VPC attachment.
+- The inspection-VPC-associated TGW route table points inspected traffic toward destination spoke attachments.
+- TGW appliance mode is used on the stateful appliance VPC attachment to preserve symmetric appliance/AZ handling.
+
+The rest of this guide keeps that architecture separate.
+
+## 5.5 Quick decision table
+
+| Design | Where GWLBE resides | What TGW does | Security-VPC TGW attachment in data path? | Expected inspections per direction |
+|---|---|---|---|---:|
+| Source-side distributed GWLBE | Spoke A | Direct A↔B transport | No | 1 |
+| Dual distributed GWLBE | Spoke A and Spoke B | Direct A↔B transport | No | 2 |
+| Centralized TGW inspection VPC | Security/Inspection VPC | Sends flow into/out of inspection attachment | Yes | 1 centralized chain |
+
+**What to verify:** Before troubleshooting packet flow, inspect the TGW route table. If the remote prefix points directly to the destination spoke, TGW is acting as transport. If it points to a Security/Inspection VPC attachment, you are using the centralized TGW inspection method.
 
 ---
 
@@ -1058,6 +1177,10 @@ TGW static routes outrank propagated routes for the same CIDR. If DX should be p
 
 Allowed prefixes control what the Direct Connect Gateway advertises toward on-premises for a TGW association. They do not replace TGW route-table segmentation or firewall policy.
 
+## Mistake 9 — Treating a TGW Security-VPC attachment as part of the distributed east-west flow
+
+If the TGW route table points the flow to a Security/Inspection VPC attachment before the destination VPC, that is the **centralized TGW inspection-VPC method**. In the source-side distributed model, TGW points directly from the source attachment to the destination attachment; GWLBE insertion happens inside the spoke VPC route path.
+
 ---
 
 # 23. Troubleshooting by symptom
@@ -1079,6 +1202,15 @@ Allowed prefixes control what the Direct Connect Gateway advertises toward on-pr
 **Expected:** Workload's route to remote CIDR points to the same local GWLBE service chain.  
 **Failure means:** Return bypass is likely.  
 **Next action:** Fix workload/NAT/TGW/public-subnet return route.
+
+## Symptom: East-west traffic bypasses the source-side firewall
+
+**Where:** Spoke-A application route table and Spoke-A TGW attachment-subnet route table.  
+**What it tests:** Whether both forward and return directions are locally inserted into `GWLBE-A`.  
+**Expected forward:** `10.20.0.0/16 → vpce-gwlb-A-a`.  
+**Expected return:** `10.10.10.0/24 → vpce-gwlb-A-a` on `RT-A-TGW-a`.  
+**Failure means:** TGW can still deliver the packet, but one direction may use direct VPC local routing and bypass stateful inspection.  
+**Next action:** Correct the spoke route tables; do not solve this by pointing TGW to a Security VPC unless you intentionally want to change architectures.
 
 ## Symptom: DX is healthy but traffic uses VPN
 
@@ -1116,23 +1248,25 @@ Allowed prefixes control what the Direct Connect Gateway advertises toward on-pr
 
 1. **Use one GWLBE per required AZ.** Keep source, endpoint, TGW/NAT, and destination routing AZ-aware.
 2. **Use separate subnets and route tables for workload, GWLBE, TGW attachment, and NAT/public tiers.** This makes insertion deterministic.
-3. **Choose an east-west enforcement model deliberately.** Source-side-only reduces duplicate inspection; source + destination provides layered trust-boundary enforcement.
-4. **Keep NAT after outbound inspection when you want private workload identity in firewall policy/logs.**
-5. **Treat Direct Connect and VPN as TGW routing attachments, not inspection functions.** The spoke route tables implement the distributed inspection point.
-6. **Use TGW route-table separation for spokes versus hybrid attachments.** This reduces accidental transit.
-7. **Do not use static routes casually when DX/VPN failover depends on propagated route priority.**
-8. **Validate route-table associations, not just routes.** The right route in the wrong table is operationally equivalent to no route.
-9. **Correlate the inner application tuple at the NGFW.** GENEVE outer headers are transport between GWLB and the appliance.
-10. **Document every direction separately.** A working forward path does not prove the stateful return path.
+3. **Choose an east-west architecture first.** For distributed source-side enforcement, TGW routes directly between spoke attachments and the spoke route tables invoke GWLBE. For centralized TGW inspection, TGW deliberately sends the flow through an inspection-VPC attachment. Do not combine the route logic from the two designs.
+4. **Choose whether a second destination-side GWLBE traversal is intentional.** It is layered distributed enforcement, not centralized TGW inspection, and it doubles inspection work.
+5. **Keep NAT after outbound inspection when you want private workload identity in firewall policy/logs.**
+6. **Treat Direct Connect and VPN as TGW routing attachments, not inspection functions.** The spoke route tables implement the distributed inspection point.
+7. **Use TGW route-table separation for spokes versus hybrid attachments.** This reduces accidental transit.
+8. **Do not use static routes casually when DX/VPN failover depends on propagated route priority.**
+9. **Validate route-table associations, not just routes.** The right route in the wrong table is operationally equivalent to no route.
+10. **Correlate the inner application tuple at the NGFW.** GENEVE outer headers are transport between GWLB and the appliance.
+11. **Document every direction separately.** A working forward path does not prove the stateful return path.
 
 ---
 
 # 25. Summary traffic matrix
 
-| Traffic class | Pre-inspection route table | GWLBE location | Post-inspection next hop | Return enforcement point |
+| Traffic class | Pre-inspection route table | GWLBE location | TGW role / post-inspection next hop | Return enforcement point |
 |---|---|---|---|---|
-| Spoke A → Spoke B | A workload RT | Spoke A | TGW | A TGW-subnet RT → GWLBE-A |
-| Spoke A → Spoke B with dual enforcement | A workload RT + B TGW RT | Both spokes | TGW/local | B workload RT + A TGW RT |
+| Spoke A → Spoke B, source-side distributed | A workload RT | Spoke A | GWLBE-A RT → TGW; TGW directly → Spoke B | A TGW-subnet RT → GWLBE-A |
+| Spoke A → Spoke B, dual distributed | A workload RT + B TGW RT | Both spokes | TGW transports directly A↔B; each spoke inserts its own GWLBE locally | B workload RT + A TGW RT |
+| Spoke A → Spoke B, centralized TGW inspection | Spoke route → TGW | Security/Inspection VPC | TGW → Security VPC attachment → GWLBE → TGW → destination | Reverse through same centralized inspection path; appliance mode normally required |
 | Internet → public ALB/NLB | IGW edge RT | Workload VPC | VPC local to public subnet | Public subnet default → GWLBE |
 | Private workload → Internet | Workload RT | Workload VPC | NAT Gateway | NAT subnet workload-CIDR route → GWLBE |
 | On-prem → workload via DX | TGW attachment-subnet RT | Workload VPC | VPC local | Workload remote-CIDR route → GWLBE |
