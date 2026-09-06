@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker></defs>
+<rect width="1400" height="820" fill="#f8fafc"/>
+<text x="700" y="42" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700" fill="#0f172a">VPN Gateway forced tunneling with BGP default route</text>
+<text x="700" y="70" text-anchor="middle" font-family="Arial" font-size="16" fill="#475569">On-premises advertises 0.0.0.0/0; Azure workload Internet traffic exits through the enterprise firewall.</text>
+<rect x="70" y="250" width="220" height="130" rx="14" fill="#dbeafe" stroke="#334155" stroke-width="2"/>
+<text x="180.0" y="280" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Azure workload</text>
+<text x="180.0" y="306" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">10.10.1.4/24</text>
+<text x="180.0" y="328" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Effective default: VNet gateway</text>
+<rect x="360" y="240" width="240" height="150" rx="14" fill="#e0e7ff" stroke="#334155" stroke-width="2"/>
+<text x="480.0" y="270" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Azure VPN Gateway</text>
+<text x="480.0" y="296" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Route-based S2S VPN</text>
+<text x="480.0" y="318" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Learns 0.0.0.0/0 via BGP</text>
+<rect x="690" y="240" width="240" height="150" rx="14" fill="#fef3c7" stroke="#334155" stroke-width="2"/>
+<text x="810.0" y="270" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">On-prem edge / VPN</text>
+<text x="810.0" y="296" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Terminates IPsec</text>
+<text x="810.0" y="318" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Routes default toward firewall</text>
+<rect x="1010" y="230" width="240" height="170" rx="14" fill="#fee2e2" stroke="#334155" stroke-width="2"/>
+<text x="1130.0" y="260" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">On-prem NGFW</text>
+<text x="1130.0" y="286" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Stateful inspection</text>
+<text x="1130.0" y="308" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">SNAT to enterprise public IP</text>
+<text x="1130.0" y="330" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Internet security policy</text>
+<rect x="1070" y="520" width="160" height="90" rx="14" fill="#dcfce7" stroke="#334155" stroke-width="2"/>
+<text x="1150.0" y="550" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">Internet</text>
+<text x="1150.0" y="576" text-anchor="middle" font-family="Arial" font-size="15" fill="#334155">Public destination</text>
+<line x1="290" y1="315" x2="360" y2="315" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="325.0" y="305.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">1  Internet packet</text>
+<line x1="600" y1="315" x2="690" y2="315" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="645.0" y="305.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">2  S2S IPsec</text>
+<line x1="930" y1="315" x2="1010" y2="315" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="970.0" y="305.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">3  Decapsulated</text>
+<line x1="1130" y1="400" x2="1140" y2="520" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="1135.0" y="446.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">4  Inspect + SNAT</text>
+<line x1="1070" y1="565" x2="980" y2="400" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="1025.0" y="474.5" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">5  Return</text>
+<line x1="1010" y1="350" x2="930" y2="350" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="970.0" y="340.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">6  Reverse NAT</text>
+<line x1="690" y1="350" x2="600" y2="350" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="645.0" y="340.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">7  S2S IPsec</text>
+<line x1="360" y1="350" x2="290" y2="350" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/><text x="325.0" y="340.0" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#1e40af">8  Deliver</text>
+<text x="50" y="770" font-family="Arial" font-size="13" fill="#475569">Control plane: BGP advertises 0.0.0.0/0 from on-premises to Azure VPN Gateway.</text>
+<text x="50" y="788" font-family="Arial" font-size="13" fill="#475569">Data plane: Internet traffic is encrypted over the S2S IPsec tunnel; NAT normally occurs at the on-premises Internet edge.</text>
+</svg>
