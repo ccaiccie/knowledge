@@ -1,0 +1,77 @@
+from pathlib import Path
+from xml.sax.saxutils import escape
+OUT=Path('images/.generated_vwan_tmp'); OUT.mkdir(parents=True,exist_ok=True)
+W,H=1600,900
+COL={'bg':'#F7F9FC','text':'#0F172A','muted':'#475569','azure':'#0078D4','azure2':'#E8F3FC','sec':'#D13438','sec2':'#FDEBEC','route':'#6B4EFF','route2':'#F0ECFF','green':'#107C10','green2':'#EAF6EA','orange':'#D97706','orange2':'#FFF3E0','purple':'#7C3AED','purple2':'#F3E8FF','gray':'#64748B','line':'#CBD5E1','dark':'#1E293B'}
+
+def hdr(title,subtitle):
+    return f'<text x="60" y="62" font-family="Segoe UI,Arial" font-size="30" font-weight="700" fill="{COL["text"]}">{escape(title)}</text><text x="60" y="94" font-family="Segoe UI,Arial" font-size="16" fill="{COL["muted"]}">{escape(subtitle)}</text>'
+
+def box(x,y,w,h,title,sub='',fill='#fff',stroke='#94A3B8',tag=None):
+    s=f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="18" fill="{fill}" stroke="{stroke}" stroke-width="2.5"/>'
+    if tag: s+=f'<text x="{x+18}" y="{y+28}" font-family="Segoe UI,Arial" font-size="12" font-weight="700" fill="{stroke}">{escape(tag)}</text>'
+    s+=f'<text x="{x+w/2}" y="{y+h/2-2}" text-anchor="middle" font-family="Segoe UI,Arial" font-size="18" font-weight="700" fill="{COL["text"]}">{escape(title)}</text>'
+    if sub: s+=f'<text x="{x+w/2}" y="{y+h/2+25}" text-anchor="middle" font-family="Segoe UI,Arial" font-size="13" fill="{COL["muted"]}">{escape(sub)}</text>'
+    return s
+
+def arrow(x1,y1,x2,y2,color,label=None,bend=None,n=None):
+    marker='blue' if color==COL['azure'] else 'orange'
+    if bend:
+        pts=f'{x1},{y1} '+' '.join(f'{a},{b}' for a,b in bend)+f' {x2},{y2}'
+        path=f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#{marker})"/>'
+    else:
+        path=f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="6" stroke-linecap="round" marker-end="url(#{marker})"/>'
+    mx=(x1+x2)/2; my=(y1+y2)/2
+    if label: path+=f'<rect x="{mx-78}" y="{my-29}" width="156" height="28" rx="14" fill="#fff" stroke="{color}"/><text x="{mx}" y="{my-10}" text-anchor="middle" font-family="Segoe UI,Arial" font-size="12" font-weight="700" fill="{color}">{escape(label)}</text>'
+    if n: path+=f'<circle cx="{mx}" cy="{my+20}" r="15" fill="{color}"/><text x="{mx}" y="{my+25}" text-anchor="middle" font-family="Segoe UI,Arial" font-size="12" font-weight="700" fill="#fff">{n}</text>'
+    return path
+
+def start(title,subtitle):
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}"><defs><marker id="blue" markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto"><path d="M0 0 L0 12 L13 6 z" fill="{COL['azure']}"/></marker><marker id="orange" markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto"><path d="M0 0 L0 12 L13 6 z" fill="#EA580C"/></marker></defs><rect width="100%" height="100%" fill="{COL['bg']}"/>{hdr(title,subtitle)}'''
+
+def legend(color,text): return f'<rect x="60" y="830" width="1480" height="42" rx="12" fill="#fff" stroke="{COL["line"]}"/><circle cx="83" cy="851" r="7" fill="{color}"/><text x="100" y="857" font-family="Segoe UI,Arial" font-size="14" font-weight="600" fill="{COL["dark"]}">{escape(text)}</text>'
+def save(name,svg): (OUT/f'{name}.svg').write_text(svg+'</svg>')
+
+def architecture():
+    s=start('Integrated third-party NGFW inside Azure Virtual WAN hub','Shows ownership boundaries and where security is inserted in the managed vHub fabric.')
+    s+='<rect x="330" y="155" width="940" height="600" rx="28" fill="#EEF6FD" stroke="#60A5FA" stroke-width="3"/><text x="365" y="195" font-family="Segoe UI,Arial" font-size="16" font-weight="700" fill="#075985">MICROSOFT-MANAGED VIRTUAL HUB</text>'
+    s+=box(70,250,210,120,'Spoke VNets','VNet connections',COL['green2'],COL['green'],'CUSTOMER')+box(70,500,210,120,'Branches / On-prem','VPN / ER / SD-WAN',COL['orange2'],COL['orange'],'CUSTOMER')+box(390,270,220,110,'vHub Router','route association + propagation',COL['azure2'],COL['azure'],'CONTROL PLANE')+box(690,270,220,110,'Routing Intent','Private / Internet policies',COL['route2'],COL['route'],'STEERING')+box(690,500,220,130,'Integrated NGFW','Check Point / Fortinet / Cisco',COL['sec2'],COL['sec'],'SECURITY SERVICE')+box(1010,270,200,110,'Destination lookup','spoke / branch / Internet','#fff',COL['purple'],'FORWARDING')
+    s+=arrow(280,310,390,310,COL['azure'],'connected routes',n=1)+arrow(280,560,390,350,COL['azure'],'learned routes',bend=[(330,560),(330,350)],n=2)+arrow(610,325,690,325,COL['azure'],'policy class',n=3)+arrow(800,380,800,500,COL['azure'],'service insertion',n=4)+arrow(910,565,1110,380,COL['azure'],'inspected traffic',bend=[(1110,565)],n=5)+legend(COL['azure'],'The vHub router remains the transit control point; Routing Intent inserts the integrated NGFW before the final destination lookup.')
+    save('architecture_v3',s)
+
+def eastwest(forward=True):
+    color=COL['azure'] if forward else '#EA580C'; d='forward' if forward else 'return'; src=('Spoke A / VM-A','10.10.1.4') if forward else ('Spoke B / VM-B','10.20.1.4'); dst=('Spoke B / VM-B','10.20.1.4') if forward else ('Spoke A / VM-A','10.10.1.4')
+    s=start(f'East-west {d} path — spoke to spoke',f'{src[0]} sends traffic to {dst[0]}; only this direction is shown.')
+    s+='<rect x="65" y="180" width="350" height="535" rx="26" fill="#F0FDF4" stroke="#86EFAC"/><text x="90" y="215" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#15803D">SOURCE SPOKE</text><rect x="500" y="160" width="600" height="575" rx="28" fill="#EEF6FD" stroke="#60A5FA" stroke-width="3"/><text x="535" y="198" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#075985">VIRTUAL WAN HUB</text><rect x="1185" y="180" width="350" height="535" rx="26" fill="#FAF5FF" stroke="#D8B4FE"/><text x="1210" y="215" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#7E22CE">DESTINATION SPOKE</text>'
+    s+=box(115,330,250,125,src[0],src[1],COL['green2'],COL['green'])+box(560,275,220,105,'vHub route lookup','classify private traffic',COL['azure2'],COL['azure'])+box(820,275,220,105,'Routing Intent','Private Traffic → NVA',COL['route2'],COL['route'])+box(690,500,220,120,'Integrated NGFW','stateful inspection',COL['sec2'],COL['sec'])+box(1235,330,250,125,dst[0],dst[1],COL['purple2'],COL['purple'])
+    s+=arrow(365,392,560,327,color,'VNet connection',n=1)+arrow(780,327,820,327,color,'policy match',n=2)+arrow(930,380,800,500,color,'insert NVA',bend=[(930,440),(800,440)],n=3)+arrow(910,560,1235,392,color,'post-inspection route',bend=[(1080,560),(1080,392)],n=4)
+    s+=legend(color,'Firewall creates session/state; private traffic normally preserves source IP.' if forward else 'Firewall matches existing/synchronized session state; no reverse NAT is expected for ordinary private east-west traffic.'); save(f'eastwest_{d}_v3',s)
+
+def branch(forward=True):
+    color=COL['azure'] if forward else '#EA580C'; d='forward' if forward else 'return'; s=start(f'Branch-to-spoke {d} path','Shows the VPN/ExpressRoute gateway as a distinct ingress/egress point and the NGFW insertion inside the vHub.')
+    s+='<rect x="60" y="190" width="300" height="520" rx="26" fill="#FFF7ED" stroke="#FDBA74"/><text x="85" y="225" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#C2410C">ON-PREMISES / BRANCH</text><rect x="440" y="155" width="720" height="590" rx="28" fill="#EEF6FD" stroke="#60A5FA" stroke-width="3"/><text x="475" y="195" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#075985">AZURE VIRTUAL WAN HUB</text><rect x="1240" y="190" width="300" height="520" rx="26" fill="#F0FDF4" stroke="#86EFAC"/><text x="1265" y="225" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#15803D">AZURE SPOKE</text>'
+    s+=box(95,360,225,120,'Branch host','10.50.1.25',COL['orange2'],COL['orange'])+box(1275,360,225,120,'VM-A','10.10.1.4',COL['green2'],COL['green'])+box(500,270,200,110,'VPN / ER Gateway','branch attachment',COL['azure2'],COL['azure'],'GATEWAY')+box(760,270,200,110,'vHub Router','learned branch/spoke routes',COL['azure2'],COL['azure'],'ROUTING')+box(760,510,200,120,'Integrated NGFW','branch↔Azure policy/state',COL['sec2'],COL['sec'],'SECURITY')
+    if forward: s+=arrow(320,420,500,325,color,'IPsec / ER',n=1)+arrow(700,325,760,325,color,'route enters hub',n=2)+arrow(860,380,860,510,color,'Private Traffic policy',n=3)+arrow(960,570,1275,420,color,'spoke lookup',bend=[(1100,570),(1100,420)],n=4); note='Meaningful checkpoint: verify the branch prefix is learned through the intended VPN/ER connection before validating firewall policy.'
+    else: s+=arrow(1275,420,960,570,color,'VNet connection',bend=[(1100,420),(1100,570)],n=1)+arrow(860,510,860,380,color,'Private Traffic policy',n=2)+arrow(760,325,700,325,color,'branch route lookup',n=3)+arrow(500,325,320,420,color,'VPN / ER egress',n=4); note='Return-path checkpoint: the vHub must resolve 10.50.0.0/16 toward the same branch connectivity domain after NGFW state processing.'
+    s+=legend(color,note); save(f'branch_{d}_v3',s)
+
+def internet(forward=True):
+    color=COL['azure'] if forward else '#EA580C'; d='forward' if forward else 'return'; s=start(f'Internet egress {d} path','Shows the secured default route, the exact NAT point, and the public Internet boundary.')
+    s+='<rect x="65" y="180" width="315" height="530" rx="26" fill="#F0FDF4" stroke="#86EFAC"/><text x="90" y="215" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#15803D">AZURE SPOKE</text><rect x="455" y="155" width="700" height="590" rx="28" fill="#EEF6FD" stroke="#60A5FA" stroke-width="3"/><text x="490" y="195" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#075985">VIRTUAL WAN HUB + INTEGRATED SECURITY</text><rect x="1235" y="180" width="300" height="530" rx="26" fill="#FFF7ED" stroke="#FDBA74"/><text x="1260" y="215" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#C2410C">PUBLIC INTERNET</text>'
+    s+=box(100,365,240,115,'VM-A','10.10.1.4:51514',COL['green2'],COL['green'])+box(515,265,220,105,'Secured default route','0.0.0.0/0 → NVA',COL['azure2'],COL['azure'])+box(815,265,220,105,'Routing Intent','Internet Traffic → NVA',COL['route2'],COL['route'])+box(665,510,230,125,'Integrated NGFW','policy + NAT + state',COL['sec2'],COL['sec'])+box(1270,365,230,115,'Internet server','8.8.8.8:443',COL['orange2'],COL['orange'])
+    s+=f'<rect x="930" y="505" width="190" height="135" rx="16" fill="#FFF" stroke="#F59E0B" stroke-width="2"/><text x="1025" y="535" text-anchor="middle" font-family="Segoe UI,Arial" font-size="13" font-weight="700" fill="#B45309">NAT TRANSFORMATION</text><text x="1025" y="565" text-anchor="middle" font-family="Consolas,monospace" font-size="12" fill="{COL["text"]}">10.10.1.4:51514</text><text x="1025" y="586" text-anchor="middle" font-family="Segoe UI,Arial" font-size="12" fill="{COL["muted"]}">⇄</text><text x="1025" y="607" text-anchor="middle" font-family="Consolas,monospace" font-size="12" fill="{COL["text"]}">&lt;public-SNAT&gt;:&lt;port&gt;</text>'
+    if forward: s+=arrow(340,422,515,317,color,'default route',n=1)+arrow(735,317,815,317,color,'Internet class',n=2)+arrow(925,370,780,510,color,'insert NGFW',bend=[(925,440),(780,440)],n=3)+arrow(895,575,1270,422,color,'SNAT then egress',bend=[(1130,575),(1130,422)],n=4); note='The key operational proof is not just firewall logs: confirm the VM NIC actually selects the secured 0.0.0.0/0 route and that the NGFW creates the NAT mapping.'
+    else: s+=arrow(1270,422,895,575,color,'response to SNAT IP',bend=[(1130,422),(1130,575)],n=1)+arrow(780,510,780,370,color,'state + reverse NAT',n=2)+arrow(815,317,735,317,color,'private route lookup',n=3)+arrow(515,317,340,422,color,'VNet connection',n=4); note='Return traffic must reach the same/compatible NGFW state, where reverse NAT restores 10.10.1.4 before the spoke lookup.'
+    s+=legend(color,note); save(f'internet_{d}_v3',s)
+
+def dnat(forward=True):
+    color=COL['azure'] if forward else '#EA580C'; d='forward' if forward else 'return'; s=start(f'Internet inbound DNAT {d} path','Separates Azure public-IP/load-balancing behavior from firewall NAT and the same-hub backend route.')
+    s+='<rect x="55" y="180" width="300" height="530" rx="26" fill="#FFF7ED" stroke="#FDBA74"/><text x="80" y="215" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#C2410C">INTERNET CLIENT</text><rect x="420" y="150" width="760" height="600" rx="28" fill="#EEF6FD" stroke="#60A5FA" stroke-width="3"/><text x="455" y="190" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#075985">AZURE VIRTUAL WAN HUB — INTERNET INBOUND CAPABLE NVA</text><rect x="1245" y="180" width="300" height="530" rx="26" fill="#F0FDF4" stroke="#86EFAC"/><text x="1270" y="215" font-family="Segoe UI,Arial" font-size="15" font-weight="700" fill="#15803D">SAME-HUB BACKEND SPOKE</text>'
+    s+=box(90,365,230,115,'Internet client','203.0.113.25:51514',COL['orange2'],COL['orange'])+box(475,250,210,110,'Standard Public IP','198.51.100.40:443',COL['azure2'],COL['azure'],'PUBLIC FRONTEND')+box(745,250,210,110,'Azure inbound LB','5-tuple → healthy NVA',COL['azure2'],COL['azure'],'PLATFORM')+box(745,505,210,125,'Integrated NGFW','DNAT + usually SNAT',COL['sec2'],COL['sec'],'SECURITY')+box(1280,365,230,115,'Backend','10.60.0.4:443',COL['green2'],COL['green'])
+    s+=f'<rect x="980" y="500" width="180" height="145" rx="16" fill="#FFF" stroke="#F59E0B" stroke-width="2"/><text x="1070" y="530" text-anchor="middle" font-family="Segoe UI,Arial" font-size="13" font-weight="700" fill="#B45309">NAT AT NGFW</text><text x="1070" y="558" text-anchor="middle" font-family="Consolas,monospace" font-size="11" fill="{COL["text"]}">dst 198.51.100.40:443</text><text x="1070" y="580" text-anchor="middle" font-family="Segoe UI,Arial" font-size="12" fill="{COL["muted"]}">→ DNAT →</text><text x="1070" y="602" text-anchor="middle" font-family="Consolas,monospace" font-size="11" fill="{COL["text"]}">dst 10.60.0.4:443</text><text x="1070" y="625" text-anchor="middle" font-family="Segoe UI,Arial" font-size="11" fill="{COL["muted"]}">SNAT typically added for symmetry</text>'
+    if forward: s+=arrow(320,422,475,305,color,'to published IP',n=1)+arrow(685,305,745,305,color,'frontend flow',n=2)+arrow(850,360,850,505,color,'healthy NVA',n=3)+arrow(955,568,1280,422,color,'translated flow',bend=[(1160,568),(1160,422)],n=4); note='DNAT is an integrated platform feature here: public IP + Azure health/load-balancing + firewall NAT + same-hub backend routing must all be healthy.'
+    else: s+=arrow(1280,422,955,568,color,'reply to SNAT source',bend=[(1160,422),(1160,568)],n=1)+arrow(850,505,850,360,color,'reverse DNAT/SNAT',n=2)+arrow(745,305,685,305,color,'same selected flow',n=3)+arrow(475,305,320,422,color,'from public IP',n=4); note='The reason SNAT is commonly paired with DNAT is visible here: the backend reply is forced back to the firewall state that owns the translation.'
+    s+=legend(color,note); save(f'dnat_{d}_v3',s)
+
+architecture(); eastwest(True); eastwest(False); branch(True); branch(False); internet(True); internet(False); dnat(True); dnat(False)
+print('generated',len(list(OUT.glob('*.svg'))))
