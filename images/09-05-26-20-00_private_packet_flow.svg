@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker></defs>
+<style>.t{font-family:Arial,sans-serif;fill:#0f172a}.n{fill:#fff;stroke:#334155;stroke-width:2}.e{fill:none;stroke:#334155;stroke-width:2;marker-end:url(#arrow)}.el{font:13px Arial,sans-serif;fill:#334155}.h{font:bold 24px Arial,sans-serif;fill:#0f172a}</style><rect width="100%" height="100%" fill="#ffffff"/>
+<text x="40" y="42" class="h">Private east-west packet flow through an integrated NGFW</text>
+<path d="M 250 195.0 L 305.0 195.0 L 305.0 195.0 L 360 195.0" class="e"/>
+<text x="311.0" y="189.0" class="el">1. dst 10.20.1.4</text>
+<path d="M 590 195.0 L 650.0 195.0 L 650.0 195.0 L 710 195.0" class="e"/>
+<text x="656.0" y="189.0" class="el">2. Routing Intent</text>
+<path d="M 960 195.0 L 1020.0 195.0 L 1020.0 195.0 L 1080 195.0" class="e"/>
+<text x="1026.0" y="189.0" class="el">3. allow, no private SNAT preferred</text>
+<path d="M 1195.0 240 L 1195.0 335.0 L 1195.0 335.0 L 1195.0 430" class="e"/>
+<text x="1201.0" y="329.0" class="el">4. deliver</text>
+<path d="M 1195.0 430 L 1195.0 335.0 L 1195.0 335.0 L 1195.0 240" class="e"/>
+<text x="1201.0" y="329.0" class="el">5. reply</text>
+<path d="M 1080 195.0 L 1020.0 195.0 L 1020.0 195.0 L 960 195.0" class="e"/>
+<text x="1026.0" y="189.0" class="el">6. return inspected</text>
+<path d="M 710 195.0 L 650.0 195.0 L 650.0 195.0 L 590 195.0" class="e"/>
+<text x="656.0" y="189.0" class="el">7. state match</text>
+<path d="M 360 195.0 L 305.0 195.0 L 305.0 195.0 L 250 195.0" class="e"/>
+<text x="311.0" y="189.0" class="el">8. return</text>
+<rect x="40" y="150" width="210" height="90" rx="12" class="n"/>
+<text x="145.0" y="186.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">VM-A</text>
+<text x="145.0" y="206.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">10.10.1.4</text>
+<rect x="360" y="150" width="230" height="90" rx="12" class="n"/>
+<text x="475.0" y="186.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">vHub router</text>
+<text x="475.0" y="206.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">PrivateTraffic match</text>
+<rect x="710" y="150" width="250" height="90" rx="12" class="n"/>
+<text x="835.0" y="186.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">Integrated NGFW</text>
+<text x="835.0" y="206.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">stateful inspection</text>
+<rect x="1080" y="150" width="230" height="90" rx="12" class="n"/>
+<text x="1195.0" y="186.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">vHub router</text>
+<text x="1195.0" y="206.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">10.20.0.0/16 lookup</text>
+<rect x="1080" y="430" width="230" height="90" rx="12" class="n"/>
+<text x="1195.0" y="466.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">VM-B</text>
+<text x="1195.0" y="486.0" text-anchor="middle" class="t" font-size="14" font-weight="bold">10.20.1.4</text>
+</svg>
