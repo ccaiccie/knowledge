@@ -17,8 +17,8 @@ Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/prot
 
 ## Azure Networking
 
-### [Azure Private Endpoint Inspection with Azure Firewall — Deep Dive](09-06-26-12-37_Azure_Private_Endpoint_Inspection_Azure_Firewall_Deep_Dive.md)
-Detailed guide to forcing Azure Private Endpoint traffic through Azure Firewall. Covers Private Endpoint network-policy requirements, why `0.0.0.0/0` alone does not override PE-specific routing, PE-VNet/subnet UDR design, application-rule SNAT for flow symmetry, Azure SQL proxy-versus-redirect considerations, Private DNS integration, complete Azure CLI deployment and verification commands, expected route/policy state, packet-by-packet forward and return paths, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
+### [Azure Private Endpoint Inspection — Azure Firewall and ILB-Backed Third-Party NVA Deep Dive](09-06-26-12-37_Azure_Private_Endpoint_Inspection_Azure_Firewall_Deep_Dive.md)
+Detailed Private Endpoint inspection guide covering both Azure Firewall and Standard Internal Load Balancer + HA Ports + third-party NVA designs. Includes PE network-policy requirements, route-precedence behavior, UDR-to-ILB frontend service insertion, NVA IP forwarding, SNAT/state symmetry, exact forward/return packet walks, HA and health-probe behavior, backend-to-own-frontend hairpin caveats, Azure CLI deployment/verification commands, failover analysis, and matching SVG/editable draw.io diagrams.
 
 ### [Azure Front Door WAF and Application Gateway WAF — Method 9 Deep Dive](09-06-26-10-24_Azure_Front_Door_Application_Gateway_WAF_Method_9_Deep_Dive.md)
 Deep dive into Layer-7 HTTP/HTTPS firewall inspection with Azure Front Door WAF and Application Gateway WAF v2. Covers global-edge versus regional reverse-proxy architecture, Front Door origin lockdown with Private Link or `AzureFrontDoor.Backend` plus `X-Azure-FDID`, managed/custom rules and anomaly scoring, rate limiting, three-leg TLS and client-IP behavior, Front Door-to-Application-Gateway layering, Azure CLI deployment, backend routing, Azure Firewall coexistence, HA/failover, verification, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
@@ -79,44 +79,14 @@ Advanced AWS DNS guide covering AmazonProvidedDNS/VPC+2, Route 53 VPC Resolver, 
 Explains RFC 9107 Optimal Route Reflection, why conventional route reflectors can cause suboptimal hot-potato routing, client-versus-RR IGP viewpoints, alternate IGP roots, client-specific route selection, Cisco IOS XR and Junos behavior, interaction with ADD-PATH, design considerations, verification, and troubleshooting.
 
 ### [BGP Clusters and Route Reflectors — Comprehensive Study Guide](08-29-26-15-14_bgp_clusters_study_guide.md)
-Covers route-reflector clusters, RR clients and non-clients, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, loop prevention, redundant route reflectors, hierarchical reflection, path-selection implications, Cisco/Juniper/FRR configuration concepts, verification, and troubleshooting.
-
-### [BGP Clusters: Route Reflectors, Cluster IDs, and Hierarchical Design — GitHub Edition](08-29-26-14-55_bgp_clusters_route_reflectors_github_fixed.md)
-GitHub-rendering-corrected route-reflector guide covering RFC 4456 reflection rules, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, client/non-client behavior, loop prevention, redundant RR design, and operational verification with repository-hosted images.
-
-### [BGP Clusters: Route Reflectors, Cluster IDs, and Hierarchical Design](08-29-26-14-49_bgp_clusters_route_reflectors_study_guide.md)
-Detailed introduction to BGP route-reflector clusters, iBGP scaling, client/non-client advertisement rules, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, redundancy, hierarchy, Cisco IOS XE/IOS XR and Junos considerations, verification, and troubleshooting.
-
-### [BGP Confederations — Comprehensive iBGP Scaling Study Guide](08-29-26-14-29-bgp-confederations-comprehensive-study-guide.md)
-Explains BGP confederation architecture, member/sub-AS design, confederation eBGP versus iBGP, AS_CONFED_SEQUENCE behavior, external AS visibility, LOCAL_PREF/MED/NEXT_HOP handling, loop prevention, scaling tradeoffs, Cisco and Juniper implementation concepts, verification, and troubleshooting.
-
-### [Pseudowires, VCCV, and BFD over VCCV — Junos Study Guide](08-29-26-14-41-pseudowire-vccv-bfd-junos-study-guide.md)
-Covers MPLS pseudowires, Virtual Circuit Connectivity Verification (VCCV), BFD over VCCV, pseudowire OAM, control-channel and connectivity-verification types, control-word implications, LDP/BGP-signaled Layer 2 services, VPLS/L2VPN use cases, interoperability, data-plane validation, Junos configuration concepts, verification, and troubleshooting.
+Covers route-reflector clusters, RR clients and non-clients, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, loop prevention, path-selection implications, Cisco/Juniper/FRR configuration concepts, verification, and troubleshooting.
 
 ## GitHub, Git, and Network Automation
 
 ### [Network Automation Using GitHub](08-30-26-17-00_network_automation_using_github.md)
 Practical GitOps/NetDevOps guide for using GitHub as the reviewed source of truth for network configuration. Covers pull-request workflows, GitHub Actions, private runners, secrets, validation pipelines, deployment approvals, Ansible/Nornir/Terraform/vendor APIs, Cisco IOS XE/IOS XR/NX-OS/Meraki/SD-WAN/Catalyst Center/NSO use cases, post-change validation, rollback, and production safety controls.
 
-### [Git vs `gh`: Git Commands and GitHub CLI Study Guide](08-30-26-13-32_git-vs-gh-github-cli-study-guide.md)
-Explains the difference between Git and GitHub CLI (`gh`), showing which tool manages local version-control history versus GitHub-specific services. Covers repositories, branches, commits, fetch/pull/push, pull requests, issues, Actions, releases, authentication, projects, and GitHub API operations.
-
-### [Git Commands for the GitHub Foundations Exam](08-30-26-12-54_git_commands_github_foundations_exam.md)
-Exam-focused Git command reference covering the working tree, staging area, commits, branches, remotes, clone/init, add/commit, fetch/pull/push, merge/rebase, switch/checkout, configuration, status/diff/log, undo and recovery operations, and the distinction between Git commands and GitHub features.
-
-### [GitHub Projects vs Projects (classic)](08-30-26-10-00_github-projects-vs-projects-classic.md)
-Compares the current GitHub Projects platform with retired Projects (classic). Covers items, custom fields, table/board/roadmap views, iterations, filtering/grouping, charts, workflows, templates, cross-repository planning, migration history, API direction, and why current Projects should be used for new work.
-
-### [InnerSource Development Terminology Study Guide](08-30-26-09-59_innersource-development-terminology.md)
-Introduces InnerSource as open-source-style collaboration inside a private organization. Covers host teams, guest teams, contributors, trusted committers, discoverability, contribution guidelines, governance, cross-team collaboration, repository practices, and how InnerSource differs from traditional closed-source and public open-source development.
-
-### [GitHub Branch Protection and Rulesets Guide](08-30-26-09-41_github-branch-protection-guide.md)
-Covers GitHub repository rulesets and classic branch protection, including required pull requests and approvals, status checks, conversation resolution, signed commits, linear history, force-push/deletion protection, bypass permissions, merge queues, deployment gates, rule layering, and recommended controls for GitOps/network-automation repositories.
-
 ## Hands-On Labs
 
-### [FRR BGP ORR-Behavior / ADD-PATH Lab for GNS3 — Study Guide](08-30-26-01-49_BGP_ORR_FRR_GNS3_Lab.md)
-Explains and documents a five-router FRRouting/GNS3 lab that demonstrates conventional route-reflector path hiding and uses BGP ADD-PATH to reproduce the client-appropriate path-selection outcome that ORR is designed to provide. Includes OSPF underlay costs, equal-attribute BGP paths, prerequisites, expected behavior, validation, and automation details.
-
 ### [Runnable FRR BGP ORR-Behavior / ADD-PATH GNS3 Lab](labs/bgp-orr-frr-gns3-lab/README.md)
-Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and the boundary between native ORR and the lab's ADD-PATH emulation.
+Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and automation details.
