@@ -14,6 +14,8 @@
 - https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
 - https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
 - https://learn.microsoft.com/en-us/azure/virtual-wan/howto-connect-vnet-hub
+- https://learn.microsoft.com/en-us/azure/virtual-wan/hybrid-firewall-spoke-static
+- https://learn.microsoft.com/en-us/azure/virtual-wan/next-hop-ip
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 - https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
 - https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-palo-alto-cloud-ngfw
@@ -287,6 +289,209 @@ Do I want the firewall directly integrated into the managed vHub?
                Connect that VNet to Virtual WAN and design the static routes/ILB/UDRs/HA explicitly.
 ```
 
+### 3.3 Customer-managed NVA VNet behind an ILB — does this break service insertion?
+
+**No. It does not inherently break service insertion. It changes the service-insertion mechanism from a managed Routing Intent security provider to a customer-managed IP next hop.**
+
+Microsoft explicitly supports an **NVA VNet connected to a Virtual WAN hub** where a static route on the VNet connection points to an NVA or load-balancer frontend IP. Microsoft also documents **Next Hop IP** support for BGP-peered NVAs, allowing an NVA to advertise routes whose next hop is a load balancer or another device rather than the advertising NVA itself.
+
+![Customer-managed NVA VNet behind an ILB](images/09-05-26-15-56_customer_managed_nva_ilb_service_insertion.svg)
+
+[Editable draw.io version](images/09-05-26-15-56_customer_managed_nva_ilb_service_insertion.drawio)
+
+**What this image shows:** A workload VNet sends traffic into the managed vHub. The vHub route lookup selects a customer-owned ILB VIP in the connected NVA VNet. The ILB distributes the flow to a healthy firewall VM, which performs inspection and forwards the permitted packet toward the destination.
+
+**What matters:** The ILB does not replace the vHub router and does not create Virtual WAN routes. It is a **stable IP next hop and backend-selection point**. You are responsible for making sure the vHub learns or contains the correct route, that the route propagates to the intended connections, that the NVA can forward the packet onward, and that the return direction reaches the same logical firewall state domain.
+
+**What to verify:** The exact route prefix, VNet connection on which the static route is defined, `Propagate static route` behavior, effective routes in the vHub and workload connection, ILB frontend IP, HA Ports/load-balancing rules as required by the vendor, backend health, firewall route table, IP forwarding, NAT, state synchronization, and reverse-path symmetry.
+
+#### The two service-insertion models side by side
+
+| Question | Integrated NVA / SaaS in vHub | Customer-managed NVA VNet + ILB |
+|---|---|---|
+| What represents the security next hop? | Integrated security resource | ILB VIP or NVA next-hop IP |
+| How is traffic steered? | Routing Intent / integrated vHub policy | Static route, propagated static route, or supported BGP next-hop advertisement |
+| Who owns the ILB? | Microsoft/vendor integration | Customer |
+| Who owns NVA VMs? | Microsoft/vendor integration or SaaS provider | Customer |
+| Who must design return symmetry? | Integration/vendor architecture | Customer + vendor architecture |
+| Can arbitrary firewall VMs be used? | No | Yes, in a customer-owned connected VNet, subject to vendor support |
+| Does the ILB itself advertise routes? | Not customer-visible | No; routing must be programmed separately unless an NVA advertises the route with the ILB as next hop |
+
+#### Static-route service insertion
+
+Microsoft documents static routes directly on a **Virtual WAN VNet connection**. The route contains a destination prefix and a **single next-hop IP**. For an NVA VNet, that next-hop IP can be the NVA or, in the documented load-balanced pattern, the ILB frontend.
+
+Example addressing:
+
+```text
+Workload VNet: 10.1.0.0/16
+NVA VNet:      10.5.0.0/16
+ILB VIP:       10.5.10.10
+Firewall-1:    10.5.10.11
+Firewall-2:    10.5.10.12
+```
+
+For Internet egress, the service-insertion intent can look like:
+
+```text
+NVA VNet connection static route
+Destination: 0.0.0.0/0
+Next hop:    10.5.10.10
+Propagate static route: enabled where required
+```
+
+Microsoft's current hybrid Virtual WAN example uses this same pattern conceptually: a `0.0.0.0/0` static route on the DMZ/NVA VNet connection points to the NVA for Internet inspection and breakout, while other private traffic can still use Azure Firewall. This proves that customer-managed NVA service insertion can coexist with Virtual WAN rather than automatically breaking it.
+
+#### Detailed packet flow
+
+Assume a client at `10.1.1.10` is accessing an Internet server at `203.0.113.50:443`.
+
+1. The workload sends `10.1.1.10:<ephemeral> -> 203.0.113.50:443`.
+2. The workload VNet connection sends the flow into the vHub.
+3. The vHub route lookup matches the propagated/static `0.0.0.0/0` route whose next hop is `10.5.10.10`.
+4. Azure forwards the packet to the NVA VNet and the ILB frontend `10.5.10.10`.
+5. The ILB selects a healthy backend firewall according to its load-balancing rule and flow hash.
+6. The selected firewall inspects the original flow, applies security policy, and performs NAT only if the firewall/vendor egress design requires it.
+7. The firewall forwards the permitted packet toward the Internet egress mechanism.
+8. The return packet must come back through a path that lets the same logical firewall state domain process the reverse flow.
+9. The firewall reverses any NAT/state, and the packet returns through the NVA VNet/vHub path to `10.1.1.10`.
+
+The service insertion therefore still exists:
+
+```text
+vHub route lookup
+      -> ILB VIP
+      -> healthy NVA
+      -> inspection
+      -> destination
+```
+
+The difference is that **you built and operate the service chain** instead of selecting a fully integrated security provider with Routing Intent.
+
+#### What the ILB solves — and what it does not
+
+The ILB gives you a stable next-hop address and can remove unhealthy backends from **new-flow** selection based on health probes. It can also distribute flows across an active-active firewall pool when the vendor supports that model.
+
+The ILB does **not** by itself:
+
+- install or withdraw Virtual WAN routes;
+- prove that the firewall can forward traffic onward;
+- synchronize firewall sessions;
+- guarantee that forward and reverse packets select the same firewall in every topology;
+- preserve long-lived sessions after a firewall failure;
+- decide whether SNAT is required;
+- configure BGP on the firewall;
+- prevent a more specific route from bypassing the service chain.
+
+Those remain routing and firewall-HA responsibilities.
+
+#### Fail-closed behavior when all firewall backends are unhealthy
+
+**Reasonable inference from the documented routing and load-balancer behavior:** a Virtual WAN static route does not disappear merely because the ILB loses all healthy firewall backends. The vHub can therefore continue to select the ILB VIP while the ILB has no healthy destination to receive the flow.
+
+Conceptually:
+
+```text
+vHub route still exists
+0.0.0.0/0 -> 10.5.10.10
+
+ILB 10.5.10.10
+  +-- FW-1 unhealthy
+  +-- FW-2 unhealthy
+
+Result: traffic can blackhole at the service-insertion point.
+```
+
+For a security design, that behavior may be desirable because it is effectively **fail closed**, but it must be tested rather than assumed. If the business requires fail-open behavior, that requires a separate routing/failover design; the ILB health probe alone does not rewrite the vHub route table.
+
+#### Stateful symmetry is the hardest part
+
+A valid Azure route and a healthy ILB do not guarantee a valid **stateful firewall path**.
+
+This can still fail:
+
+```text
+Forward: client -> ILB -> Firewall-1 -> destination
+Return:  destination -> ILB -> Firewall-2 -> client
+```
+
+unless the firewall vendor's architecture explicitly supports that state distribution. Depending on vendor/product, the design may rely on active/passive behavior, state/session synchronization, clustering, floating IP, source NAT, a single load-balancer flow domain, or other vendor-specific mechanisms.
+
+**Design rule:** validate the exact Cisco/Fortinet/Palo Alto architecture for Azure ILB-based HA. Do not infer stateful symmetry merely from the fact that both firewalls are healthy members of the backend pool.
+
+#### BGP Next Hop IP — dynamic routing to an ILB
+
+Microsoft's Virtual WAN **Next Hop IP** feature allows a BGP-peered NVA or BGP endpoint in a connected VNet to advertise a route whose next hop is an address other than itself, including a load balancer in the same region.
+
+Conceptually:
+
+```text
+NVA peers with vHub using BGP
+NVA advertises: 10.222.222.0/24
+BGP next hop:   10.5.10.10   # ILB VIP
+
+vHub effective route:
+10.222.222.0/24 -> 10.5.10.10
+```
+
+This is useful when you want the routing control plane to remain dynamic while the actual forwarding next hop is the load-balanced firewall pool. The NVA/BGP endpoint must still meet Microsoft's Virtual WAN BGP peering requirements, and Microsoft documents that the custom next-hop IP cannot be in a different region.
+
+#### `Propagate static route` matters
+
+When a static route is configured on an NVA VNet connection, **Propagate static route** controls whether that route is propagated into the Virtual WAN route tables/labels selected by the connection. If you intend workload VNets or branch connections to learn the route through Virtual WAN, validate this setting and the effective route tables rather than assuming that creating the static route alone makes it visible everywhere.
+
+Microsoft's hybrid NVA example specifically uses propagated static routes so an Internet default route from the NVA/DMZ connection is injected into the appropriate Virtual WAN route tables.
+
+#### The `Bypass Next Hop IP for workloads within this VNet` trap
+
+Microsoft documents a specific NVA-spoke example with:
+
+```text
+NVA VNet
+Load Balancer: 10.2.0.1
+NVA-1:         10.2.0.2
+NVA-2:         10.2.0.3
+```
+
+If a static route on that VNet connection covers the NVA VNet's own address space and **Bypass Next Hop IP for workloads within this VNet** is disabled, traffic actually destined to an NVA/workload IP inside that VNet can first be redirected to the ILB. The ILB can then hash the packet to a different backend than the original destination.
+
+When **Bypass Next Hop IP** is enabled, traffic whose destination is within that VNet's own address space bypasses the static NVA next hop and goes directly to the intended local workload, while other prefixes covered by the static route continue to use the NVA/ILB next hop.
+
+**Important:** Microsoft documents that this setting is chosen when the VNet connection is created; enabling it on an existing connection can require deleting and recreating the connection. Also, the setting does not alter the separate route-selection behavior of routes learned through BGP peering.
+
+#### Does using your own NVA prevent Routing Intent elsewhere?
+
+Not necessarily. Microsoft documents hybrid Virtual WAN designs where **Azure Firewall handles private traffic** while a **customer-managed NVA/Secure Web Gateway in a connected DMZ VNet handles Internet traffic** using a propagated `0.0.0.0/0` static route.
+
+That means the design can intentionally combine managed and customer-managed inspection functions, provided the route tables, associations, propagations, and traffic classes are designed coherently.
+
+For example:
+
+```text
+Private corporate prefixes -> Azure Firewall / secured path
+Internet 0.0.0.0/0         -> NVA VNet ILB -> firewall pool
+```
+
+This is not the same as arbitrarily chaining multiple security providers for every flow. Treat each traffic class and route lookup separately and verify the effective route after every service-insertion decision.
+
+#### Operational verification checklist for this model
+
+For a customer-managed NVA VNet behind an ILB, verify in this order:
+
+1. The NVA VNet is connected to the intended vHub.
+2. The static route or BGP-advertised prefix is present in the vHub effective route table.
+3. The route's next hop is the expected ILB frontend IP.
+4. `Propagate static route`/route-table propagation sends the prefix to every connection that should use the inspection path.
+5. `Bypass Next Hop IP for workloads within this VNet` is set appropriately for the NVA VNet design.
+6. The ILB rule covers the required transit protocols/ports; use HA Ports when that is the vendor-supported generic NVA pattern.
+7. All intended firewall dataplane NICs are in the backend pool.
+8. The health probe represents real forwarding health, not merely VM power state.
+9. Azure NIC IP forwarding and firewall forwarding are enabled.
+10. The firewall has routes toward the final destination and back toward the source.
+11. Firewall policy/NAT is correct.
+12. Forward and reverse directions traverse a vendor-supported stateful HA path.
+13. Test one-firewall failure and all-firewalls-unhealthy behavior separately.
+
 ## 4. Routing Intent — the key mechanism
 
 Routing Intent tells Virtual WAN which security provider must receive a traffic class. The two central policies are:
@@ -525,19 +730,19 @@ The exact workflow is vendor-specific, but the architecture is consistent:
 
 ## 14. Does the NVA need to be in the hub?
 
-For **this method**, yes: to get integrated Virtual WAN NVA behavior, use one of the supported NVAs deployed directly into the Virtual WAN hub.
+For the **integrated-NVA variant of this method**, yes: to get the native integrated Virtual WAN NVA behavior, use one of the supported NVAs deployed directly into the Virtual WAN hub.
 
-A generic pair of firewall VMs in a connected VNet can still inspect traffic, but that becomes a different service-insertion architecture. It commonly involves custom Virtual WAN routes, static routes, load balancers, and/or Azure Route Server depending on the design.
+However, Microsoft also supports a separate **customer-managed NVA VNet** service-insertion pattern. In that model, your firewall VMs and ILB live in a customer-owned VNet connected to the vHub, and Virtual WAN routes traffic to the NVA/ILB using static routes, propagated static routes, or supported BGP Next Hop IP behavior. That is still valid service insertion, but it is not the same abstraction as Routing Intent selecting an integrated NVA resource.
 
 Keep these designs separate in your mental model:
 
 | Architecture | Placement | Load balancer responsibility | Routing/service insertion |
 |---|---|---|---|
 | **Integrated NVA in vHub** | Supported NVA directly in managed hub | **Microsoft/vendor-managed** | Routing Intent / integrated vHub routing |
-| **NVA in a connected VNet** | Customer VNet attached to vHub | **Customer-managed if architecture requires one** | Custom Virtual WAN connection routes/static next hop and vendor design |
+| **NVA in a connected VNet** | Customer VNet attached to vHub | **Customer-managed if architecture requires one** | Virtual WAN connection static route, propagated static route, supported BGP next-hop IP, and vendor design |
 | **NVA in customer-managed hub VNet** | Customer hub VNet | **Customer-managed if architecture requires one** | UDR, BGP, Route Server, ILB, or vendor clustering model |
 
-A useful test is: **If you are typing the private IP of your own ILB into a route as the next hop, you are probably no longer describing the integrated-NVA-in-vHub architecture.**
+A useful test is: **If you are typing the private IP of your own ILB into a Virtual WAN VNet-connection route as the next hop, you are intentionally using the customer-managed NVA-VNet service-insertion architecture—not the integrated-NVA-in-vHub architecture.**
 
 ## 15. Route tables, association, propagation, and labels
 
@@ -548,9 +753,9 @@ A Virtual WAN hub has routing objects that determine what routes a connection us
 - **Labels** — logical grouping of route tables across hubs.
 - **Default route table** — commonly used for general transit.
 
-Routing Intent adds a security-steering layer to this model. When building a secured hub, treat Routing Intent as the primary service-insertion mechanism rather than attempting to recreate the same behavior with a collection of custom route tables.
+Routing Intent adds a security-steering layer to this model. When building a secured hub, treat Routing Intent as the primary service-insertion mechanism for integrated security providers. When deliberately using a customer-managed NVA VNet, static route propagation and/or supported BGP next-hop behavior become part of the service-insertion design and must be validated independently.
 
-Microsoft’s Zero Trust guidance specifically warns that custom Virtual WAN route tables should not be treated as a substitute for Routing Intent and security policies.
+Microsoft’s Zero Trust guidance specifically warns that custom Virtual WAN route tables should not be treated as a substitute for Routing Intent and security policies when the requirement is the managed secured-hub model.
 
 ## 16. Common bypass mistakes
 
@@ -588,6 +793,18 @@ This mixes two different service-insertion architectures. The integrated vHub NV
 
 **Mitigation:** For the integrated-vHub method, configure the supported NVA resource, scale units, vendor policy, and Routing Intent. Only build your own ILB when you are intentionally deploying customer-managed NVA VMs in a customer-owned VNet architecture that requires it.
 
+### Assuming a customer ILB automatically creates service insertion
+
+The ILB is only the next-hop frontend/backend-selection component. Without the correct Virtual WAN static/BGP route, propagation, return route, firewall forwarding, and policy, the ILB does not insert itself into traffic.
+
+**Mitigation:** Verify the vHub effective route first, then the ILB rule/backend health, then the NVA route/policy/state path.
+
+### Ignoring `Bypass Next Hop IP for workloads within this VNet`
+
+A broad static route on the NVA VNet connection can redirect traffic destined for the NVA VNet's own workloads back through the ILB when bypass is disabled.
+
+**Mitigation:** Decide intentionally whether local NVA-VNet destinations should bypass the static next hop when the connection is created; validate Microsoft's documented `VNetLocalRouteOverrideCriteria` behavior.
+
 ### Assuming Palo Alto VM-Series is the same thing as Palo Alto Cloud NGFW in vHub
 
 These are different products and deployment models. Cloud NGFW for Virtual WAN is a SaaS security solution with managed infrastructure. VM-Series is customer-managed firewall VM infrastructure deployed in your own VNet.
@@ -604,7 +821,9 @@ Stateful inspection depends on forward and return traffic crossing the same stat
 - Routing Intent enabled in only one hub;
 - inter-hub inspection disabled;
 - Internet return traffic using a different ingress path;
-- SD-WAN overlay decisions that differ from vHub routing.
+- SD-WAN overlay decisions that differ from vHub routing;
+- customer ILB selecting a different firewall for the reverse path when the vendor HA design does not support that state distribution;
+- static route propagation existing on one side of the flow but not the other.
 
 ### Practical verification
 
@@ -616,7 +835,8 @@ For one test flow record:
 - firewall instance/session ID where exposed by the vendor;
 - branch path;
 - vHub path;
-- effective route in each direction.
+- effective route in each direction;
+- ILB backend selected for the forward and reverse flow when customer-managed NVAs are used.
 
 If the firewall sees the SYN but no SYN-ACK, inspect the destination return route immediately.
 
@@ -642,6 +862,8 @@ Cloud NGFW is not an Integrated NVA VMSS that you operate. Microsoft/Palo Alto p
 
 If you choose Cisco, Fortinet, Palo Alto VM-Series, or another NVA as ordinary customer-owned VMs in a VNet, **you own the HA design**. Depending on vendor architecture that can include ILB/HA Ports, VMSS, active/passive clustering, floating IP, state synchronization, BGP, health probes, and explicit Virtual WAN static next-hop routes.
 
+The ILB can remove an unhealthy backend from new-flow distribution, but it does not by itself withdraw a Virtual WAN static route whose next hop is the ILB VIP. Test both **one-member failure** and **all-members unhealthy**. The latter can leave the route active while there is no viable firewall backend, producing a fail-closed blackhole until routing or backend health changes.
+
 ### Failure test plan
 
 Measure:
@@ -654,7 +876,9 @@ Measure:
 6. long-lived TCP survival;
 7. logging continuity;
 8. behavior when one integrated NVA backend instance becomes unhealthy;
-9. behavior while scaling NVA infrastructure units.
+9. behavior while scaling NVA infrastructure units;
+10. behavior when one customer-managed firewall behind the ILB fails;
+11. behavior when every ILB backend becomes unhealthy while the vWAN route remains installed.
 
 Do not equate “HA” with guaranteed stateful session preservation unless the vendor explicitly documents it.
 
@@ -663,6 +887,8 @@ Do not equate “HA” with guaranteed stateful session preservation unless the 
 ### Hub
 
 Check provisioning state, Routing Intent status, security provider health, effective routes, origin, and next-hop type.
+
+For customer-managed NVA-VNet service insertion, also check the static/BGP prefix, exact next-hop IP, route-table propagation, and whether the intended workload/branch connections actually learn that route.
 
 ### Spoke VM/NIC
 
@@ -680,7 +906,7 @@ Check BGP received/advertised routes, active tunnel/circuit, path preference, an
 
 Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA status, dataplane utilization, and overlay tunnel tools. For an integrated NVA, also verify the Azure-side NVA resource health and configured infrastructure/scale units rather than looking for a customer-owned ILB resource.
 
-For customer-managed NVA VMs in a connected VNet, also verify the VNet connection static routes, next-hop IP, load-balancer health probes/backend membership, VMSS/VM state, and effective routes.
+For customer-managed NVA VMs in a connected VNet, also verify the VNet connection static routes, `Propagate static route`, next-hop IP, `Bypass Next Hop IP` setting, load-balancer rule/HA Ports, health probes/backend membership, VMSS/VM state, IP forwarding, firewall route table, NAT/session state, and effective routes.
 
 ## 20. Troubleshooting by symptom
 
@@ -694,7 +920,7 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 
 **Failure means:** route propagation, policy, bypass, or return-path problem.
 
-**Next action:** inspect VNet connection association/propagation and Routing Intent.
+**Next action:** inspect VNet connection association/propagation and Routing Intent or the customer-managed static/BGP next-hop route, depending on the architecture.
 
 ### Branch reaches the hub but not the spoke
 
@@ -710,15 +936,63 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 
 **Test:** inspect `0.0.0.0/0`.
 
-**Failure means:** Internet security/default-route programming is absent or overridden.
+**Failure means:** Internet security/default-route programming is absent, static route propagation is missing, or another more specific route overrides the intended path.
 
 ### Firewall sees outbound SYN only
 
 **Where:** destination effective route + firewall session table.
 
-**Test:** trace the return route.
+**Test:** trace the return route and identify the ILB/firewall backend selected in both directions when using customer-managed NVAs.
 
 **Failure means:** asymmetry is likely.
+
+### Customer ILB is healthy but the firewall never receives traffic
+
+**Where:** vHub effective routes and NVA VNet connection routing.
+
+**What it tests:** Whether Virtual WAN is actually selecting the ILB VIP as the next hop.
+
+**Expected:** The destination prefix appears with the intended ILB frontend IP as next hop and is propagated to the source connection.
+
+**Failure means:** The ILB exists, but service insertion was never programmed in the Virtual WAN control plane.
+
+**Next action:** Fix the static route/BGP next-hop advertisement and propagation before troubleshooting firewall policy.
+
+### One firewall fails and new sessions work, but existing sessions reset
+
+**Where:** ILB backend health + vendor HA/session synchronization.
+
+**What it tests:** Whether load-balancer failover and firewall state failover are being confused.
+
+**Expected:** ILB removes the unhealthy member for new flows; existing-session survival depends on the vendor's state/cluster design.
+
+**Failure means:** The Azure load-balancer path recovered, but the replacement firewall did not own or synchronize the old session state.
+
+**Next action:** Validate vendor state synchronization/active-passive behavior and test session survival separately from next-hop reachability.
+
+### All firewall backends fail and traffic blackholes
+
+**Where:** vHub effective route → ILB health → backend pool.
+
+**What it tests:** Whether the route is still installed while the service next hop has no healthy backend.
+
+**Expected:** In a deliberately fail-closed design, the static route can remain selected while the ILB cannot deliver the flow.
+
+**Failure means:** This may be expected security behavior rather than a route-programming defect.
+
+**Next action:** Decide whether the requirement is fail closed or fail open. If fail open is required, design an explicit routing/failover mechanism; do not expect the ILB health probe itself to rewrite Virtual WAN routes.
+
+### Traffic to an NVA management/data IP is unexpectedly sent through the ILB
+
+**Where:** NVA VNet connection → `Bypass Next Hop IP for workloads within this VNet`.
+
+**What it tests:** Whether the VNet's own prefix is covered by a static route that redirects local destinations through the service next hop.
+
+**Expected:** If local direct access is required, Microsoft's bypass setting is enabled when the connection is created.
+
+**Failure means:** A packet intended for an NVA/workload address in the NVA VNet can be redirected to the ILB and hashed to an unintended backend.
+
+**Next action:** Review the connection's bypass design and Microsoft's documented recreation requirement for changing this property.
 
 ### Integrated NVA shows multiple instances and you cannot find the ILB in your resources
 
@@ -763,19 +1037,23 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 - Virtual WAN must be **Standard** for the secured-hub architecture described here.
 - Only supported integrated third-party NVA offers can be deployed directly inside a vHub.
 - Arbitrary customer-created firewall VMs cannot be placed directly inside the Microsoft-managed vHub. Put them in a customer-owned connected VNet if you need full VM ownership.
+- A customer-managed NVA VNet behind an ILB is a supported Virtual WAN service-insertion model when the vHub is programmed with the appropriate static/BGP next hop; it is separate from integrated Routing Intent NVA service insertion.
+- Virtual WAN VNet-connection static routes support a single next-hop IP; Microsoft documents NVA/load-balancer use cases and route propagation behavior.
+- Virtual WAN Next Hop IP support allows a BGP-peered NVA to advertise a route whose next hop is a load balancer or other same-region device.
+- `Bypass Next Hop IP for workloads within this VNet` changes how static routes on an NVA VNet connection interact with destinations inside that same VNet and must be considered at connection creation.
 - Integrated NVAs are backed by Microsoft-owned/managed VMSS and Azure Load Balancer infrastructure in the vHub; customers do not create an ILB inside the vHub for this integrated model.
 - NVA scale units determine the number of integrated NVA instances; current Microsoft documentation lists `2` instances for scale units `2-20`, `3` for `30-40`, `4` for `60`, and `5` for `80`.
 - Cisco Secure Firewall Threat Defense Virtual and Fortinet FortiGate are current examples of integrated vHub NVA offerings.
 - Palo Alto Networks Cloud NGFW is currently a Virtual WAN **SaaS** security solution, not a VM-Series integrated-NVA deployment.
 - Size the vHub address space for future NVA scale and multiple integrated NVA deployments because the NVA interfaces and load-balancer infrastructure consume hub IP addresses.
-- Routing Intent is required when you need secured inter-hub and branch-to-branch traffic behavior.
+- Routing Intent is required when you need secured inter-hub and branch-to-branch traffic behavior through the integrated security-provider model.
 - If internal networks use public IP ranges, add them to **Private Traffic Prefixes**.
 - Microsoft documents that secured-hub Azure Firewall supports up to **80 public IP addresses** in standard deployments; a Bring Your Own Public IP preview can raise the documented limit to **250**. Validate current limits before production design.
 - Microsoft’s tutorial states a new secured hub can take up to about **30 minutes** to create and route-table changes can take a few minutes to apply.
 - When upgrading an existing hub through portal/Firewall Manager paths, Availability Zone selection for Azure Firewall has limitations; use the documented PowerShell method when zone selection is required.
 - NVA DNAT/Internet Inbound is not universal; Microsoft currently restricts it to specific integrated offers.
 - Private Endpoint inspection has additional subnet/network-policy and route considerations.
-- Custom Virtual WAN route tables should not be treated as a substitute for Routing Intent when the requirement is secured traffic steering.
+- Custom Virtual WAN route tables should not be treated as a substitute for Routing Intent when the requirement is secured traffic steering through an integrated security provider.
 
 ## 22. Design checklist
 
@@ -785,17 +1063,22 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 - [ ] Deployment model is explicitly identified: integrated NVA, SaaS security solution, or customer-managed NVA VMs in a connected VNet.
 - [ ] For integrated NVA, selected scale units and expected instance count are understood.
 - [ ] For integrated NVA, no customer ILB is being incorrectly introduced into the managed vHub design.
-- [ ] For customer-managed NVA VMs, VNet connection static routes/next-hop IP and ILB/HA architecture are documented.
+- [ ] For customer-managed NVA VMs, VNet connection static routes/BGP next-hop IP and ILB/HA architecture are documented.
+- [ ] `Propagate static route` is enabled/targeted where the customer-managed route must be learned by other vWAN connections.
+- [ ] `Bypass Next Hop IP for workloads within this VNet` is intentionally selected for the NVA VNet connection.
+- [ ] ILB rule/HA Ports, backend membership, and health probes match the NVA vendor architecture.
+- [ ] One-backend and all-backends-failed behavior is tested.
 - [ ] Private Traffic policy enabled where supported/required.
 - [ ] Internet Traffic policy enabled where required.
 - [ ] Inter-hub inspection enabled where required.
 - [ ] Non-RFC1918 enterprise private prefixes are explicitly classified.
 - [ ] VNet connection association/propagation is correct.
-- [ ] Internet security enabled where required.
+- [ ] Internet security/default-route propagation enabled where required.
 - [ ] No spoke UDR bypass exists.
 - [ ] Branch BGP advertisements are symmetrical and non-overlapping.
 - [ ] Firewall policy permits required east-west/north-south traffic.
 - [ ] NAT behavior is understood.
+- [ ] Forward and return traffic use a vendor-supported stateful HA path.
 - [ ] Private Endpoint behavior is validated.
 - [ ] NVA feature support, licensing, and support entitlement are confirmed.
 - [ ] Failover/state behavior is tested.
@@ -809,17 +1092,17 @@ Choose an **integrated NVA** when you want a supported third-party firewall/SD-W
 
 Choose a **Virtual WAN SaaS security solution** such as Palo Alto Networks Cloud NGFW when you want cloud-native NGFW capabilities in the vHub without managing firewall VM infrastructure.
 
-Choose **customer-managed NVA VMs in a connected VNet** when you require direct control of VM instances, VMSS sizing, NICs, ILBs, HA Ports, clustering, custom routes, or a firewall product that is not available as a supported integrated vHub NVA.
+Choose **customer-managed NVA VMs in a connected VNet** when you require direct control of VM instances, VMSS sizing, NICs, ILBs, HA Ports, clustering, custom static/BGP routes, or a firewall product that is not available as a supported integrated vHub NVA. This does not eliminate service insertion; it transfers the routing and HA responsibility to you.
 
 Prefer a customer-managed hub VNet when you require arbitrary appliances, exact subnet/route control, or custom service chains that Virtual WAN Routing Intent does not expose.
 
 ## 24. Source information, explanation, and inference
 
-**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, Virtual WAN SaaS security integrations, connected-VNet static next-hop behavior, and Private Endpoint inspection requirements. Cisco, Fortinet, and Palo Alto Networks provide vendor-specific deployment documentation for their respective Azure Virtual WAN and Azure VNet firewall architectures.
+**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, Virtual WAN SaaS security integrations, connected-VNet static next-hop behavior, propagated static routes, Bypass Next Hop IP, BGP Next Hop IP to load balancers, and Private Endpoint inspection requirements. Cisco, Fortinet, and Palo Alto Networks provide vendor-specific deployment documentation for their respective Azure Virtual WAN and Azure VNet firewall architectures.
 
-**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA/SaaS distribution or customer-managed next hop → stateful inspection → second lookup → egress → symmetric return.
+**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA/SaaS distribution or customer-managed ILB next hop → stateful inspection → onward forwarding → symmetric return.
 
-**Reasonable inference:** Exact convergence, per-flow backend selection details, state synchronization, session preservation, and scale behavior of a third-party integrated NVA depend on the vendor implementation, selected scale units, topology, and active traffic. For customer-managed NVA VMs, those responsibilities shift much more directly to the customer and vendor architecture. Test those rather than assuming them from the generic Virtual WAN architecture.
+**Reasonable inference:** Exact convergence, per-flow backend selection details, state synchronization, session preservation, all-backend failure behavior, and scale behavior of a third-party NVA depend on the vendor implementation, selected scale units, topology, and active traffic. For customer-managed NVA VMs, those responsibilities shift much more directly to the customer and vendor architecture. Test them rather than assuming them from the generic Virtual WAN architecture.
 
 ## Sources
 
@@ -843,19 +1126,23 @@ Prefer a customer-managed hub VNet when you require arbitrary appliances, exact 
    https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
 10. Microsoft Learn — Connect a VNet to a Virtual WAN hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/howto-connect-vnet-hub
-11. Microsoft Learn — Configure Palo Alto Networks Cloud NGFW in Virtual WAN  
+11. Microsoft Learn — Hybrid static routing with Azure Firewall and spoke NVAs  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/hybrid-firewall-spoke-static
+12. Microsoft Learn — Next Hop IP support for Virtual WAN  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/next-hop-ip
+13. Microsoft Learn — Configure Palo Alto Networks Cloud NGFW in Virtual WAN  
    https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-palo-alto-cloud-ngfw
-12. Cisco — Deploy Secure Firewall Threat Defense Virtual on Azure Virtual WAN  
+14. Cisco — Deploy Secure Firewall Threat Defense Virtual on Azure Virtual WAN  
    https://www.cisco.com/c/en/us/td/docs/security/firepower/quick_start/consolidated_ftdv_gsg/threat-defense-virtual-77-gsg/m_threat-defense-virtual-solution-on-tdv_virtual_wan_azure.html
-13. Fortinet — Deploy FortiGate NVAs in a vWAN hub  
+15. Fortinet — Deploy FortiGate NVAs in a vWAN hub  
    https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/233362
-14. Fortinet — Fortinet deployment overview for Azure vWAN  
+16. Fortinet — Fortinet deployment overview for Azure vWAN  
    https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/393938
-15. Palo Alto Networks — Cloud NGFW for Azure Virtual WAN  
+17. Palo Alto Networks — Cloud NGFW for Azure Virtual WAN  
    https://docs.paloaltonetworks.com/cloud-ngfw-azure/deployment/cloud-ngfw-for-azure-deployment-architectures/cloud-ngfw-for-azure-virtual-wan
-16. Palo Alto Networks — Panorama-orchestrated VM-Series deployments in Azure  
+18. Palo Alto Networks — Panorama-orchestrated VM-Series deployments in Azure  
    https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-azure/panorama-orchestrated-deployments-in-azure
-17. Microsoft Learn — Azure Virtual WAN network topology  
+19. Microsoft Learn — Azure Virtual WAN network topology  
    https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
-18. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
+20. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
    https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
