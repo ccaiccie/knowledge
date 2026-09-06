@@ -1,9 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#333"/></marker>
-    <style>
-      .box{fill:#fff;stroke-width:2;rx:12;ry:12}.txt{font-family:Arial,sans-serif;fill:#222;text-anchor:middle}.title{font-size:18px;font-weight:bold}.body{font-size:15px}.small{font-size:13px}.line{fill:none;stroke:#333;stroke-width:2;marker-end:url(#arrow)}.dash{stroke-dasharray:8 6}.label{font-family:Arial,sans-serif;font-size:13px;fill:#222;text-anchor:middle}
-    </style>
+    <style>.box{fill:#fff;stroke-width:2;rx:12;ry:12}.txt{font-family:Arial,sans-serif;fill:#222;text-anchor:middle}.title{font-size:18px;font-weight:bold}.body{font-size:15px}.small{font-size:13px}.line{fill:none;stroke:#333;stroke-width:2;marker-end:url(#arrow)}.dash{stroke-dasharray:8 6}.label{font-family:Arial,sans-serif;font-size:13px;fill:#222;text-anchor:middle}</style>
   </defs>
   <rect x="360" y="100" width="420" height="190" rx="14" ry="14" fill="#EAF3FF" stroke="#4A76A8" stroke-width="2"/>
   <text x="570" y="130" class="txt title">Azure Virtual WAN managed vHub</text>
@@ -28,5 +26,6 @@
   <path d="M1120 245 V285 H1035 V320" class="line"/><text x="1025" y="280" class="label">3. Hash to healthy backend</text>
   <path d="M1190 245 V285 H1295 V320" class="line dash"/><text x="1300" y="280" class="label">alternate new flows</text>
   <path d="M1035 410 V450 H1158 V470" class="line"/><text x="1065" y="447" class="label">4. Inspect / forward</text>
-  <path d="M1280 510 H1370 V200 H1280" class="line dash"/><text x="1370" y="340" class="label" transform="rotate(90 1370 340)">5. Return must traverse same logical state domain</text>
+  <path d="M1280 510 H1420 V200 H1280" class="line dash"/>
+  <text x="1350" y="475" class="label">5. Return path</text><text x="1350" y="495" class="label">same logical state domain</text>
 </svg>
