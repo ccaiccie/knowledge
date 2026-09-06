@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [Legacy AWS Transit Gateway + Direct NVA VPC Attachment — Deep Dive](09-06-26-16-41_Legacy_TGW_NVA_VPC_Attachment_Deep_Dive.md)
+Deep dive into the pre-GWLB direct-appliance service-insertion pattern: PRE/POST Transit Gateway route tables, Inspection-VPC TGW attachment subnet routing directly to firewall ENIs, Appliance Mode and stateful symmetry, active/active and active/standby HA, source/destination check, east-west packet walks, Direct Connect transit-VIF/DXGW and Site-to-Site VPN enforcement, Internet egress variants, AWS CLI build/verification commands, bypass analysis, troubleshooting, and matching editable draw.io/SVG diagrams.
+
 ### [Caveats for Centralized Ingress Routing — ALB, NLB, GWLB/GWLBE, TGW, and Distributed Alternatives](09-06-26-16-23_Caveats_for_Centralized_Ingress_Routing.md)
 Explains the symmetry caveats in centralized Internet ingress, including the Experian ALB case-study return-route matrix, why ALB proxying makes the original GWLBE recoverable from the destination ALB subnet, why NLB client-IP preservation is unsupported through TGW or between NLB and target through GWLBE, and why distributed/spoke ingress removes the centralized TGW return-AZ recovery problem while retaining its own placement constraints. Includes AWS case-study/documentation references and matching SVG/editable draw.io diagrams.
 
