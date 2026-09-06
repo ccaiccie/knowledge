@@ -9,12 +9,18 @@
 - https://learn.microsoft.com/en-us/azure/virtual-wan/routing-deep-dive
 - https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
 - https://learn.microsoft.com/en-us/azure/virtual-wan/third-party-integrations
+- https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-nva-hub
 - https://learn.microsoft.com/en-us/azure/virtual-wan/howto-firewall
 - https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
 - https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
 - https://learn.microsoft.com/en-us/azure/virtual-wan/howto-connect-vnet-hub
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 - https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
+- https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-palo-alto-cloud-ngfw
+- https://www.cisco.com/c/en/us/td/docs/security/firepower/quick_start/consolidated_ftdv_gsg/threat-defense-virtual-77-gsg/m_threat-defense-virtual-solution-on-tdv_virtual_wan_azure.html
+- https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/233362
+- https://docs.paloaltonetworks.com/cloud-ngfw-azure/deployment/cloud-ngfw-for-azure-deployment-architectures/cloud-ngfw-for-azure-virtual-wan
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-azure/panorama-orchestrated-deployments-in-azure
 
 ---
 
@@ -127,6 +133,159 @@ That is a different architecture:
 | **NVA VMs in customer-managed hub VNet** | Customer-owned hub VNet | **Customer** | UDR/BGP/Route Server/ILB depending on architecture |
 
 **Design rule:** If you are using the supported **integrated NVA directly in the Virtual WAN hub**, do not try to recreate the customer-managed hub pattern by adding your own ILB inside the vHub. The hub is Microsoft-managed and does not expose arbitrary customer subnet/VM placement for that purpose.
+
+### 3.2 Can you deploy your own NVA VMs? Vendor examples from Cisco, Fortinet, and Palo Alto Networks
+
+**Yes, but not as arbitrary VMs inside the managed Virtual WAN hub.** You have two fundamentally different deployment models:
+
+1. **Integrated vHub NVA / SaaS security service** — deploy a supported partner integration directly into the managed vHub. Azure and the partner own the underlying service infrastructure model.
+2. **Customer-managed NVA VMs in a connected VNet** — deploy ordinary firewall VMs in a VNet that is connected to the vHub. You own the VM lifecycle, interfaces, load balancer if required, routing, static next-hop design, HA, upgrades, and failure behavior.
+
+The managed vHub does not let you create arbitrary subnets and place your own VM-Series, FortiGate VM, or FTDv VM directly inside the hub the same way you can in a normal VNet. If you want full VM ownership, put the appliances in a **customer-owned VNet connected to the vHub** and use the customer-managed service-insertion model.
+
+#### Cisco example — Secure Firewall Threat Defense Virtual integrated directly into vHub
+
+Cisco documents **Cisco Secure Firewall Threat Defense Virtual for Azure Virtual WAN** as a dedicated Azure Marketplace offering. You select the existing Virtual WAN hub and the NVA scale units; the scale units determine the number/type of Threat Defense Virtual instances. Cisco's example explicitly shows a scale-unit choice such as two Threat Defense Virtual instances for the selected throughput tier.
+
+Logical model:
+
+```text
+Azure Virtual WAN hub
+        |
+        | integrated NVA deployment
+        v
+Cisco Secure Firewall Threat Defense Virtual resource
+        |
+        | Microsoft/Cisco managed infrastructure
+        v
+Multiple FTDv backend instances
+```
+
+Key operational points from Cisco's deployment guide:
+
+- deploy from the **Cisco Secure Firewall Threat Defense Virtual for Azure VWAN** Marketplace solution;
+- select the target Virtual WAN hub;
+- select scale units rather than manually creating an ILB and individual firewall VMs;
+- Cisco's Virtual WAN deployment supports a three-interface Threat Defense Virtual model;
+- management is performed through Cisco management tooling such as Secure Firewall Management Center;
+- BGP, interface routing, health probes, and firewall policy are configured according to the Cisco vWAN guide.
+
+This is an **integrated NVA** deployment, not a generic pair of customer-created FTDv VMs in the vHub.
+
+Official Cisco example:
+
+- https://www.cisco.com/c/en/us/td/docs/security/firepower/quick_start/consolidated_ftdv_gsg/threat-defense-virtual-77-gsg/m_threat-defense-virtual-solution-on-tdv_virtual_wan_azure.html
+
+#### Fortinet example — FortiGate integrated directly into vHub
+
+Fortinet documents **Fortinet FortiGate Security for Azure Virtual WAN** as an Azure Marketplace managed application. The deployment workflow asks for the target vWAN hub and an NVA **Scale Unit**. Fortinet states that the scale unit controls the type and number of FortiGate NVAs created.
+
+Logical model:
+
+```text
+Azure Virtual WAN hub
+        |
+        | Fortinet managed application
+        v
+FortiGate NVA resource/group
+        |
+        | scale-unit controlled deployment
+        v
+Multiple FortiGate NVA instances
+        |
+        +-- FortiManager policy / management
+```
+
+Fortinet's deployment documentation shows the FortiGate NVAs as a group in FortiManager and describes FortiManager authorization/licensing/configuration after the Azure deployment. Fortinet also documents FortiGate Session Life Support Protocol (FGSP) peering/session sharing in its vWAN architecture examples.
+
+This is also an **integrated NVA** model. You are not expected to create your own vHub ILB and manually attach two FortiGate VMs behind it.
+
+Official Fortinet examples:
+
+- https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/233362
+- https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/393938
+
+#### Palo Alto Networks example — Cloud NGFW is SaaS in vHub, not VM-Series integrated NVA
+
+Palo Alto Networks is different from Cisco FTDv and Fortinet FortiGate in the current Virtual WAN model.
+
+Microsoft currently identifies **Palo Alto Networks Cloud NGFW** as a **software-as-a-service (SaaS) security solution** for Virtual WAN rather than an Integrated NVA partner. Microsoft documents Cloud NGFW as a cloud-native SaaS firewall deployed into the vHub and selected as the Routing Intent next-hop resource.
+
+Logical model:
+
+```text
+Azure Virtual WAN hub
+        |
+        | Routing Intent
+        v
+Palo Alto Networks Cloud NGFW resource
+        |
+        | SaaS-managed scaling / lifecycle
+        v
+Palo Alto Networks cloud firewall service
+```
+
+Microsoft explicitly describes this as fully managed infrastructure/software lifecycle. You do not deploy VM-Series VMs or an ILB in the vHub for this model.
+
+Official Microsoft/Palo Alto examples:
+
+- https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-palo-alto-cloud-ngfw
+- https://docs.paloaltonetworks.com/cloud-ngfw-azure/deployment/cloud-ngfw-for-azure-deployment-architectures/cloud-ngfw-for-azure-virtual-wan
+
+#### Palo Alto VM-Series example — customer-managed VMs in your own VNet
+
+If you specifically want to own the Palo Alto firewall VMs, use **VM-Series in a customer-owned Azure VNet**, not Cloud NGFW SaaS inside the managed vHub.
+
+Palo Alto Networks documents Azure VM-Series hub deployments where a VM Scale Set of VM-Series firewalls is placed behind an **Azure Internal Standard Load Balancer with HA Ports**. The ILB private frontend IP becomes the service-insertion next hop for traffic that you route toward the firewall stack.
+
+Conceptually, when that VNet is connected to Virtual WAN:
+
+```text
+Virtual WAN hub
+      |
+      | VNet connection / custom static route design
+      v
+Customer-owned NVA VNet
+      |
+      v
+Customer-managed ILB / HA Ports
+      |
+      +-- VM-Series firewall instance 1
+      +-- VM-Series firewall instance 2
+      +-- additional VMSS instances if used
+```
+
+This is the architecture in which **you** own the ILB, VMSS/VM-Series lifecycle, route tables, NAT, HA, health probes, Panorama integration, and service-insertion logic. It is not the same as a supported integrated NVA deployed inside the vHub.
+
+Palo Alto's current VM-Series Azure orchestration documentation states that its hub stack can use an **Internal Standard Load Balancer with HA Ports** to distribute traffic across a firewall scale set and that routes in application VNets can point at the load balancer private IP for inspection.
+
+Official Palo Alto VM-Series example:
+
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-azure/panorama-orchestrated-deployments-in-azure
+
+#### Side-by-side vendor summary
+
+| Vendor / product | Directly inside managed vHub? | Deployment model | Do you create the ILB? | Who owns underlying firewall instances? |
+|---|---:|---|---:|---|
+| Cisco Secure Firewall Threat Defense Virtual for Azure vWAN | Yes | Integrated NVA | No | Microsoft/Cisco integrated infrastructure |
+| Fortinet FortiGate Security for Azure vWAN | Yes | Integrated NVA | No | Microsoft/Fortinet integrated infrastructure |
+| Palo Alto Networks Cloud NGFW | Yes | SaaS security solution | No | SaaS provider / Azure native integration |
+| Palo Alto Networks VM-Series | No, not as arbitrary VMs in managed vHub | Customer-managed VMs in your VNet | Yes, when design uses ILB/HA Ports | Customer |
+| Generic Cisco/Fortinet/Palo Alto VM appliance in connected VNet | No, not as arbitrary VMs in managed vHub | Customer-managed NVA VNet | Customer/vendor design | Customer |
+
+#### Decision rule
+
+Use this simple test:
+
+```text
+Do I want the firewall directly integrated into the managed vHub?
+    |
+    +-- Yes -> Use a supported Integrated NVA or SaaS partner offering.
+    |          You do not create arbitrary firewall VMs or your own ILB in the vHub.
+    |
+    +-- No, I want full VM/network ownership -> Deploy the NVA VMs in my own VNet.
+               Connect that VNet to Virtual WAN and design the static routes/ILB/UDRs/HA explicitly.
+```
 
 ## 4. Routing Intent — the key mechanism
 
@@ -429,6 +588,12 @@ This mixes two different service-insertion architectures. The integrated vHub NV
 
 **Mitigation:** For the integrated-vHub method, configure the supported NVA resource, scale units, vendor policy, and Routing Intent. Only build your own ILB when you are intentionally deploying customer-managed NVA VMs in a customer-owned VNet architecture that requires it.
 
+### Assuming Palo Alto VM-Series is the same thing as Palo Alto Cloud NGFW in vHub
+
+These are different products and deployment models. Cloud NGFW for Virtual WAN is a SaaS security solution with managed infrastructure. VM-Series is customer-managed firewall VM infrastructure deployed in your own VNet.
+
+**Mitigation:** Decide first whether you want the SaaS vHub integration or customer-owned VM-Series service insertion, then follow the matching routing and HA model.
+
 ## 17. Asymmetric routing
 
 Stateful inspection depends on forward and return traffic crossing the same state domain. Asymmetry can be introduced by:
@@ -469,6 +634,14 @@ This means there can be multiple NVA instances without you provisioning an ILB. 
 
 Do not assume that “Microsoft-managed load balancing” automatically means every existing firewall session survives an instance failure. Validate the vendor's Virtual WAN HA documentation and test real sessions.
 
+### Palo Alto Cloud NGFW SaaS
+
+Cloud NGFW is not an Integrated NVA VMSS that you operate. Microsoft/Palo Alto provide the service with built-in resiliency, scaling, and lifecycle management. Troubleshoot the Cloud NGFW resource and Routing Intent integration rather than looking for individual VM-Series instances or a customer ILB.
+
+### Customer-managed NVA VMs in a connected VNet
+
+If you choose Cisco, Fortinet, Palo Alto VM-Series, or another NVA as ordinary customer-owned VMs in a VNet, **you own the HA design**. Depending on vendor architecture that can include ILB/HA Ports, VMSS, active/passive clustering, floating IP, state synchronization, BGP, health probes, and explicit Virtual WAN static next-hop routes.
+
 ### Failure test plan
 
 Measure:
@@ -506,6 +679,8 @@ Check BGP received/advertised routes, active tunnel/circuit, path preference, an
 ### NVA
 
 Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA status, dataplane utilization, and overlay tunnel tools. For an integrated NVA, also verify the Azure-side NVA resource health and configured infrastructure/scale units rather than looking for a customer-owned ILB resource.
+
+For customer-managed NVA VMs in a connected VNet, also verify the VNet connection static routes, next-hop IP, load-balancer health probes/backend membership, VMSS/VM state, and effective routes.
 
 ## 20. Troubleshooting by symptom
 
@@ -557,6 +732,18 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 **Next action:** Confirm the deployment type first, then troubleshoot the correct architecture.
 
+### You deployed your own NVA VMs but cannot select them as an integrated Routing Intent NVA
+
+**Where:** Virtual WAN hub → third-party providers / Routing Intent.
+
+**What it tests:** Whether the firewall deployment is a supported integrated NVA/SaaS resource or ordinary VMs in a connected VNet.
+
+**Expected:** Only supported integrated partner resources appear as direct managed-vHub security next hops. Ordinary VM appliances require the customer-managed connected-VNet routing model.
+
+**Failure means:** The design is mixing an ordinary VM deployment with integrated-vHub expectations.
+
+**Next action:** Either redeploy using the vendor's supported integrated vHub offering or keep the VMs in the customer VNet and configure the static next-hop/ILB/route model explicitly.
+
 ### Inter-region traffic bypasses inspection
 
 **Where:** both hub Security configuration blades.
@@ -575,8 +762,11 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 - Virtual WAN must be **Standard** for the secured-hub architecture described here.
 - Only supported integrated third-party NVA offers can be deployed directly inside a vHub.
+- Arbitrary customer-created firewall VMs cannot be placed directly inside the Microsoft-managed vHub. Put them in a customer-owned connected VNet if you need full VM ownership.
 - Integrated NVAs are backed by Microsoft-owned/managed VMSS and Azure Load Balancer infrastructure in the vHub; customers do not create an ILB inside the vHub for this integrated model.
 - NVA scale units determine the number of integrated NVA instances; current Microsoft documentation lists `2` instances for scale units `2-20`, `3` for `30-40`, `4` for `60`, and `5` for `80`.
+- Cisco Secure Firewall Threat Defense Virtual and Fortinet FortiGate are current examples of integrated vHub NVA offerings.
+- Palo Alto Networks Cloud NGFW is currently a Virtual WAN **SaaS** security solution, not a VM-Series integrated-NVA deployment.
 - Size the vHub address space for future NVA scale and multiple integrated NVA deployments because the NVA interfaces and load-balancer infrastructure consume hub IP addresses.
 - Routing Intent is required when you need secured inter-hub and branch-to-branch traffic behavior.
 - If internal networks use public IP ranges, add them to **Private Traffic Prefixes**.
@@ -591,10 +781,12 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 - [ ] Virtual WAN is Standard.
 - [ ] Required regional hubs exist and are sized appropriately.
-- [ ] Azure Firewall or supported integrated NVA is healthy.
+- [ ] Azure Firewall, supported integrated NVA, or supported SaaS security resource is healthy.
+- [ ] Deployment model is explicitly identified: integrated NVA, SaaS security solution, or customer-managed NVA VMs in a connected VNet.
 - [ ] For integrated NVA, selected scale units and expected instance count are understood.
 - [ ] For integrated NVA, no customer ILB is being incorrectly introduced into the managed vHub design.
-- [ ] Private Traffic policy enabled.
+- [ ] For customer-managed NVA VMs, VNet connection static routes/next-hop IP and ILB/HA architecture are documented.
+- [ ] Private Traffic policy enabled where supported/required.
 - [ ] Internet Traffic policy enabled where required.
 - [ ] Inter-hub inspection enabled where required.
 - [ ] Non-RFC1918 enterprise private prefixes are explicitly classified.
@@ -613,15 +805,21 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 Choose Virtual WAN secured hub when you need managed large-scale branch/VNet transit, multi-region hub connectivity, a Microsoft-managed transit control plane, centralized security insertion without maintaining UDRs on every spoke, and unified VPN/ExpressRoute/SD-WAN/VNet connectivity.
 
-Prefer a customer-managed hub VNet when you require arbitrary appliances not supported in vHub, exact subnet/route control, or custom service chains that Virtual WAN Routing Intent does not expose.
+Choose an **integrated NVA** when you want a supported third-party firewall/SD-WAN appliance directly integrated into the managed vHub and are comfortable with the Microsoft/vendor-managed infrastructure model.
+
+Choose a **Virtual WAN SaaS security solution** such as Palo Alto Networks Cloud NGFW when you want cloud-native NGFW capabilities in the vHub without managing firewall VM infrastructure.
+
+Choose **customer-managed NVA VMs in a connected VNet** when you require direct control of VM instances, VMSS sizing, NICs, ILBs, HA Ports, clustering, custom routes, or a firewall product that is not available as a supported integrated vHub NVA.
+
+Prefer a customer-managed hub VNet when you require arbitrary appliances, exact subnet/route control, or custom service chains that Virtual WAN Routing Intent does not expose.
 
 ## 24. Source information, explanation, and inference
 
-**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, and Private Endpoint inspection requirements.
+**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, Virtual WAN SaaS security integrations, connected-VNet static next-hop behavior, and Private Endpoint inspection requirements. Cisco, Fortinet, and Palo Alto Networks provide vendor-specific deployment documentation for their respective Azure Virtual WAN and Azure VNet firewall architectures.
 
-**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA distribution → stateful inspection → second lookup → egress → symmetric return.
+**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA/SaaS distribution or customer-managed next hop → stateful inspection → second lookup → egress → symmetric return.
 
-**Reasonable inference:** Exact convergence, per-flow backend selection details, state synchronization, session preservation, and scale behavior of a third-party integrated NVA depend on the vendor implementation, selected scale units, topology, and active traffic. Test those rather than assuming them from the generic Virtual WAN architecture.
+**Reasonable inference:** Exact convergence, per-flow backend selection details, state synchronization, session preservation, and scale behavior of a third-party integrated NVA depend on the vendor implementation, selected scale units, topology, and active traffic. For customer-managed NVA VMs, those responsibilities shift much more directly to the customer and vendor architecture. Test those rather than assuming them from the generic Virtual WAN architecture.
 
 ## Sources
 
@@ -635,15 +833,29 @@ Prefer a customer-managed hub VNet when you require arbitrary appliances not sup
    https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub
 5. Microsoft Learn — About third-party integrations in Virtual WAN  
    https://learn.microsoft.com/en-us/azure/virtual-wan/third-party-integrations
-6. Microsoft Learn — Configure Azure Firewall in a Virtual WAN hub  
+6. Microsoft Learn — Create an Integrated NVA in a Virtual WAN hub  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-nva-hub
+7. Microsoft Learn — Configure Azure Firewall in a Virtual WAN hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/howto-firewall
-7. Microsoft Learn — Apply Zero Trust principles to Azure Virtual WAN  
+8. Microsoft Learn — Apply Zero Trust principles to Azure Virtual WAN  
    https://learn.microsoft.com/en-us/security/zero-trust/azure-virtual-wan
-8. Microsoft Learn — Configure Destination NAT for NVA in the hub  
+9. Microsoft Learn — Configure Destination NAT for NVA in the hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-network-virtual-appliance-inbound
-9. Microsoft Learn — Connect a VNet to a Virtual WAN hub  
+10. Microsoft Learn — Connect a VNet to a Virtual WAN hub  
    https://learn.microsoft.com/en-us/azure/virtual-wan/howto-connect-vnet-hub
-10. Microsoft Learn — Azure Virtual WAN network topology  
+11. Microsoft Learn — Configure Palo Alto Networks Cloud NGFW in Virtual WAN  
+   https://learn.microsoft.com/en-us/azure/virtual-wan/how-to-palo-alto-cloud-ngfw
+12. Cisco — Deploy Secure Firewall Threat Defense Virtual on Azure Virtual WAN  
+   https://www.cisco.com/c/en/us/td/docs/security/firepower/quick_start/consolidated_ftdv_gsg/threat-defense-virtual-77-gsg/m_threat-defense-virtual-solution-on-tdv_virtual_wan_azure.html
+13. Fortinet — Deploy FortiGate NVAs in a vWAN hub  
+   https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/233362
+14. Fortinet — Fortinet deployment overview for Azure vWAN  
+   https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/393938
+15. Palo Alto Networks — Cloud NGFW for Azure Virtual WAN  
+   https://docs.paloaltonetworks.com/cloud-ngfw-azure/deployment/cloud-ngfw-for-azure-deployment-architectures/cloud-ngfw-for-azure-virtual-wan
+16. Palo Alto Networks — Panorama-orchestrated VM-Series deployments in Azure  
+   https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-azure/panorama-orchestrated-deployments-in-azure
+17. Microsoft Learn — Azure Virtual WAN network topology  
    https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
-11. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
+18. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
    https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
