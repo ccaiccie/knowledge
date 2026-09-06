@@ -669,6 +669,25 @@ If you cannot fill out the return-route column confidently, the architecture is 
 
 # 19. Verification workflow
 
+The verification sequence should prove three different things in order:
+
+1. the UDR object exists as intended;
+2. Azure installed the expected route on the workload NIC after combining user, system, peering, and BGP routes;
+3. for one exact destination, Azure selects the firewall as the next hop.
+
+![Method 1 route verification workflow](images/09-05-26-18-55_method1_route_verification.svg)
+
+[Editable draw.io source](images/09-05-26-18-55_method1_route_verification.drawio)
+
+**What this image shows**  
+The operational verification chain from configured UDR intent to NIC effective-route state and finally to an exact Network Watcher next-hop decision. It also contrasts a successful firewall-insertion result with common bypass results such as `VNetPeering` and `VirtualNetworkGateway`.
+
+**What matters**  
+A route-table object only proves configuration intent. The NIC effective route table proves what Azure installed. Network Watcher Next Hop proves the forwarding decision for a specific source and destination.
+
+**What to verify**  
+For an inspected Spoke A → Spoke B flow, all three views should converge on `10.20.0.0/16 -> VirtualAppliance -> 10.0.1.4`.
+
 ## 19.1 Verify route-table objects
 
 ```cli
@@ -678,53 +697,209 @@ az network route-table route list \
   --output table
 ```
 
-**What it tests:** The configured UDR objects.
+**What it tests:** The configured UDR objects on `RT-SpokeA`.
 
-**Success criteria:** The expected prefixes point to `VirtualAppliance` with next-hop IP `10.0.1.4`.
+**Representative expected successful output — simulated because exact table columns can vary by Azure CLI version:**
 
-**Failure indicator:** Missing remote-spoke or on-prem route, wrong next-hop IP, or wrong route table.
+```text
+Name                         AddressPrefix    NextHopType       NextHopIpAddress
+---------------------------  ---------------  ----------------  ----------------
+Internet-via-AzureFirewall   0.0.0.0/0        VirtualAppliance  10.0.1.4
+SpokeB-via-AzureFirewall     10.20.0.0/16     VirtualAppliance  10.0.1.4
+OnPrem-via-AzureFirewall     172.16.0.0/16    VirtualAppliance  10.0.1.4
+```
 
-**Next action:** Correct the UDR and then verify the effective route on the VM NIC.
+**Important fields:**
+
+- `AddressPrefix` — the destination prefix that triggers the route;
+- `NextHopType` — should be `VirtualAppliance` for forced firewall insertion;
+- `NextHopIpAddress` — should be the Azure Firewall private IP, `10.0.1.4` in this guide.
+
+**Success criteria:**
+
+```text
+10.20.0.0/16  -> VirtualAppliance -> 10.0.1.4
+172.16.0.0/16 -> VirtualAppliance -> 10.0.1.4
+0.0.0.0/0     -> VirtualAppliance -> 10.0.1.4
+```
+
+**Failure examples:**
+
+```text
+SpokeB-via-AzureFirewall     10.20.0.0/16     VirtualAppliance  10.0.1.5
+```
+
+means the route exists but points to the wrong next-hop IP.
+
+If the `10.20.0.0/16` row is absent, Spoke A can still use another more-specific route, such as a peering route, and bypass the firewall.
+
+**Next action:** Correct the UDR object, then verify the NIC's effective route table. Do not stop here: a correctly configured route-table object does not prove that the route table is associated with the correct subnet or that another route source is not winning.
 
 ## 19.2 Verify effective routes on the NIC
 
-Use Network Watcher effective routes or the equivalent portal/CLI workflow for the VM NIC.
+Use the actual NIC attached to the workload VM:
 
-Important fields:
-
-- destination prefix;
-- next-hop type;
-- next-hop IP;
-- route source/origin;
-- active/inactive status where displayed.
-
-**Success criteria:** The actual destination prefix resolves to the firewall next hop.
-
-**Failure indicator:** The active route is `VNetPeering`, `VirtualNetworkGateway`, `Internet`, or another unexpected source.
-
-**Next action:** Compare prefix length and route source; add or correct the required UDR.
-
-## 19.3 Verify Network Watcher next hop
-
-Network Watcher Next Hop can answer the concrete question:
-
-```text
-From VM X to destination Y, what next hop will Azure use?
+```cli
+az network nic show-effective-route-table \
+  --resource-group RG-SpokeA \
+  --name NIC-SpokeA-VM01 \
+  --output table
 ```
 
-Use it for destinations such as:
+**What it tests:** The routes Azure actually installed for the NIC after combining UDRs, VNet/system routes, peering routes, and BGP-learned routes.
+
+**Representative expected successful output — simulated:**
 
 ```text
-10.20.1.20
-172.16.10.20
-8.8.8.8
+Source    State    Address Prefix    Next Hop Type       Next Hop IP Address
+--------  -------  ----------------  ------------------  -------------------
+User      Active   0.0.0.0/0         VirtualAppliance    10.0.1.4
+User      Active   10.20.0.0/16      VirtualAppliance    10.0.1.4
+User      Active   172.16.0.0/16     VirtualAppliance    10.0.1.4
+Default   Active   10.10.0.0/16      VnetLocal
+Default   Active   10.0.0.0/16       VNetPeering
 ```
 
-**Success criteria:** `VirtualAppliance` with the Azure Firewall private IP for an inspected path.
+**Important fields:**
 
-**Failure indicator:** Direct VNet peering, gateway, or Internet next hop when inspection is expected.
+- `Source = User` means the winning route came from a UDR;
+- `State = Active` means Azure considers that route usable/winning for the relevant prefix;
+- `Address Prefix` must cover the tested destination;
+- `Next Hop Type = VirtualAppliance` means service insertion is occurring;
+- `Next Hop IP Address = 10.0.1.4` proves that the selected virtual appliance is Azure Firewall in this topology.
 
-## 19.4 Verify firewall logs
+For destination `10.20.1.20`, the key row is:
+
+```text
+User      Active   10.20.0.0/16      VirtualAppliance    10.0.1.4
+```
+
+That is the operational success condition for Spoke A → Spoke B inspection.
+
+### Failure example: direct peering bypass
+
+```text
+Source    State    Address Prefix    Next Hop Type    Next Hop IP Address
+--------  -------  ----------------  ---------------  -------------------
+Default   Active   10.20.0.0/16      VNetPeering
+```
+
+**What it means:** Azure is sending `10.20.0.0/16` directly over peering rather than to Azure Firewall. A broad default UDR such as `0.0.0.0/0 -> 10.0.1.4` does not help because `/16` is more specific than `/0`.
+
+**Next action:** Add or correct the explicit route:
+
+```text
+10.20.0.0/16 -> VirtualAppliance -> 10.0.1.4
+```
+
+then rerun the effective-route command.
+
+### Failure example: BGP/gateway bypass
+
+```text
+Source    State    Address Prefix    Next Hop Type            Next Hop IP Address
+--------  -------  ----------------  -----------------------  -------------------
+BGP       Active   172.16.0.0/16     VirtualNetworkGateway
+```
+
+**What it means:** The workload is sending the on-premises prefix directly toward the VPN/ExpressRoute gateway instead of first entering Azure Firewall.
+
+**Next action:** Review the on-premises UDR, route-table association, and gateway-route propagation behavior. If centralized inspection is required, the effective winning route should instead be:
+
+```text
+User      Active   172.16.0.0/16     VirtualAppliance    10.0.1.4
+```
+
+## 19.3 Verify Network Watcher exact next hop
+
+Network Watcher Next Hop answers the most concrete routing question:
+
+```text
+For this source VM/NIC and this exact destination IP, what next hop will Azure use?
+```
+
+For Spoke A → Spoke B:
+
+```cli
+az network watcher show-next-hop \
+  --resource-group RG-SpokeA \
+  --vm VM-SpokeA-01 \
+  --nic NIC-SpokeA-VM01 \
+  --source-ip 10.10.1.10 \
+  --dest-ip 10.20.1.20 \
+  --output table
+```
+
+**Representative expected successful output — simulated:**
+
+```text
+NextHopType       NextHopIpAddress    RouteTableId
+----------------  ------------------  -----------------------------------------------
+VirtualAppliance  10.0.1.4            .../routeTables/RT-SpokeA
+```
+
+**Success criteria:**
+
+```text
+Destination 10.20.1.20
+    -> NextHopType = VirtualAppliance
+    -> NextHopIpAddress = 10.0.1.4
+```
+
+That is the easiest direct proof that Azure Firewall is inline for that destination.
+
+Useful exact-destination tests include:
+
+```text
+10.20.1.20     Spoke B workload
+172.16.10.20   on-premises workload
+8.8.8.8        Internet destination
+```
+
+For every destination that is supposed to be inspected, the expected result is the firewall next hop.
+
+### Failure example: peering bypass
+
+```text
+NextHopType
+-----------
+VNetPeering
+```
+
+**Meaning:** The selected path bypasses Azure Firewall and goes directly over VNet peering.
+
+### Failure example: gateway bypass
+
+```text
+NextHopType
+---------------------
+VirtualNetworkGateway
+```
+
+**Meaning:** The selected path goes directly to the VPN/ExpressRoute gateway rather than through Azure Firewall.
+
+### Failure example: direct Internet path
+
+```text
+NextHopType
+-----------
+Internet
+```
+
+**Meaning:** The VM's Internet-bound traffic is not using Azure Firewall for egress.
+
+**Next action:** Return to the effective route table, compare prefix length and route source, correct the UDR/association/propagation issue, then rerun `show-next-hop` for the same destination until the result is `VirtualAppliance 10.0.1.4`.
+
+## 19.4 Verification logic in one table
+
+| Verification stage | Command/tool | What success looks like | What failure proves |
+|---|---|---|---|
+| Configured intent | `az network route-table route list` | Required prefix points to `VirtualAppliance 10.0.1.4` | UDR object is missing or wrong |
+| Installed route state | `az network nic show-effective-route-table` | `User`, `Active`, expected prefix, `VirtualAppliance`, `10.0.1.4` | Another route source/prefix is winning or table is not associated correctly |
+| Exact forwarding decision | `az network watcher show-next-hop` | `VirtualAppliance 10.0.1.4` for the tested destination | The exact tested flow bypasses the firewall |
+| Firewall observation | Azure Firewall logs | Expected source/destination/rule/action is logged | If no log exists, troubleshoot routing/NSGs before firewall policy |
+
+## 19.5 Verify firewall logs
 
 Enable Azure Firewall diagnostic logging to Azure Monitor / Log Analytics using current resource-specific tables where possible.
 
@@ -734,7 +909,7 @@ Useful categories/tables include network-rule, application-rule, NAT, DNS proxy,
 
 **Failure indicator:** No matching firewall record at all.
 
-**Next action:** Go back to routing and NSGs before changing firewall policy.
+**Next action:** Go back to effective routes, Network Watcher Next Hop, peering, and NSGs before changing firewall policy. If `show-next-hop` does not return the firewall, the absence of a firewall log is expected because the packet never reached the firewall.
 
 ---
 
