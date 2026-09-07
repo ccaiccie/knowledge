@@ -1,7 +1,7 @@
 # Azure Route Server + Third-Party NVA for Dynamic Service Insertion — Comprehensive Study Guide
 
 **Generated:** 2026-09-05  
-**Updated:** 2026-09-07 — integrated Azure CLI configuration and verification directly into the relevant architecture sections  
+**Updated:** 2026-09-07 — integrated Azure CLI configuration and verification directly into the relevant architecture sections; expanded Route Server route-map Preview examples with supported Azure PowerShell  
 **Scope:** Azure Route Server (ARS), Border Gateway Protocol (BGP), third-party Network Virtual Appliances (NVAs), dynamic service insertion, route tables, effective routes, hub-and-spoke peering, internet/hybrid/East-West flow paths, high availability, symmetry, verification, and troubleshooting.
 
 ## Table of contents
@@ -44,6 +44,8 @@
 - https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-highlyavailable
 - https://learn.microsoft.com/en-us/azure/route-server/hub-routing-preference
 - https://learn.microsoft.com/en-us/azure/route-server/route-maps-about
+- https://learn.microsoft.com/en-us/azure/route-server/route-maps-how-to
+- https://learn.microsoft.com/en-us/azure/route-server/route-maps-scenario-prepend-routes
 - https://learn.microsoft.com/en-us/azure/route-server/route-maps-scenario-drop-inbound-routes
 - https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
@@ -964,28 +966,272 @@ az network routeserver update \
 
 ## 14. Route maps and BGP policy
 
-Azure Route Server route maps are currently documented as **Preview**.
+Azure Route Server route maps are currently documented as **Preview**. They can control routes entering and leaving Route Server BGP peerings with NVAs, ExpressRoute gateway connections, and VPN gateway connections in the same VNet.
 
-Use cases include route filtering, aggregation, AS_PATH manipulation, BGP community policy, and controlling propagation between NVA and gateway domains.
+Supported policy functions include:
 
-Microsoft also documents `NO_ADVERTISE`:
+- route filtering;
+- route aggregation/summarization;
+- AS-PATH modification, including prepending;
+- BGP community modification;
+- ordered rule processing with **Continue** or **Terminate** behavior.
+
+Microsoft also documents the well-known `NO_ADVERTISE` community:
 
 ```text
 65535:65282
 ```
 
-Treat preview features according to current Azure preview terms.
+### 14.1 Tooling caveat — Route Server route maps are PowerShell/Portal, not `az network routeserver route-map`
 
-### 14.1 Azure CLI — verify route state around route-map changes
+Microsoft's current Route Server route-map how-to documents **Azure Portal** and **Azure PowerShell**. It does not document a native command family such as:
 
-Because the exact Azure CLI route-map command surface is not established in the source set used for this guide, no unsupported `az network routeserver routemap ...` command is invented here. Use Azure CLI to compare routing before and after policy changes:
+```text
+az network routeserver route-map ...
+```
+
+Do **not** substitute `az network vhub route-map ...`; that command family belongs to Azure Virtual WAN Virtual Hub route maps and is a different feature surface.
+
+For the Preview Route Server feature, use Azure PowerShell `Az.Network` **8.0.0 or later** or the Azure portal. Azure Route Server uses the virtual hub API internally, which is why the PowerShell route-map cmdlets take `-VirtualHubName`; for these commands, pass the **Route Server name** as `-VirtualHubName`.
+
+The first route map created on a Route Server triggers a one-time Route Server upgrade that Microsoft says takes approximately **30 minutes**. Subsequent route-map operations do not require that one-time upgrade again.
+
+### 14.2 PowerShell — create a route map that prepends an AS to a prefix
+
+This Microsoft-documented pattern matches `10.0.0.0/16`, adds ASN `64511` to the AS-PATH, and then continues processing later rules.
+
+```powershell
+$RG = "rg-network"
+$ARS_NAME = "ars-hub"
+$ROUTE_MAP = "rm-prepend-10-0-0-0-16"
+
+# 1. Match the route prefix.
+$criterion = New-AzRouteMapRuleCriterion `
+  -MatchCondition "Contains" `
+  -RoutePrefix @("10.0.0.0/16")
+
+# 2. Define the AS-PATH value to add.
+$actionParam = New-AzRouteMapRuleActionParameter `
+  -AsPath @("64511")
+
+# 3. Build an Add action using that parameter.
+$action = New-AzRouteMapRuleAction `
+  -Type "Add" `
+  -Parameter @($actionParam)
+
+# 4. Create the ordered route-map rule.
+$rule = New-AzRouteMapRule `
+  -Name "prepend-64511" `
+  -MatchCriteria @($criterion) `
+  -RouteMapRuleAction @($action) `
+  -NextStepIfMatched "Continue"
+
+# 5. Create the route map on the Route Server.
+# Route Server uses the virtual hub API, so use the Route Server name
+# in -VirtualHubName.
+New-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name $ROUTE_MAP `
+  -RouteMapRule @($rule)
+```
+
+**What each object represents:**
+
+| PowerShell object | Purpose |
+|---|---|
+| `New-AzRouteMapRuleCriterion` | Defines what routes match: route prefix, AS-PATH, and/or community. |
+| `New-AzRouteMapRuleActionParameter` | Carries values used by an action, such as AS-PATH, community, or route prefix. |
+| `New-AzRouteMapRuleAction` | Defines what to do to a matched route, such as Add or Drop. |
+| `New-AzRouteMapRule` | Combines the match and action and defines whether processing continues or terminates. |
+| `New-AzRouteMap` | Creates the ordered route-map object on the Route Server. |
+
+Verify the object:
+
+```powershell
+Get-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name $ROUTE_MAP
+```
+
+**Success criterion:** the route map exists and its provisioning state succeeds; after it is applied to the intended connection/direction, the Route Map dashboard/effective routes show the expected AS-PATH change.
+
+### 14.3 PowerShell — create a route map that drops a route
+
+A Drop action does not need an action parameter. This example rejects a matching route and terminates processing for that route.
+
+```powershell
+$dropCriterion = New-AzRouteMapRuleCriterion `
+  -MatchCondition "Contains" `
+  -RoutePrefix @("10.50.0.0/16")
+
+$dropAction = New-AzRouteMapRuleAction `
+  -Type "Drop"
+
+$dropRule = New-AzRouteMapRule `
+  -Name "drop-10-50-0-0-16" `
+  -MatchCriteria @($dropCriterion) `
+  -RouteMapRuleAction @($dropAction) `
+  -NextStepIfMatched "Terminate"
+
+New-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name "rm-drop-10-50" `
+  -RouteMapRule @($dropRule)
+```
+
+**Direction matters:**
+
+- applied **inbound** to an NVA/gateway connection, the map affects routes Route Server receives from that connection;
+- applied **outbound**, it affects advertisements Route Server sends toward that connection.
+
+An **outbound** route map does not change Route Server's own best-path selection, because best-path selection occurs before the outbound map modifies the advertisement.
+
+### 14.4 PowerShell — match or modify BGP communities
+
+The same rule objects support BGP communities. This example builds a modification parameter for community `65000:100`:
+
+```powershell
+$communityCriterion = New-AzRouteMapRuleCriterion `
+  -MatchCondition "Contains" `
+  -RoutePrefix @("10.20.0.0/16")
+
+$communityParam = New-AzRouteMapRuleActionParameter `
+  -Community @("65000:100")
+
+$communityAction = New-AzRouteMapRuleAction `
+  -Type "Add" `
+  -Parameter @($communityParam)
+
+$communityRule = New-AzRouteMapRule `
+  -Name "tag-10-20-with-65000-100" `
+  -MatchCriteria @($communityCriterion) `
+  -RouteMapRuleAction @($communityAction) `
+  -NextStepIfMatched "Continue"
+
+New-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name "rm-tag-community" `
+  -RouteMapRule @($communityRule)
+```
+
+The `New-AzRouteMapRuleActionParameter` cmdlet also accepts `-RoutePrefix`, `-Community`, and `-AsPath`. Always verify current Route Server route-map limitations before attempting to add, replace, or remove attributes; Microsoft specifically warns against invalid/reserved ASNs and unsupported manipulation of Azure-owned BGP communities.
+
+### 14.5 PowerShell — apply a route map inbound or outbound
+
+A route map does nothing to a connection until it is associated with the intended BGP peering or gateway connection in the intended direction.
+
+For an NVA BGP peer, retrieve the Route Server peer object and its resource ID:
+
+```powershell
+$peer = Get-AzRouteServerPeer `
+  -ResourceGroupName $RG `
+  -RouteServerName $ARS_NAME `
+  -PeerName "nva01"
+
+$connectionId = $peer.Id
+$connectionId
+```
+
+A Route Server NVA peer resource ID has the virtual-hub/BGP-connection shape, for example:
+
+```text
+/subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.Network/virtualHubs/<route-server>/bgpConnections/<peer>
+```
+
+Apply the route map **inbound** while creating it:
+
+```powershell
+New-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name "rm-inbound-nva" `
+  -RouteMapRule @($dropRule) `
+  -InboundConnection @($connectionId)
+```
+
+Or apply a route map in the **outbound** direction:
+
+```powershell
+New-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name "rm-outbound-nva" `
+  -RouteMapRule @($rule) `
+  -OutboundConnection @($connectionId)
+```
+
+Microsoft documents the same `-InboundConnection` and `-OutboundConnection` parameters with `Update-AzRouteMap` when changing an existing route map's connection associations.
+
+### 14.6 PowerShell — update an existing route map
+
+Build the replacement/updated rule set first, then submit it with `Update-AzRouteMap`:
+
+```powershell
+$updatedCriterion = New-AzRouteMapRuleCriterion `
+  -MatchCondition "Contains" `
+  -RoutePrefix @("10.0.0.0/8")
+
+$updatedActionParam = New-AzRouteMapRuleActionParameter `
+  -AsPath @("64511", "64511")
+
+$updatedAction = New-AzRouteMapRuleAction `
+  -Type "Add" `
+  -Parameter @($updatedActionParam)
+
+$updatedRule = New-AzRouteMapRule `
+  -Name "prepend-64511-twice" `
+  -MatchCriteria @($updatedCriterion) `
+  -RouteMapRuleAction @($updatedAction) `
+  -NextStepIfMatched "Continue"
+
+Update-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name $ROUTE_MAP `
+  -RouteMapRule @($updatedRule)
+```
+
+**Operational caution:** `Update-AzRouteMap` replaces the route-map rule configuration you submit. Build and review the complete intended rule list/order before applying an update.
+
+### 14.7 PowerShell — delete a route map
+
+```powershell
+Remove-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name $ROUTE_MAP
+```
+
+Before deleting a production policy, verify which inbound/outbound connections reference it and remove or replace those associations as appropriate.
+
+### 14.8 Verify before and after with PowerShell and Azure CLI
+
+PowerShell can inspect both the route map and Route Server peer route views:
+
+```powershell
+Get-AzRouteMap `
+  -ResourceGroupName $RG `
+  -VirtualHubName $ARS_NAME `
+  -Name $ROUTE_MAP
+
+Get-AzRouteServerPeerLearnedRoute `
+  -ResourceGroupName $RG `
+  -RouteServerName $ARS_NAME `
+  -PeerName "nva01"
+
+Get-AzRouteServerPeerAdvertisedRoute `
+  -ResourceGroupName $RG `
+  -RouteServerName $ARS_NAME `
+  -PeerName "nva01"
+```
+
+You can continue to use Azure CLI for the Route Server peer route views even though creation/management of the Preview Route Server route map itself is currently documented with PowerShell:
 
 ```cli
-az network routeserver show \
-  --resource-group "$RG" \
-  --name "$ARS_NAME" \
-  --output yaml
-
 az network routeserver peering list-learned-routes \
   --resource-group "$RG" \
   --routeserver "$ARS_NAME" \
@@ -998,6 +1244,19 @@ az network routeserver peering list-advertised-routes \
   --name "$NVA1_PEER" \
   --output table
 ```
+
+For an AS-PATH policy, confirm that the intended prefix appears on the correct side of the connection with the expected AS-PATH. For a Drop policy, confirm the route disappears only in the intended direction. For a community policy, confirm the expected community is attached to the advertisement.
+
+### 14.9 Important Route Server route-map limitations and mistakes
+
+- Only **one inbound** and **one outbound** route map can be applied per connection.
+- Rule order matters. `Continue` evaluates later rules; `Terminate` stops processing after the match.
+- Outbound route maps alter what Route Server advertises; they do **not** retroactively affect Route Server best-path selection.
+- The first route-map creation invokes the one-time Route Server upgrade; do not interpret that upgrade interval as an ordinary policy-change convergence time.
+- Do not confuse Azure Route Server route maps with Azure Virtual WAN `az network vhub route-map` commands.
+- Validate that the map is attached to the intended **connection** and **direction**; a perfectly valid unattached route map changes nothing.
+- Microsoft lists reserved ASNs that must not be used for AS-PATH manipulation, including `8074`, `8075`, `12076`, `65515`, `65517`, `65518`, `65519`, and `65520`.
+- Verify effective routes and BGP attributes after every change instead of assuming that successful resource provisioning means the intended routing outcome occurred.
 
 ---
 
@@ -2257,6 +2516,8 @@ The most important hybrid-routing takeaway is:
 - https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-highlyavailable
 - https://learn.microsoft.com/en-us/azure/route-server/hub-routing-preference
 - https://learn.microsoft.com/en-us/azure/route-server/route-maps-about
+- https://learn.microsoft.com/en-us/azure/route-server/route-maps-how-to
+- https://learn.microsoft.com/en-us/azure/route-server/route-maps-scenario-prepend-routes
 - https://learn.microsoft.com/en-us/azure/route-server/route-maps-scenario-drop-inbound-routes
 - https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table
 - https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering
@@ -2268,6 +2529,6 @@ The most important hybrid-routing takeaway is:
 
 **Source information:** Microsoft Learn / Azure Architecture Center statements about Route Server, route injection, peering, gateway/Route Server transit, BGP behavior, route maps, limits, effective routes, and documented NVA architectures.
 
-**Additional explanation:** The route propagation walkthroughs, placement comparisons, peering-contract model, packet-flow explanations, section-local Azure CLI configuration, and troubleshooting sequences connect those documented behaviors into an operational network-engineering model.
+**Additional explanation:** The route propagation walkthroughs, placement comparisons, peering-contract model, packet-flow explanations, section-local Azure CLI/PowerShell configuration, route-map examples, and troubleshooting sequences connect those documented behaviors into an operational network-engineering model.
 
 **Reasonable inference:** Recommendations such as beginning with the same-VNet hub architecture, treating the peering settings as an offer/accept contract, and validating both directions with effective-route/next-hop checks are explanatory architecture guidance rather than claims of undocumented Azure implementation behavior.
