@@ -15,6 +15,10 @@ Primary Google Cloud documentation used for this guide:
 - https://docs.cloud.google.com/firewall/docs/manage-firewall-endpoints
 - https://docs.cloud.google.com/firewall/docs/about-app-layer-inspection
 - https://docs.cloud.google.com/firewall/docs/configure-security-profiles
+- https://docs.cloud.google.com/firewall/docs/about-threats
+- https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
+- https://docs.cloud.google.com/firewall/docs/configure-intrusion-prevention
+- https://docs.cloud.google.com/firewall/docs/view-threats
 - https://docs.cloud.google.com/firewall/docs/about-url-filtering
 - https://docs.cloud.google.com/firewall/docs/configure-urlf-security-profiles
 - https://docs.cloud.google.com/firewall/docs/tutorials/set-up-urlf-tutorial
@@ -23,7 +27,6 @@ Primary Google Cloud documentation used for this guide:
 - https://docs.cloud.google.com/firewall/docs/using-firewall-policies
 - https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details
 - https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-eval-order
-- https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
 - https://docs.cloud.google.com/firewall/docs/about-tls-inspection
 - https://docs.cloud.google.com/firewall/docs/setup-tls-inspection
 - https://docs.cloud.google.com/firewall/docs/firewall-policy-rules-log-examples
@@ -301,9 +304,532 @@ Cloud NGFW Enterprise application-layer inspection uses security profiles. Curre
 
 A **security profile group** is a container. A group can contain at most one profile of each supported type. The firewall-policy rule references the group, not each individual profile.
 
-### 6.1 Threat prevention
+### 6.1 Threat prevention — how the Palo Alto-powered IPS policy is customized
 
-Cloud NGFW's threat prevention capability is powered by Palo Alto Networks threat-prevention technology. Security profiles can use default threat-signature behavior and can define severity or threat-ID overrides where supported.
+Cloud NGFW Enterprise uses **Google-managed Palo Alto Networks signature-based threat detection and prevention technology** behind the firewall endpoint. You do not create a PAN-OS Vulnerability Protection profile or Anti-Spyware profile in Panorama. Instead, you create a Google Cloud **Threat Prevention security profile**, optionally override the default Palo Alto-backed behavior, place that profile in a **security profile group**, and reference the group from an `apply_security_profile_group` firewall-policy rule.
+
+The complete policy chain is:
+
+```text
+Hierarchical/global firewall policy rule
+       |
+       | action = apply_security_profile_group
+       v
+Security profile group
+       |
+       +--> Threat Prevention security profile
+       |       |
+       |       +--> default Palo Alto-backed signatures
+       |       +--> severity overrides
+       |       +--> exact threat-ID overrides
+       |       +--> antivirus protocol overrides
+       |
+       +--> optional URL Filtering profile
+       +--> optional Advanced malware sandbox profile
+       |
+       v
+Zonal Cloud NGFW Enterprise firewall endpoint
+       |
+       +--> inspect matching traffic
+       +--> match signature
+       +--> resolve effective action
+       +--> allow / alert / deny
+       v
+Original forwarding path, if permitted
+```
+
+#### 6.1.1 What signatures are included by default
+
+When you create a security profile of type `THREAT_PREVENTION`, Google automatically supplies the managed threat-signature set; you do not upload content packages or manually install dynamic updates. Google currently documents default signatures covering:
+
+- **Vulnerability detection / vulnerability protection** — detects attempts to exploit software and protocol weaknesses, including attempts that can lead to unauthorized access, buffer-overflow exploitation, or code execution.
+- **Anti-spyware** — detects infected or compromised hosts communicating with malicious infrastructure such as command-and-control (C2) systems.
+- **Antivirus** — detects viruses and malware in supported application protocols and file-transfer traffic.
+- **DNS threat signatures** — included in the default threat-prevention signature set documented for the security profile.
+
+Google's threat-signature documentation notes that vulnerability signatures include known critical-, high-, and medium-severity threats plus applicable low- and informational-severity signatures. Cloud NGFW performs signature matching on traffic that has actually been intercepted by the firewall endpoint.
+
+This is an important distinction from a basic VPC firewall rule:
+
+```text
+VPC/firewall-policy match       -> decides whether the flow reaches L7 inspection
+Threat Prevention profile       -> decides what to do when the inspected traffic matches a threat
+```
+
+A Threat Prevention profile cannot protect a flow that never reaches an `apply_security_profile_group` rule or that has no valid endpoint association in the workload zone.
+
+#### 6.1.2 Default actions versus your overrides
+
+Every managed threat signature has a Palo Alto-backed **default action**. When you create a Threat Prevention profile, the override action for each severity starts as `DEFAULT`, meaning Cloud NGFW uses the predefined action associated with the matching threat signature.
+
+Google exposes four actions for severity and supported signature overrides:
+
+| Action | Effective behavior |
+|---|---|
+| `DEFAULT` | Use the predefined action associated with that specific managed threat signature. |
+| `DENY` | Log the threat and drop/block the matching traffic. |
+| `ALERT` | Log the threat but allow the session/traffic to continue. |
+| `ALLOW` | Ignore the detected threat for enforcement purposes and allow the traffic. |
+
+Not every action is valid for every threat type, so do not assume every signature supports every override.
+
+#### 6.1.3 Severity overrides
+
+Each managed signature has a severity. Cloud NGFW exposes these severity levels:
+
+- `INFORMATIONAL`
+- `LOW`
+- `MEDIUM`
+- `HIGH`
+- `CRITICAL`
+
+A **severity override** applies one action to all matching threats at the selected severity level unless a more-specific signature-ID override exists.
+
+For example, you might start a production rollout by alerting on medium/high/critical events:
+
+```cli
+gcloud network-security security-profiles threat-prevention add-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --severities=MEDIUM,HIGH,CRITICAL \
+  --action=ALERT
+```
+
+After validating the observed events and application impact, you could tighten high/critical enforcement:
+
+```cli
+gcloud network-security security-profiles threat-prevention update-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --severities=HIGH,CRITICAL \
+  --action=DENY
+```
+
+**Important:** this is an example rollout strategy, not a statement that Google automatically configures those severities this way. Your explicit overrides replace the default behavior for the selected severity levels.
+
+#### 6.1.4 Exact threat-ID overrides — the most specific exception
+
+Cloud NGFW lets you override the action for one or more **exact threat signature IDs**. The threat ID is the vendor-specified signature identifier exposed by Cloud NGFW. You can find observed threat IDs from the Cloud NGFW threat dashboard/logs and consult the threat information exposed by Google/Palo Alto resources.
+
+Example: if investigation confirms that a specific signature is a false positive for a known application, you can make an exception without weakening every threat of the same severity:
+
+```cli
+export THREAT_ID="REPLACE_WITH_OBSERVED_THREAT_ID"
+
+gcloud network-security security-profiles threat-prevention add-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --threat-ids="$THREAT_ID" \
+  --action=ALLOW
+```
+
+Do not invent threat IDs. Use an ID that Cloud NGFW actually reports for traffic in your environment or that is documented in the applicable threat catalog.
+
+#### 6.1.5 Override precedence
+
+This precedence rule is critical:
+
+```text
+Exact threat-ID override
+        wins over
+Severity-level override
+        wins over / replaces
+Managed signature's default action for that severity/profile decision
+```
+
+Example:
+
+```text
+Threat ID:               1234567
+Threat severity:         HIGH
+Severity override:       HIGH -> DENY
+Threat-ID override:      1234567 -> ALERT
+
+Effective action:        ALERT
+```
+
+The exact threat-ID exception wins because Google explicitly documents that **signature overrides take precedence over severity overrides**.
+
+This allows a practical operating model in which you can enforce a broad severity posture while carving out narrowly scoped false-positive exceptions.
+
+#### 6.1.6 Antivirus behavior can also be overridden by protocol
+
+Antivirus is handled slightly differently because Cloud NGFW also exposes protocol-based antivirus overrides. Google currently documents antivirus inspection for:
+
+- `SMTP`
+- `SMB`
+- `POP3`
+- `IMAP`
+- `HTTP2`
+- `HTTP`
+- `FTP`
+
+Example: enforce `DENY` for detected antivirus threats across all documented protocols:
+
+```cli
+gcloud network-security security-profiles threat-prevention add-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --antivirus=SMB,IMAP,HTTP,HTTP2,FTP,SMTP,POP3 \
+  --action=DENY
+```
+
+Google documents the following `DEFAULT` antivirus behavior from the Palo Alto-backed engine:
+
+- for `SMTP`, `IMAP`, and `POP3`, a detected virus generates an alert;
+- for `FTP`, `HTTP`, and `SMB`, detected malware traffic is blocked;
+- `ALERT`, `ALLOW`, and `DENY` can be used as supported overrides.
+
+Google's operational guidance recommends starting business-critical applications in an alert-oriented posture when you need to observe impact before enforcement, and using deny for non-critical workloads or after validation where appropriate.
+
+#### 6.1.7 You configure one override dimension per command
+
+Google documents that `add-override` and `update-override` accept one of these override selectors per command:
+
+```text
+--severities
+--threat-ids
+--antivirus
+```
+
+If you need severity overrides *and* a specific threat-ID exception *and* antivirus protocol overrides, run separate commands.
+
+For example:
+
+```cli
+# 1. Broad severity policy
+gcloud network-security security-profiles threat-prevention add-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --severities=HIGH,CRITICAL \
+  --action=DENY
+
+# 2. Narrow signature exception
+gcloud network-security security-profiles threat-prevention add-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --threat-ids="$THREAT_ID" \
+  --action=ALERT
+
+# 3. Antivirus policy
+gcloud network-security security-profiles threat-prevention add-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --antivirus=SMB,IMAP,HTTP,HTTP2,FTP,SMTP,POP3 \
+  --action=DENY
+```
+
+#### 6.1.8 Create the Threat Prevention profile
+
+Organization-level example:
+
+```cli
+gcloud network-security security-profiles threat-prevention create "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --description="Production Cloud NGFW Enterprise threat prevention"
+```
+
+Project-level example:
+
+```cli
+gcloud network-security security-profiles threat-prevention create "$TP_PROFILE" \
+  --project="$SEC_PROJECT" \
+  --location=global \
+  --description="Project Cloud NGFW Enterprise threat prevention"
+```
+
+The relevant IAM permission for creating the profile is `networksecurity.securityProfiles.create`; updating overrides requires `networksecurity.securityProfiles.update`. Google documents `roles/networksecurity.securityProfileAdmin` and `roles/compute.networkAdmin` as applicable management roles, subject to the resource scope.
+
+#### 6.1.9 Put the Threat Prevention profile in a security profile group
+
+A firewall policy does **not** directly reference the Threat Prevention profile. The profile must be placed into a **security profile group**, and the firewall-policy rule references that group.
+
+Organization-level example:
+
+```cli
+gcloud network-security security-profile-groups create "$SPG" \
+  --organization="$ORG_ID" \
+  --location=global \
+  --project="$SEC_PROJECT" \
+  --threat-prevention-profile="organizations/$ORG_ID/locations/global/securityProfiles/$TP_PROFILE" \
+  --description="Cloud NGFW Enterprise threat prevention group"
+```
+
+The security profile group can also contain a URL-filtering profile and, where supported, an Advanced malware sandbox profile. This is why `apply_security_profile_group` is the firewall-policy action: the group is the bundle of Layer 7 controls applied to the intercepted flow.
+
+#### 6.1.10 The firewall-policy rule selects which traffic is inspected
+
+The Threat Prevention profile by itself does nothing until a compatible firewall-policy rule selects traffic for advanced inspection.
+
+Conceptual egress example:
+
+```cli
+gcloud compute network-firewall-policies rules create 200 \
+  --firewall-policy="$FW_POLICY" \
+  --direction=EGRESS \
+  --action=apply_security_profile_group \
+  --dest-ip-ranges=0.0.0.0/0 \
+  --layer4-configs=tcp:80,tcp:443 \
+  --global-firewall-policy \
+  --security-profile-group="//networksecurity.googleapis.com/organizations/$ORG_ID/locations/global/securityProfileGroups/$SPG" \
+  --no-tls-inspect \
+  --enable-logging \
+  --project="$APP_PROJECT"
+```
+
+The Layer 4 scope is a design decision. Threat Prevention is not limited conceptually to only web traffic; select the protocols and destinations that match the inspection use case and documented support. If the traffic is encrypted and the threat signature requires visibility into encrypted application payloads, TLS inspection becomes relevant.
+
+#### 6.1.11 How a threat decision is made for a packet/session
+
+A simplified processing sequence is:
+
+```text
+1. New connection reaches firewall-policy evaluation
+2. apply_security_profile_group rule matches
+3. Packet Intercept diverts the session to the zonal firewall endpoint
+4. Endpoint identifies protocol/content it can inspect
+5. Palo Alto-backed signature engine evaluates the traffic
+6. If no signature matches -> continue according to the security profile/group
+7. If a signature matches -> determine threat ID + severity/type
+8. Check exact threat-ID override
+9. If none, check applicable severity/protocol override
+10. If none, use managed signature DEFAULT behavior
+11. Apply ALLOW / ALERT / DENY as resolved
+12. Write applicable firewall/threat logging
+13. If allowed, reinject traffic toward the original destination
+```
+
+The firewall endpoint remains an inspection insertion point; it is not a VPC route next hop and does not replace the destination route.
+
+#### 6.1.12 Example — broad HIGH deny with one false-positive exception
+
+Assume Cloud NGFW detects:
+
+```text
+Observed threat ID:      987654
+Severity:                HIGH
+Profile policy:          HIGH -> DENY
+Threat-ID exception:     987654 -> ALERT
+```
+
+Decision:
+
+1. Traffic matches the interception firewall rule.
+2. The endpoint inspects the flow.
+3. Signature `987654` matches.
+4. The profile finds both a HIGH severity override and the exact threat-ID override.
+5. The exact signature override has higher precedence.
+6. Effective action becomes `ALERT`.
+7. The event is logged and the traffic is allowed rather than denied.
+
+This is the preferred pattern for a known false positive because it avoids relaxing **all** HIGH-severity signatures.
+
+#### 6.1.13 TLS inspection materially changes threat visibility
+
+Without TLS interception, Cloud NGFW cannot inspect arbitrary encrypted application payload bytes hidden inside an HTTPS session. It can still apply controls based on information available outside encryption and inspect traffic/protocols where the relevant threat data is visible, but payload-dependent detection requires visibility into the payload.
+
+With TLS inspection enabled:
+
+```text
+Client
+  -> TLS connection intercepted by Cloud NGFW
+  -> endpoint presents dynamically generated certificate
+  -> client trusts configured CA chain
+  -> Cloud NGFW decrypts selected TLS flow
+  -> Threat Prevention signatures inspect plaintext application content
+  -> allowed content is re-encrypted toward the destination
+```
+
+This is why the TLS inspection policy on the endpoint association and `--tls-inspect` on the matching firewall rule are security-significant, not merely logging options.
+
+#### 6.1.14 Signature content updates are managed for you
+
+Cloud NGFW automatically updates its managed threat signatures. You do **not** download or schedule Palo Alto dynamic-content packages yourself.
+
+Google documents that Palo Alto Networks signature updates are picked up by Cloud NGFW and pushed to existing firewall endpoints automatically, with estimated update latency of **up to 48 hours**.
+
+Operational consequence:
+
+- you manage **policy and exceptions**;
+- Google manages **signature-content distribution** to the managed endpoints;
+- there is no Panorama content-update job for these endpoints.
+
+#### 6.1.15 Your override changes are not necessarily instantaneous
+
+Google documents that modifying a default threat-signature action or a severity-level action can take **up to approximately 15 minutes** to take effect.
+
+Therefore, when testing a new override:
+
+1. save/update the profile;
+2. verify the override is present;
+3. allow for propagation;
+4. start a **new** test session;
+5. check threat logs and firewall interception logs.
+
+Do not declare the override ineffective because a pre-existing session immediately continued with old state.
+
+#### 6.1.16 List the currently configured overrides
+
+Use:
+
+```cli
+gcloud network-security security-profiles threat-prevention list-overrides "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --location=global
+```
+
+**What it tests:** the explicit severity, signature-ID, and supported antivirus overrides currently configured on the profile.
+
+**Success criteria:** the expected selectors and actions are present.
+
+**Failure indicators:** missing override, wrong scope, wrong profile name, or an unexpected action.
+
+**Next action:** add or update the correct override and retest after propagation.
+
+#### 6.1.17 Update or remove an override
+
+Update an existing severity or signature override:
+
+```cli
+gcloud network-security security-profiles threat-prevention update-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --threat-ids="$THREAT_ID" \
+  --action=DENY
+```
+
+Delete the explicit override and return to the underlying default behavior:
+
+```cli
+gcloud network-security security-profiles threat-prevention delete-override "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --billing-project="$SEC_PROJECT" \
+  --location=global \
+  --threat-ids="$THREAT_ID"
+```
+
+For severity overrides, use `--severities=...`; for antivirus protocol overrides, use `--antivirus=...`.
+
+#### 6.1.18 Where you obtain threat IDs and validate detections
+
+Cloud NGFW exposes detected threats in the **Threat** view / Cloud NGFW dashboard and through Cloud Logging. Use observed events to determine:
+
+- threat/signature ID;
+- severity;
+- source and destination context;
+- traffic direction;
+- affected workload;
+- action taken;
+- whether the event corresponds to a real exploit/malware condition or a false positive.
+
+Do not create broad `ALLOW` exceptions merely because an application breaks. First identify the actual threat ID, verify what signature fired, and scope any exception as narrowly as possible.
+
+#### 6.1.19 Verification workflow
+
+A practical verification sequence is:
+
+```cli
+# 1. Confirm the profile exists
+gcloud network-security security-profiles describe "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --location=global
+
+# 2. Confirm explicit overrides
+gcloud network-security security-profiles threat-prevention list-overrides "$TP_PROFILE" \
+  --organization="$ORG_ID" \
+  --location=global
+
+# 3. Confirm the security profile group points to the intended profile
+gcloud network-security security-profile-groups describe "$SPG" \
+  --organization="$ORG_ID" \
+  --location=global
+
+# 4. Confirm the firewall policy actually references the profile group
+gcloud compute network-firewall-policies rules describe 200 \
+  --firewall-policy="$FW_POLICY" \
+  --global-firewall-policy \
+  --project="$APP_PROJECT"
+
+# 5. Confirm the workload VPC has an active endpoint association
+gcloud network-security firewall-endpoint-associations describe "$ENDPOINT_ASSOC" \
+  --location="$ZONE" \
+  --project="$APP_PROJECT"
+```
+
+**Success criteria:**
+
+- the Threat Prevention profile exists at the expected project/org scope;
+- the expected overrides are present;
+- the security profile group references that exact profile;
+- the firewall-policy rule references that exact group and wins policy evaluation;
+- the endpoint association is active in the workload's zone;
+- new test connections produce the expected threat action/log behavior.
+
+#### 6.1.20 Troubleshooting by symptom
+
+**Symptom: the threat dashboard is empty even though test traffic should trigger IPS**
+
+- **Where:** firewall-policy rule, profile group, endpoint association, MTU, and TLS visibility.
+- **What it tests:** whether traffic reaches the endpoint and whether the endpoint can inspect the relevant content.
+- **Failure indicators:** no `INTERCEPTED` firewall log, wrong profile group, missing zonal association, unsupported packet size, encrypted payload without TLS inspection where payload visibility is required.
+- **Next action:** validate interception first; do not start by changing threat overrides.
+
+**Symptom: a threat is logged but not blocked**
+
+- **Where:** signature default action and profile overrides.
+- **What it tests:** effective action resolution.
+- **Likely causes:** managed default is alert, severity override is `ALERT`, exact threat-ID override is `ALERT`/`ALLOW`, or antivirus protocol behavior is configured to alert.
+- **Next action:** list overrides and check whether a more-specific threat-ID exception is winning over the severity policy.
+
+**Symptom: you changed HIGH to DENY but one HIGH threat is still allowed/alerted**
+
+- **Where:** exact threat-ID overrides.
+- **What it tests:** override precedence.
+- **Likely cause:** a signature-ID override exists for that threat and takes precedence over the HIGH severity override.
+- **Next action:** list overrides, inspect the exact threat ID, and update/delete the narrow exception if it is no longer appropriate.
+
+**Symptom: a newly added override appears correct but behavior has not changed yet**
+
+- **Where:** configuration propagation/session state.
+- **What it tests:** whether the change has propagated and whether the test uses a new session.
+- **Expected state:** allow up to the documented propagation window and retest with a new connection.
+- **Next action:** confirm the override with `list-overrides`, wait for propagation, then retest; if still wrong, validate rule/profile-group scope.
+
+**Symptom: Layer 7 rule exists but traffic is allowed with a fallback indication**
+
+- **Where:** endpoint/profile availability.
+- **What it tests:** whether Cloud NGFW could use a valid inspection endpoint/profile for the flow.
+- **Failure indicator:** firewall logs can show `apply_security_profile_fallback_action = ALLOW` when the advanced-inspection configuration is invalid/unavailable for the flow.
+- **Next action:** validate the endpoint exists in the workload zone, the association is active, and the referenced profile group is valid for the endpoint scope.
+
+#### 6.1.21 How this differs from PAN-OS Threat Prevention profiles
+
+The security technology is Palo Alto-backed, but the policy surface is intentionally different.
+
+| Capability | Cloud NGFW Enterprise | Customer-managed PAN-OS / VM-Series |
+|---|---|---|
+| Signature engine | Palo Alto Networks-powered, Google-managed | Palo Alto Networks PAN-OS |
+| Signature/content updates | Automatically distributed by Google | Managed with PAN-OS/Panorama content-update workflows |
+| Severity overrides | Yes | Yes, using PAN-OS profile/rule constructs |
+| Exact threat-ID exceptions | Yes | Yes, with broader PAN-OS exception controls |
+| Antivirus protocol override | Yes for documented protocols | Broader PAN-OS security-profile controls |
+| Panorama device groups/templates | No | Yes |
+| Custom PAN-OS Vulnerability Protection profile objects | Not exposed as PAN-OS objects | Yes |
+| Custom Anti-Spyware profile objects | Not exposed as PAN-OS objects | Yes |
+| PAN-OS CLI/Web UI | No | Yes |
+| Customer control of content update schedule | No; managed service | Yes |
+
+**Design consequence:** Cloud NGFW Enterprise gives you a deliberately constrained Google Cloud abstraction over the Palo Alto-backed signature engine. If your security requirement depends on PAN-OS-specific custom signature objects, detailed PAN-OS decoder/action knobs, Panorama content-management workflows, or other profile features not exposed by Google's Threat Prevention security profile, evaluate VM-Series or another deployment that exposes PAN-OS directly.
 
 ### 6.2 URL filtering — how you actually customize the policy
 
@@ -1194,6 +1720,10 @@ gcloud compute networks describe "$NETWORK" \
 14. **Assuming PAN-DB category controls are exposed.** The documented Google URL-filtering model uses configured URL/domain matcher strings and allow/deny actions.
 15. **Forgetting the implicit/default URL action.** A broad interception rule plus an allow-list profile can deny every unmatched HTTP(S) destination.
 16. **Testing only the primary website hostname.** Modern applications often require authentication, API, CDN, and supporting domains that must also satisfy the URL profile.
+17. **Using a broad severity `ALLOW` to solve one false positive.** Prefer an exact threat-ID exception when you can validate the specific signature.
+18. **Assuming severity overrides beat signature overrides.** Exact threat-ID overrides take precedence over severity-level overrides.
+19. **Expecting signature feeds to be managed in Panorama.** Google manages signature distribution to firewall endpoints; documented Palo Alto content-update latency can be up to 48 hours.
+20. **Testing an override immediately on an old session.** Profile changes can take up to about 15 minutes to propagate; retest with a new connection after verifying the override.
 
 ---
 
@@ -1209,7 +1739,7 @@ Choose Cloud NGFW Enterprise firewall endpoints when you want:
 - no customer-managed service-insertion route topology;
 - security enforcement based on firewall-policy matching instead of explicit NVA next hops.
 
-Do **not** assume firewall endpoints replace every NVA use case. A third-party appliance may still be necessary when you require vendor-specific VPN termination, routing protocols, SD-WAN, custom NAT, PAN-OS/PAN-DB URL-category policy, App-ID-oriented policy, Panorama management, application proxies, unsupported inspection protocols, or other firewall features not exposed by Cloud NGFW Enterprise.
+Do **not** assume firewall endpoints replace every NVA use case. A third-party appliance may still be necessary when you require vendor-specific VPN termination, routing protocols, SD-WAN, custom NAT, PAN-OS/PAN-DB URL-category policy, App-ID-oriented policy, Panorama management, custom PAN-OS threat-prevention profile controls, application proxies, unsupported inspection protocols, or other firewall features not exposed by Cloud NGFW Enterprise.
 
 ---
 
@@ -1237,6 +1767,9 @@ Before production deployment, confirm all of the following:
 - [ ] IAM roles allow endpoint creation/use and association creation.
 - [ ] Endpoint ownership model (organization or project) is deliberate.
 - [ ] Security profiles and profile groups are in compatible scopes.
+- [ ] Threat Prevention default behavior and any severity overrides are documented.
+- [ ] Exact threat-ID exceptions are justified and narrower than broad severity exceptions.
+- [ ] Antivirus protocol overrides match the intended enforcement posture.
 - [ ] Endpoint exists in every workload zone that requires inspection.
 - [ ] VPC has one valid endpoint association per required zone.
 - [ ] No zone attempts to associate the same VPC with more than one endpoint.
@@ -1254,7 +1787,8 @@ Before production deployment, confirm all of the following:
 - [ ] TLS CA trust is deployed before enabling `--tls-inspect`.
 - [ ] TLS-dependent applications have been tested for HTTP/2/QUIC/HTTP/3 behavior.
 - [ ] Serverless workloads are excluded from unsupported inspection assumptions.
-- [ ] Monitoring covers endpoint capacity and policy interception logs.
+- [ ] Monitoring covers endpoint capacity, threat events, and policy interception logs.
+- [ ] Threat override changes are tested after the documented propagation window with new sessions.
 - [ ] Release notes are reviewed for Preview features such as Advanced malware sandbox.
 
 ---
@@ -1266,12 +1800,15 @@ Before production deployment, confirm all of the following:
 3. The VPC must have a **firewall endpoint association in every workload zone** that needs Layer 7 inspection.
 4. Policy intent can be centralized even though endpoint data-plane capacity is zonal.
 5. `apply_security_profile_group` creates connection-tracking state so both directions of the connection remain intercepted.
-6. URL filtering is customized through Google Cloud **URL filtering security profiles** containing prioritized domain/URL matcher strings and allow/deny actions.
-7. Without TLS inspection, HTTPS URL filtering primarily relies on TLS SNI; with TLS inspection, Cloud NGFW can also use domain information from decrypted HTTP headers.
-8. The documented Cloud NGFW Enterprise URL-filtering surface is **not the same as PAN-OS/PAN-DB URL Filtering**, and Panorama does not manage these Google-managed endpoints.
-9. TLS inspection requires both a TLS inspection policy on the endpoint association and TLS-inspection enablement on the firewall-policy rule.
-10. MTU, protocol support, project/org scope, URL-filter default behavior, and endpoint capacity are operationally significant; failures in these areas can produce security gaps or packet loss without any need for a route-table problem.
-11. Cloud NAT, hybrid routes, and normal VPC routing remain separate from endpoint insertion because the endpoint does not replace the original forwarding path.
+6. Threat Prevention uses a Google-managed Palo Alto-backed signature set; you customize enforcement with severity overrides, exact threat-ID overrides, and supported antivirus protocol overrides.
+7. Exact threat-ID overrides take precedence over severity overrides, which lets you preserve a broad enforcement posture while making narrow exceptions.
+8. Palo Alto signature content is distributed automatically by Google; there is no Panorama content-update workflow for Cloud NGFW Enterprise endpoints.
+9. URL filtering is customized through Google Cloud **URL filtering security profiles** containing prioritized domain/URL matcher strings and allow/deny actions.
+10. Without TLS inspection, HTTPS URL filtering primarily relies on TLS SNI; with TLS inspection, Cloud NGFW can also use domain information from decrypted HTTP headers and Threat Prevention can inspect decrypted application content where supported.
+11. The documented Cloud NGFW Enterprise policy surface is **not the same as PAN-OS/PAN-DB or PAN-OS Threat Prevention profiles**, and Panorama does not manage these Google-managed endpoints.
+12. TLS inspection requires both a TLS inspection policy on the endpoint association and TLS-inspection enablement on the firewall-policy rule.
+13. MTU, protocol support, project/org scope, profile default behavior, override precedence, propagation delay, and endpoint capacity are operationally significant; failures in these areas can produce security gaps or packet loss without any need for a route-table problem.
+14. Cloud NAT, hybrid routes, and normal VPC routing remain separate from endpoint insertion because the endpoint does not replace the original forwarding path.
 
 ---
 
@@ -1284,6 +1821,10 @@ Before production deployment, confirm all of the following:
 - Google Cloud, Manage firewall endpoints and endpoint associations: https://docs.cloud.google.com/firewall/docs/manage-firewall-endpoints
 - Google Cloud, Application layer inspection overview: https://docs.cloud.google.com/firewall/docs/about-app-layer-inspection
 - Google Cloud, Create and manage threat prevention security profiles: https://docs.cloud.google.com/firewall/docs/configure-security-profiles
+- Google Cloud, Threat signatures overview: https://docs.cloud.google.com/firewall/docs/about-threats
+- Google Cloud, Intrusion detection and prevention overview: https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
+- Google Cloud, Configure intrusion detection and prevention service: https://docs.cloud.google.com/firewall/docs/configure-intrusion-prevention
+- Google Cloud, View threats: https://docs.cloud.google.com/firewall/docs/view-threats
 - Google Cloud, URL filtering service overview: https://docs.cloud.google.com/firewall/docs/about-url-filtering
 - Google Cloud, Create and manage URL filtering security profiles: https://docs.cloud.google.com/firewall/docs/configure-urlf-security-profiles
 - Google Cloud, Set up URL filtering service in your network: https://docs.cloud.google.com/firewall/docs/tutorials/set-up-urlf-tutorial
@@ -1292,7 +1833,6 @@ Before production deployment, confirm all of the following:
 - Google Cloud, Create hierarchical firewall policies and rules: https://docs.cloud.google.com/firewall/docs/using-firewall-policies
 - Google Cloud, Firewall policy rule components: https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details
 - Google Cloud, Firewall policy evaluation order: https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-eval-order
-- Google Cloud, Intrusion detection and prevention overview: https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
 - Google Cloud, TLS inspection overview: https://docs.cloud.google.com/firewall/docs/about-tls-inspection
 - Google Cloud, Set up TLS inspection: https://docs.cloud.google.com/firewall/docs/setup-tls-inspection
 - Google Cloud, Firewall policy rule logging examples: https://docs.cloud.google.com/firewall/docs/firewall-policy-rules-log-examples
