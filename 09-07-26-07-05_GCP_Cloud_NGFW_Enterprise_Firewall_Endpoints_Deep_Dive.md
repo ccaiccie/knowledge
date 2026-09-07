@@ -6,6 +6,120 @@ This guide focuses specifically on **Cloud Next Generation Firewall (Cloud NGFW)
 
 The guide intentionally separates firewall endpoints from other GCP service-insertion mechanisms such as Policy-Based Routes (PBR), internal passthrough Network Load Balancers in front of third-party appliances, Network Security Integration intercept endpoint groups, and Network Connectivity Center router appliances.
 
+## Table of contents
+
+- [Scope](#scope)
+- [Source URLs](#source-urls)
+- [1. Executive mental model](#1-executive-mental-model)
+  - [1.1 Is this a Palo Alto firewall that you can manage with Panorama?](#11-is-this-a-palo-alto-firewall-that-you-can-manage-with-panorama)
+- [2. Architecture and object relationships](#2-architecture-and-object-relationships)
+  - [2.1 Core resources](#21-core-resources)
+  - [2.2 Organization-level endpoint](#22-organization-level-endpoint)
+  - [2.3 Project-level endpoint](#23-project-level-endpoint)
+  - [2.4 Scope mismatch warning](#24-scope-mismatch-warning)
+- [3. Endpoint associations: the zonal attachment that actually enables inspection](#3-endpoint-associations-the-zonal-attachment-that-actually-enables-inspection)
+  - [3.1 Why the association is zonal even though the VPC is global](#31-why-the-association-is-zonal-even-though-the-vpc-is-global)
+  - [3.2 Failure-domain implication](#32-failure-domain-implication)
+- [4. How a connection is intercepted](#4-how-a-connection-is-intercepted)
+- [5. Routing, RIB/FIB, and why there is no firewall next-hop route](#5-routing-ribfib-and-why-there-is-no-firewall-next-hop-route)
+  - [5.1 Cloud NAT interaction](#51-cloud-nat-interaction)
+  - [5.2 Hybrid routing interaction](#52-hybrid-routing-interaction)
+  - [5.3 No route symmetry engineering to the endpoint](#53-no-route-symmetry-engineering-to-the-endpoint)
+- [6. Layer 7 security profiles and profile groups](#6-layer-7-security-profiles-and-profile-groups)
+  - [6.1 Threat prevention — how the Palo Alto-powered IPS policy is customized](#61-threat-prevention--how-the-palo-alto-powered-ips-policy-is-customized)
+    - [6.1.1 What signatures are included by default](#611-what-signatures-are-included-by-default)
+    - [6.1.2 Default actions versus your overrides](#612-default-actions-versus-your-overrides)
+    - [6.1.3 Severity overrides](#613-severity-overrides)
+    - [6.1.4 Exact threat-ID overrides — the most specific exception](#614-exact-threat-id-overrides--the-most-specific-exception)
+    - [6.1.5 Override precedence](#615-override-precedence)
+    - [6.1.6 Antivirus behavior can also be overridden by protocol](#616-antivirus-behavior-can-also-be-overridden-by-protocol)
+    - [6.1.7 You configure one override dimension per command](#617-you-configure-one-override-dimension-per-command)
+    - [6.1.8 Create the Threat Prevention profile](#618-create-the-threat-prevention-profile)
+    - [6.1.9 Put the Threat Prevention profile in a security profile group](#619-put-the-threat-prevention-profile-in-a-security-profile-group)
+    - [6.1.10 The firewall-policy rule selects which traffic is inspected](#6110-the-firewall-policy-rule-selects-which-traffic-is-inspected)
+    - [6.1.11 How a threat decision is made for a packet/session](#6111-how-a-threat-decision-is-made-for-a-packetsession)
+    - [6.1.12 Example — broad HIGH deny with one false-positive exception](#6112-example--broad-high-deny-with-one-false-positive-exception)
+    - [6.1.13 TLS inspection materially changes threat visibility](#6113-tls-inspection-materially-changes-threat-visibility)
+    - [6.1.14 Signature content updates are managed for you](#6114-signature-content-updates-are-managed-for-you)
+    - [6.1.15 Your override changes are not necessarily instantaneous](#6115-your-override-changes-are-not-necessarily-instantaneous)
+    - [6.1.16 List the currently configured overrides](#6116-list-the-currently-configured-overrides)
+    - [6.1.17 Update or remove an override](#6117-update-or-remove-an-override)
+    - [6.1.18 Where you obtain threat IDs and validate detections](#6118-where-you-obtain-threat-ids-and-validate-detections)
+    - [6.1.19 Verification workflow](#6119-verification-workflow)
+    - [6.1.20 Troubleshooting by symptom](#6120-troubleshooting-by-symptom)
+    - [6.1.21 How this differs from PAN-OS Threat Prevention profiles](#6121-how-this-differs-from-pan-os-threat-prevention-profiles)
+  - [6.2 URL filtering — how you actually customize the policy](#62-url-filtering--how-you-actually-customize-the-policy)
+    - [6.2.1 What a URL filter contains](#621-what-a-url-filter-contains)
+    - [6.2.2 What information is matched](#622-what-information-is-matched)
+    - [6.2.3 Important distinction from PAN-OS / PAN-DB URL Filtering](#623-important-distinction-from-pan-os--pan-db-url-filtering)
+    - [6.2.4 Example URL filtering profile YAML](#624-example-url-filtering-profile-yaml)
+    - [6.2.5 Default/implicit behavior is critical](#625-defaultimplicit-behavior-is-critical)
+    - [6.2.6 Create a security profile group containing the URL profile](#626-create-a-security-profile-group-containing-the-url-profile)
+    - [6.2.7 Select HTTP/HTTPS traffic with the firewall policy](#627-select-httphttps-traffic-with-the-firewall-policy)
+    - [6.2.8 Use network contexts to separate internet and non-internet policy](#628-use-network-contexts-to-separate-internet-and-non-internet-policy)
+    - [6.2.9 Example packet decision — HTTPS without TLS inspection](#629-example-packet-decision--https-without-tls-inspection)
+    - [6.2.10 Example packet decision — HTTPS with TLS inspection](#6210-example-packet-decision--https-with-tls-inspection)
+    - [6.2.11 Verify the URL filtering security profile](#6211-verify-the-url-filtering-security-profile)
+    - [6.2.12 URL filtering troubleshooting checklist](#6212-url-filtering-troubleshooting-checklist)
+  - [6.3 Advanced malware sandbox](#63-advanced-malware-sandbox)
+- [7. TLS inspection architecture](#7-tls-inspection-architecture)
+  - [7.1 Certificate chain](#71-certificate-chain)
+  - [7.2 Regional resource relationship](#72-regional-resource-relationship)
+  - [7.3 Important TLS limitations](#73-important-tls-limitations)
+- [8. MTU and encapsulation](#8-mtu-and-encapsulation)
+- [9. Capacity, throughput, HA, and scaling](#9-capacity-throughput-ha-and-scaling)
+  - [9.1 HA model](#91-ha-model)
+  - [9.2 Scaling guidance](#92-scaling-guidance)
+  - [9.3 Practical capacity design](#93-practical-capacity-design)
+- [10. Complete `gcloud` deployment example](#10-complete-gcloud-deployment-example)
+  - [10.1 Set variables](#101-set-variables)
+  - [10.2 Enable required APIs](#102-enable-required-apis)
+  - [10.3 Confirm the VPC exists](#103-confirm-the-vpc-exists)
+  - [10.4 Create an organization-level threat-prevention security profile](#104-create-an-organization-level-threat-prevention-security-profile)
+  - [10.5 Create the security profile group](#105-create-the-security-profile-group)
+  - [10.6 Create the zonal firewall endpoint](#106-create-the-zonal-firewall-endpoint)
+  - [10.7 Verify endpoint state](#107-verify-endpoint-state)
+  - [10.8 Create the endpoint association](#108-create-the-endpoint-association)
+  - [10.9 Verify the association](#109-verify-the-association)
+  - [10.10 Create a global network firewall policy](#1010-create-a-global-network-firewall-policy)
+  - [10.11 Add an egress Layer 7 inspection rule](#1011-add-an-egress-layer-7-inspection-rule)
+  - [10.12 Associate the firewall policy with the VPC](#1012-associate-the-firewall-policy-with-the-vpc)
+  - [10.13 Verify the rule](#1013-verify-the-rule)
+- [11. Project-level endpoint variant](#11-project-level-endpoint-variant)
+- [12. Enabling TLS inspection on the association](#12-enabling-tls-inspection-on-the-association)
+- [13. Ingress inspection](#13-ingress-inspection)
+  - [13.1 What ingress inspection means](#131-what-ingress-inspection-means)
+  - [13.2 Internet-to-workload packet flow](#132-internet-to-workload-packet-flow)
+  - [13.3 Stateful return path](#133-stateful-return-path)
+  - [13.4 `gcloud` ingress inspection rule](#134-gcloud-ingress-inspection-rule)
+  - [13.5 TLS inspection for inbound HTTPS](#135-tls-inspection-for-inbound-https)
+  - [13.6 Ingress verification](#136-ingress-verification)
+  - [13.7 Ingress-specific failure cases](#137-ingress-specific-failure-cases)
+- [14. East-west inspection](#14-east-west-inspection)
+  - [14.1 Same-VPC east-west traffic](#141-same-vpc-east-west-traffic)
+  - [14.2 Choosing ingress-side or egress-side interception](#142-choosing-ingress-side-or-egress-side-interception)
+  - [14.3 Same-zone packet flow](#143-same-zone-packet-flow)
+  - [14.4 Cross-zone packet flow and endpoint associations](#144-cross-zone-packet-flow-and-endpoint-associations)
+  - [14.5 `gcloud` same-VPC east-west examples](#145-gcloud-same-vpc-east-west-examples)
+  - [14.6 East-west verification](#146-east-west-verification)
+  - [14.7 East-west design cautions](#147-east-west-design-cautions)
+- [15. Firewall policy evaluation consequences](#15-firewall-policy-evaluation-consequences)
+- [16. Logging and verification](#16-logging-and-verification)
+  - [16.1 Firewall policy interception log](#161-firewall-policy-interception-log)
+  - [16.2 List endpoints](#162-list-endpoints)
+  - [16.3 List associations for the VPC](#163-list-associations-for-the-vpc)
+  - [16.4 Show the firewall policy rules](#164-show-the-firewall-policy-rules)
+  - [16.5 Check VPC MTU](#165-check-vpc-mtu)
+  - [16.6 Verify the original route](#166-verify-the-original-route)
+  - [16.7 Verify URL filtering policy objects](#167-verify-url-filtering-policy-objects)
+- [17. Troubleshooting by symptom](#17-troubleshooting-by-symptom)
+- [18. Common mistakes](#18-common-mistakes)
+- [19. When firewall endpoints are the right service-insertion method](#19-when-firewall-endpoints-are-the-right-service-insertion-method)
+- [20. Organization-level versus project-level design decision](#20-organization-level-versus-project-level-design-decision)
+- [21. Design checklist](#21-design-checklist)
+- [22. Key takeaways](#22-key-takeaways)
+- [Sources](#sources)
+
 ## Source URLs
 
 Primary Google Cloud documentation used for this guide:
@@ -1447,40 +1561,417 @@ Before enabling this in production, confirm clients trust the CA chain used by C
 
 ## 13. Ingress inspection
 
-`apply_security_profile_group` can be used on ingress firewall-policy rules as well as egress rules where supported by the policy type and target.
+Cloud NGFW Enterprise firewall endpoints can inspect **inbound connections**, not only connections initiated by workloads toward the internet. The same `apply_security_profile_group` action is supported for ingress rules in global network firewall policies and hierarchical firewall policies. When a new inbound connection matches such a rule, Cloud NGFW intercepts the connection, sends it through the firewall endpoint associated with the destination workload's VPC and zone, applies the security profiles, and then reinjects approved traffic toward that workload.
 
-A conceptual ingress flow is:
+### 13.1 What ingress inspection means
+
+For an ingress rule, the **target is the workload receiving the connection**. This is important because the firewall endpoint is zonal: the VPC must have a firewall endpoint association in the **destination workload's zone** for that workload traffic to receive Layer 7 inspection.
+
+A representative connection is:
 
 ```text
-Remote client
-  -> normal Google Cloud ingress path
-  -> ingress firewall-policy evaluation
-  -> apply_security_profile_group
-  -> Packet Intercept
-  -> zonal firewall endpoint
-  -> allow/deny based on security profiles
-  -> destination workload
+Internet client:       198.51.100.50:55000
+Destination workload:  10.10.1.10:443
+Destination zone:      us-central1-a
+Firewall endpoint:     ngfw-ent-a in us-central1-a
+Policy direction:      INGRESS
+Action:                apply_security_profile_group
 ```
 
-The return traffic for the accepted connection is covered by the connection-tracking entry created by the interception rule.
+The firewall endpoint does not become the destination IP and does not own the public service address. It is inserted transparently into the selected workload flow by Packet Intercept.
 
-Do not confuse this with an external Application Load Balancer WAF. A Cloud NGFW firewall endpoint is an L7 network-security inspection service in the VPC enforcement architecture; it is not a reverse proxy that owns a public virtual IP or performs HTTP load balancing.
+### 13.2 Internet-to-workload packet flow
+
+Assume a new TCP/443 connection is destined for a Compute Engine workload that is a target of the ingress rule.
+
+```text
+Internet client 198.51.100.50:55000
+        |
+        | 1. TCP SYN -> workload service on TCP/443
+        v
+Google Cloud VPC ingress processing
+        |
+        | 2. Evaluate applicable ingress firewall policies
+        | 3. Matching rule action = apply_security_profile_group
+        v
+Packet Intercept
+        |
+        | 4. Divert selected connection to zonal Cloud NGFW endpoint
+        v
+Cloud NGFW Enterprise firewall endpoint
+        |
+        | 5. Apply Threat Prevention / URL Filtering / malware analysis
+        |    and optional TLS inspection according to the rule/profile group
+        |
+        | 6a. Deny/drop if the security profile blocks the traffic
+        | 6b. If approved, reinject toward original destination
+        v
+Destination workload 10.10.1.10:443
+```
+
+Step by step:
+
+1. The remote client sends a packet toward the workload using the workload's normal reachable service path.
+2. Cloud NGFW evaluates firewall-policy rules applicable to the destination target and the **INGRESS** direction.
+3. A matching `apply_security_profile_group` rule terminates further evaluation in that policy.
+4. Cloud NGFW creates connection-tracking state and Packet Intercept diverts the connection to the firewall endpoint associated with the destination workload's VPC in the workload zone.
+5. The endpoint applies the profiles in the referenced security profile group.
+6. If the security profile allows the traffic, Cloud NGFW reinjects it into the original forwarding path and the packet reaches the destination workload. If the profile denies the traffic, the endpoint does not approve it for forwarding.
+7. Subsequent packets for the connection use the established connection-tracking state.
+
+**Source information:** Google documents that `apply_security_profile_group` can be selected for ingress rules, that the action sends matching packets to a Cloud NGFW firewall endpoint, and that the action creates connection-tracking state so both ingress and egress packets for a supported connection remain intercepted.
+
+### 13.3 Stateful return path
+
+You normally do **not** need a second egress `apply_security_profile_group` rule merely to force the server's reply packets through advanced inspection for the same connection.
+
+Google documents that, regardless of whether the rule is ingress or egress, a supported connection intercepted by `apply_security_profile_group` creates a firewall connection-tracking entry so that **both ingress and egress packets are intercepted**.
+
+For the example above:
+
+```text
+Forward direction
+198.51.100.50:55000 -> 10.10.1.10:443
+     matched by INGRESS apply_security_profile_group
+
+Return direction
+10.10.1.10:443 -> 198.51.100.50:55000
+     associated with the same tracked connection
+```
+
+This statefulness is important when designing policy. Create separate ingress and egress advanced-inspection rules when you need to select **different independently initiated connections**, not simply because every reply packet needs another matching rule.
+
+### 13.4 `gcloud` ingress inspection rule
+
+The following example intercepts new inbound HTTPS connections from any IPv4 source to workloads targeted by the global network firewall policy. The example leaves TLS decryption disabled; the Threat Prevention or other security profiles in `$SPG` still apply according to what they can observe without decryption.
+
+```cli
+gcloud compute network-firewall-policies rules create 300 \
+  --firewall-policy="$FW_POLICY" \
+  --project="$APP_PROJECT" \
+  --global-firewall-policy \
+  --description="Cloud NGFW Enterprise inbound HTTPS inspection" \
+  --direction=INGRESS \
+  --action=apply_security_profile_group \
+  --src-network-context=INTERNET \
+  --src-ip-ranges=0.0.0.0/0 \
+  --layer4-configs=tcp:443 \
+  --security-profile-group="//networksecurity.googleapis.com/organizations/$ORG_ID/locations/global/securityProfileGroups/$SPG" \
+  --no-tls-inspect \
+  --enable-logging
+```
+
+**What each important field does**
+
+| Field | Purpose |
+|---|---|
+| `--direction=INGRESS` | Evaluates packets entering target workload interfaces. |
+| `--src-network-context=INTERNET` | Limits the rule to traffic classified by Cloud NGFW as Internet-sourced. |
+| `--src-ip-ranges=0.0.0.0/0` | Matches any IPv4 source address within the Internet context. |
+| `--layer4-configs=tcp:443` | Limits the rule to TCP destination port 443. |
+| `--action=apply_security_profile_group` | Selects the connection for advanced inspection. |
+| `--security-profile-group=...` | Specifies which Threat Prevention, URL Filtering, and other supported profiles the endpoint uses. |
+| `--no-tls-inspect` | Does not decrypt TLS for this rule. |
+| `--enable-logging` | Enables firewall-policy logging for the interception decision. |
+
+If only a particular server tier should receive this policy, add a supported target such as `--target-secure-tags` or `--target-service-accounts` rather than applying the rule to every eligible VM interface in the VPC.
+
+### 13.5 TLS inspection for inbound HTTPS
+
+If the ingress rule uses `--tls-inspect`, the endpoint association must reference a valid regional TLS inspection policy. The certificate/trust model described in section 7 then applies to the selected connection.
+
+For inbound HTTPS, be precise about what Cloud NGFW is intercepting. The firewall endpoint is inspecting the **TLS connection that reaches the targeted workload flow**. The workload still owns its service endpoint from the VPC perspective; the Cloud NGFW firewall endpoint does not become an application reverse proxy or load balancer.
+
+To enable TLS inspection on the ingress rule after the TLS inspection policy is configured on the endpoint association:
+
+```cli
+gcloud compute network-firewall-policies rules update 300 \
+  --firewall-policy="$FW_POLICY" \
+  --global-firewall-policy \
+  --tls-inspect \
+  --project="$APP_PROJECT"
+```
+
+Before using TLS decryption, validate the documented TLS protocol limitations, certificate trust model, and application behavior.
+
+### 13.6 Ingress verification
+
+First verify that the rule is really an ingress interception rule:
+
+```cli
+gcloud compute network-firewall-policies rules describe 300 \
+  --firewall-policy="$FW_POLICY" \
+  --global-firewall-policy \
+  --project="$APP_PROJECT"
+```
+
+**Expected state, not verbatim output:**
+
+- direction is `INGRESS`;
+- action is `apply_security_profile_group`;
+- source network context and source ranges are what you intended;
+- TCP/443 is present if following the example;
+- security profile group URI is correct;
+- TLS inspection state matches the design;
+- logging is enabled.
+
+Then verify the destination workload zone has an active endpoint association:
+
+```cli
+gcloud network-security firewall-endpoint-associations list \
+  --filter="network:$NETWORK" \
+  --project="$APP_PROJECT"
+```
+
+For a specific association:
+
+```cli
+gcloud network-security firewall-endpoint-associations describe "$ENDPOINT_ASSOC" \
+  --location="$ZONE" \
+  --project="$APP_PROJECT"
+```
+
+**Success criteria:**
+
+1. a new inbound test connection matches the intended ingress rule;
+2. firewall-policy logging shows the advanced-inspection action and an `INTERCEPTED` disposition for the session;
+3. the destination workload's zone has the active endpoint association;
+4. the expected threat, URL, or other security-profile events appear when the traffic actually triggers them;
+5. approved traffic reaches the workload and reply traffic succeeds through the tracked connection.
+
+### 13.7 Ingress-specific failure cases
+
+**Inbound connection reaches the VM, but there is no `INTERCEPTED` log**
+
+- Check whether a higher-priority ingress `allow` rule terminates evaluation before the inspection rule.
+- Confirm the rule is `INGRESS`, not `EGRESS`.
+- Confirm the source network context, source IP range, Layer 4 port, and target match the actual connection.
+- Confirm the global network firewall policy is associated with the VPC or the hierarchical policy applies to the resource.
+
+**Rule matches in policy design, but Layer 7 inspection does not occur for one zone**
+
+- Confirm the VPC has an active firewall endpoint association in the destination workload's zone.
+- A policy can be global while the inspection endpoint remains zonal.
+
+**HTTPS works without TLS inspection, but enabling TLS inspection breaks it**
+
+- Validate the TLS inspection policy referenced by the endpoint association.
+- Validate certificate trust and supported TLS behavior.
+- Test with a new connection after changing the policy.
 
 ---
 
 ## 14. East-west inspection
 
-Firewall endpoint inspection can be used for traffic within Google Cloud, not only internet traffic.
+Cloud NGFW Enterprise firewall endpoints can inspect **east-west workload traffic inside Google Cloud**, including traffic between workloads in the same VPC. East-west inspection uses exactly the same Cloud NGFW building blocks as north-south inspection: firewall-policy rule selection, `apply_security_profile_group`, Packet Intercept, the zonal firewall endpoint association, security profile evaluation, reinjection, and connection tracking.
+
+No firewall-endpoint route is required to make same-VPC traffic eligible for inspection.
+
+### 14.1 Same-VPC east-west traffic
+
+Assume:
+
+```text
+VM-A
+IP:    10.10.1.10
+Zone:  us-central1-a
+Role:  application client
+
+VM-B
+IP:    10.10.2.20
+Zone:  us-central1-a
+Role:  application server
+Port:  TCP/8443
+```
+
+The ordinary VPC path already knows how to reach `10.10.2.20`. Advanced inspection is selected separately by firewall policy.
+
+A connection can be selected from either policy perspective:
+
+- **egress-side selection:** a rule targeting VM-A matches traffic leaving VM-A toward VM-B;
+- **ingress-side selection:** a rule targeting VM-B matches traffic entering VM-B from VM-A.
+
+You should choose the side that best represents the security boundary you want to express. Because the first matching `apply_security_profile_group` rule creates connection-tracking state for the connection, do not duplicate rules merely to make reply packets stateful.
+
+### 14.2 Choosing ingress-side or egress-side interception
+
+Use **egress-side interception** when your security intent is best described as:
+
+> “Connections initiated by this source tier toward that destination tier must receive advanced inspection.”
 
 Example:
 
-- VM-A: `10.10.1.10` in `us-central1-a`;
-- VM-B: `10.10.2.20` reachable through the VPC's normal routing;
-- an egress or ingress policy rule matches the connection and uses `apply_security_profile_group`;
-- Packet Intercept diverts the matching connection to the appropriate zonal endpoint;
-- the endpoint inspects and reinjects accepted traffic.
+```text
+Source workload target: application-client tier
+Destination:            10.10.2.0/24
+Protocol/port:          TCP/8443
+Direction:              EGRESS
+Action:                 apply_security_profile_group
+```
 
-Because the selection is policy-based rather than route-based, you can express inspection intent using IP ranges, service accounts, and secure-tag targeting supported by the chosen firewall-policy type instead of creating a web of more-specific service-insertion routes.
+Use **ingress-side interception** when your security intent is best described as:
+
+> “Connections entering this protected server tier from these sources must receive advanced inspection.”
+
+Example:
+
+```text
+Target workload:        application-server tier
+Source:                 10.10.1.0/24
+Protocol/port:          TCP/8443
+Direction:              INGRESS
+Action:                 apply_security_profile_group
+```
+
+This is a policy-design choice, not a routing requirement.
+
+### 14.3 Same-zone packet flow
+
+For an egress-selected flow in `us-central1-a`:
+
+```text
+VM-A 10.10.1.10
+    |
+    | 1. New TCP/8443 connection to 10.10.2.20
+    v
+EGRESS firewall-policy evaluation on VM-A flow
+    |
+    | 2. apply_security_profile_group matches
+    v
+Packet Intercept
+    |
+    | 3. Use VPC endpoint association in us-central1-a
+    v
+Cloud NGFW Enterprise endpoint, us-central1-a
+    |
+    | 4. Apply security profile group
+    | 5. Approve or deny
+    v
+Reinject approved traffic into the original VPC path
+    |
+    v
+VM-B 10.10.2.20:8443
+```
+
+For an ingress-selected flow, the policy evaluation point is expressed from VM-B's receiving side, and the relevant workload association is the one in VM-B's zone.
+
+The important operational principle is that the endpoint follows the **zonal workload traffic selected by the firewall policy**. Google requires the endpoint and the workloads for which Layer 7 inspection is enabled to be in the same zone.
+
+### 14.4 Cross-zone packet flow and endpoint associations
+
+Assume:
+
+```text
+VM-A: 10.10.1.10 in us-central1-a
+VM-B: 10.10.2.20 in us-central1-b
+```
+
+The VPC is global, but firewall endpoints and endpoint associations are zonal.
+
+If you select the new connection with an **EGRESS** rule targeting VM-A, ensure the VPC has an active endpoint association in `us-central1-a`, because that is the source workload zone whose outbound traffic is being selected for Layer 7 inspection.
+
+If instead you select the connection with an **INGRESS** rule targeting VM-B, ensure the VPC has an active endpoint association in `us-central1-b`, because that is the destination workload zone whose inbound traffic is being selected.
+
+For a broadly protected multi-zone environment, deploy endpoint associations in **every zone containing workloads that can be selected by your advanced-inspection policies**. Do not assume one endpoint association covers the entire global VPC.
+
+### 14.5 `gcloud` same-VPC east-west examples
+
+#### Egress-selected example
+
+Inspect TCP/8443 connections leaving selected source workloads for the application-server subnet:
+
+```cli
+gcloud compute network-firewall-policies rules create 400 \
+  --firewall-policy="$FW_POLICY" \
+  --project="$APP_PROJECT" \
+  --global-firewall-policy \
+  --description="Cloud NGFW same-VPC east-west app-to-server inspection" \
+  --direction=EGRESS \
+  --action=apply_security_profile_group \
+  --dest-network-context=NON_INTERNET \
+  --dest-ip-ranges=10.10.2.0/24 \
+  --layer4-configs=tcp:8443 \
+  --security-profile-group="//networksecurity.googleapis.com/organizations/$ORG_ID/locations/global/securityProfileGroups/$SPG" \
+  --no-tls-inspect \
+  --enable-logging
+```
+
+Add `--target-secure-tags` or `--target-service-accounts` if the rule should apply only to a particular source workload tier.
+
+#### Ingress-selected example
+
+Inspect TCP/8443 connections entering the protected destination tier from `10.10.1.0/24`:
+
+```cli
+gcloud compute network-firewall-policies rules create 410 \
+  --firewall-policy="$FW_POLICY" \
+  --project="$APP_PROJECT" \
+  --global-firewall-policy \
+  --description="Cloud NGFW same-VPC east-west server ingress inspection" \
+  --direction=INGRESS \
+  --action=apply_security_profile_group \
+  --src-network-context=INTRA_VPC \
+  --src-ip-ranges=10.10.1.0/24 \
+  --layer4-configs=tcp:8443 \
+  --security-profile-group="//networksecurity.googleapis.com/organizations/$ORG_ID/locations/global/securityProfileGroups/$SPG" \
+  --no-tls-inspect \
+  --enable-logging
+```
+
+Use an appropriate target such as a secure tag or service account to identify the server tier if the policy should not apply to every eligible workload.
+
+The network-context values are useful because Cloud NGFW can distinguish Internet and non-Internet/intra-VPC classes independently of the IP prefixes. This reduces the chance that a broad Internet-oriented URL or threat profile rule unintentionally becomes the policy for internal workload traffic.
+
+### 14.6 East-west verification
+
+Describe the intended rule:
+
+```cli
+gcloud compute network-firewall-policies rules describe 400 \
+  --firewall-policy="$FW_POLICY" \
+  --global-firewall-policy \
+  --project="$APP_PROJECT"
+```
+
+or, for the ingress-selected variant:
+
+```cli
+gcloud compute network-firewall-policies rules describe 410 \
+  --firewall-policy="$FW_POLICY" \
+  --global-firewall-policy \
+  --project="$APP_PROJECT"
+```
+
+**Success criteria:**
+
+- direction matches the design (`EGRESS` or `INGRESS`);
+- source/destination IP range and network context match the actual east-west connection;
+- destination port matches the real application port;
+- the correct security profile group is referenced;
+- the relevant workload zone has an active endpoint association;
+- new east-west sessions generate the expected `INTERCEPTED` policy log;
+- security-profile events appear when traffic triggers them;
+- the server receives allowed connections and stateful return traffic succeeds.
+
+To confirm endpoint coverage across zones:
+
+```cli
+gcloud network-security firewall-endpoint-associations list \
+  --filter="network:$NETWORK" \
+  --project="$APP_PROJECT"
+```
+
+Map each inspected workload zone to an enabled association. A missing zone association is a security-coverage gap even though normal VPC connectivity can still work.
+
+### 14.7 East-west design cautions
+
+1. **Do not assume same-VPC traffic is automatically inspected.** It must match an advanced-inspection firewall-policy rule.
+2. **Do not assume a global policy makes the endpoint global.** Inspection data-plane coverage is still zonal.
+3. **Do not create duplicate ingress and egress interception rules just for return traffic.** Connection tracking covers both directions of the intercepted supported connection.
+4. **Avoid shadowing the interception rule with a higher-priority `allow`.** The higher-priority terminating rule can prevent the advanced-inspection rule from ever matching.
+5. **Use network contexts deliberately.** Keep Internet and east-west policy scopes distinct, especially when URL filtering profiles have different default actions.
+6. **Plan endpoint capacity per zone.** East-west traffic can materially increase the volume sent to a zonal endpoint even when Internet egress volume is modest.
+7. **If using TLS inspection for internal applications, validate trust and protocol support.** Internal HTTPS can break for the same certificate-trust or protocol-compatibility reasons as Internet-bound TLS inspection.
 
 ---
 
@@ -1724,6 +2215,9 @@ gcloud compute networks describe "$NETWORK" \
 18. **Assuming severity overrides beat signature overrides.** Exact threat-ID overrides take precedence over severity-level overrides.
 19. **Expecting signature feeds to be managed in Panorama.** Google manages signature distribution to firewall endpoints; documented Palo Alto content-update latency can be up to 48 hours.
 20. **Testing an override immediately on an old session.** Profile changes can take up to about 15 minutes to propagate; retest with a new connection after verifying the override.
+21. **Assuming ingress advanced inspection requires a separate return-path egress inspection rule.** `apply_security_profile_group` connection tracking covers both directions of a supported intercepted connection.
+22. **Assuming same-VPC east-west traffic cannot be inspected because the route is local.** Cloud NGFW selects matching workload traffic with firewall policy and Packet Intercept rather than requiring a firewall endpoint route.
+23. **Forgetting which zone needs endpoint coverage.** The workload traffic selected for Layer 7 inspection must have the applicable VPC endpoint association in its workload zone.
 
 ---
 
@@ -1776,6 +2270,9 @@ Before production deployment, confirm all of the following:
 - [ ] Global/hierarchical firewall-policy rule uses `apply_security_profile_group`.
 - [ ] Rule order does not allow traffic before the interception rule.
 - [ ] Rule targets only the intended workloads/services.
+- [ ] Ingress inspection rules are scoped to the intended sources, destination service ports, and destination workload targets.
+- [ ] East-west rules deliberately select ingress-side or egress-side inspection based on the security boundary being enforced.
+- [ ] Same-VPC and cross-zone east-west workload zones have the required endpoint associations.
 - [ ] URL filtering rules are scoped deliberately to HTTP/HTTPS traffic.
 - [ ] URL matcher strings, priorities, allow/deny actions, and default behavior are documented.
 - [ ] Internet and non-internet URL policies use separate network contexts where appropriate.
@@ -1783,7 +2280,7 @@ Before production deployment, confirm all of the following:
 - [ ] No design assumption depends on Panorama/PAN-OS objects that the managed service does not expose.
 - [ ] Firewall-policy logging is enabled during rollout.
 - [ ] VPC MTU is compatible with endpoint packet-size support.
-- [ ] Endpoint throughput and single-flow limits are acceptable.
+- [ ] Endpoint throughput and single-flow limits are acceptable, including east-west inspection volume.
 - [ ] TLS CA trust is deployed before enabling `--tls-inspect`.
 - [ ] TLS-dependent applications have been tested for HTTP/2/QUIC/HTTP/3 behavior.
 - [ ] Serverless workloads are excluded from unsupported inspection assumptions.
@@ -1800,15 +2297,17 @@ Before production deployment, confirm all of the following:
 3. The VPC must have a **firewall endpoint association in every workload zone** that needs Layer 7 inspection.
 4. Policy intent can be centralized even though endpoint data-plane capacity is zonal.
 5. `apply_security_profile_group` creates connection-tracking state so both directions of the connection remain intercepted.
-6. Threat Prevention uses a Google-managed Palo Alto-backed signature set; you customize enforcement with severity overrides, exact threat-ID overrides, and supported antivirus protocol overrides.
-7. Exact threat-ID overrides take precedence over severity overrides, which lets you preserve a broad enforcement posture while making narrow exceptions.
-8. Palo Alto signature content is distributed automatically by Google; there is no Panorama content-update workflow for Cloud NGFW Enterprise endpoints.
-9. URL filtering is customized through Google Cloud **URL filtering security profiles** containing prioritized domain/URL matcher strings and allow/deny actions.
-10. Without TLS inspection, HTTPS URL filtering primarily relies on TLS SNI; with TLS inspection, Cloud NGFW can also use domain information from decrypted HTTP headers and Threat Prevention can inspect decrypted application content where supported.
-11. The documented Cloud NGFW Enterprise policy surface is **not the same as PAN-OS/PAN-DB or PAN-OS Threat Prevention profiles**, and Panorama does not manage these Google-managed endpoints.
-12. TLS inspection requires both a TLS inspection policy on the endpoint association and TLS-inspection enablement on the firewall-policy rule.
-13. MTU, protocol support, project/org scope, profile default behavior, override precedence, propagation delay, and endpoint capacity are operationally significant; failures in these areas can produce security gaps or packet loss without any need for a route-table problem.
-14. Cloud NAT, hybrid routes, and normal VPC routing remain separate from endpoint insertion because the endpoint does not replace the original forwarding path.
+6. Cloud NGFW Enterprise can apply advanced inspection to **Internet ingress, Internet egress, and east-west workload traffic**, including same-VPC flows, when the traffic matches the appropriate supported firewall-policy rule.
+7. For ingress selection, endpoint coverage must exist in the destination workload's zone; for egress selection, endpoint coverage must exist in the source workload's zone.
+8. Threat Prevention uses a Google-managed Palo Alto-backed signature set; you customize enforcement with severity overrides, exact threat-ID overrides, and supported antivirus protocol overrides.
+9. Exact threat-ID overrides take precedence over severity overrides, which lets you preserve a broad enforcement posture while making narrow exceptions.
+10. Palo Alto signature content is distributed automatically by Google; there is no Panorama content-update workflow for Cloud NGFW Enterprise endpoints.
+11. URL filtering is customized through Google Cloud **URL filtering security profiles** containing prioritized domain/URL matcher strings and allow/deny actions.
+12. Without TLS inspection, HTTPS URL filtering primarily relies on TLS SNI; with TLS inspection, Cloud NGFW can also use domain information from decrypted HTTP headers and Threat Prevention can inspect decrypted application content where supported.
+13. The documented Cloud NGFW Enterprise policy surface is **not the same as PAN-OS/PAN-DB or PAN-OS Threat Prevention profiles**, and Panorama does not manage these Google-managed endpoints.
+14. TLS inspection requires both a TLS inspection policy on the endpoint association and TLS-inspection enablement on the firewall-policy rule.
+15. MTU, protocol support, project/org scope, profile default behavior, override precedence, propagation delay, endpoint capacity, and zonal association coverage are operationally significant; failures in these areas can produce security gaps or packet loss without any need for a route-table problem.
+16. Cloud NAT, hybrid routes, normal VPC routing, and same-VPC reachability remain separate from endpoint insertion because the endpoint does not replace the original forwarding path.
 
 ---
 
