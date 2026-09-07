@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="700" viewBox="0 0 1400 700">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#333"/></marker></defs>
+<rect width="100%" height="100%" fill="white"/><text x="40" y="48" font-family="Arial" font-size="28" font-weight="700">Cloud NGFW Enterprise — Native Packet Intercept</text>
+<rect x="70" y="240" width="200" height="110" rx="14" fill="#d2e3fc" stroke="#5f6368" stroke-width="2"/>
+<text x="170.0" y="284.0" text-anchor="middle" font-family="Arial" font-size="18">Client VM</text>
+<text x="170.0" y="308.0" text-anchor="middle" font-family="Arial" font-size="18">10.10.1.10</text>
+<rect x="340" y="120" width="260" height="130" rx="14" fill="#fce8b2" stroke="#5f6368" stroke-width="2"/>
+<text x="470.0" y="174.0" text-anchor="middle" font-family="Arial" font-size="18">Firewall Policy</text>
+<text x="470.0" y="198.0" text-anchor="middle" font-family="Arial" font-size="18">apply_security_profile_group</text>
+<rect x="670" y="120" width="260" height="130" rx="14" fill="#e8f0fe" stroke="#5f6368" stroke-width="2"/>
+<text x="800.0" y="174.0" text-anchor="middle" font-family="Arial" font-size="18">Google Packet Intercept</text>
+<text x="800.0" y="198.0" text-anchor="middle" font-family="Arial" font-size="18">GENEVE metadata</text>
+<rect x="1000" y="120" width="260" height="130" rx="14" fill="#f8d7da" stroke="#5f6368" stroke-width="2"/>
+<text x="1130.0" y="174.0" text-anchor="middle" font-family="Arial" font-size="18">Cloud NGFW Enterprise</text>
+<text x="1130.0" y="198.0" text-anchor="middle" font-family="Arial" font-size="18">Zonal Firewall Endpoint</text>
+<rect x="1000" y="390" width="260" height="110" rx="14" fill="#d2e3fc" stroke="#5f6368" stroke-width="2"/>
+<text x="1130.0" y="434.0" text-anchor="middle" font-family="Arial" font-size="18">Server VM</text>
+<text x="1130.0" y="458.0" text-anchor="middle" font-family="Arial" font-size="18">10.20.1.20</text>
+<path d="M270,275 L340,185" fill="none" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="305.0" y="220.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#202124">1. packet</text>
+<path d="M600,185 L670,185" fill="none" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="635.0" y="175.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#202124">2. select flow</text>
+<path d="M930,185 L1000,185" fill="none" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="965.0" y="175.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#202124">3. intercept</text>
+<path d="M1130,250 L1130,390" fill="none" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="1130.0" y="310.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#202124">4. allow/reinject</text>
+<path d="M1000,445 L270,295" fill="none" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="635.0" y="360.0" text-anchor="middle" font-family="Arial" font-size="15" fill="#202124">5. normal destination path</text>
+</svg>
