@@ -1,0 +1,368 @@
+name: Update PAN GCP NSI overlay section
+
+on:
+  push:
+    paths:
+      - '.github/workflows/update-pan-gcp-nsi-overlay-section.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-guide:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace section 6.2 with vendor-documented configuration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md')
+          text = p.read_text()
+          start = text.index('## 6.2 Model B — direct Internet egress through VM-Series')
+          end = text.index('## 6.3 Standard versus direct Internet egress', start)
+
+          replacement = r'''## 6.2 Model B — direct Internet egress through VM-Series
+
+Google added NSI **direct Internet egress** on **August 20, 2026**. Google documents that, in this model, the network security appliance in the producer VPC inspects an outbound packet and sends the allowed packet **directly to the Internet through the appliance's external network interface**. The Internet response returns to the appliance, which then sends the response **directly to the consumer VM over GENEVE**, avoiding the normal standard-NSI hairpin back through the consumer VPC before Internet egress.
+
+Google also states that enabling direct Internet egress does **not** require additional NSI producer resources, consumer resources, Cloud NAT, or a consumer default Internet route. The appliance itself must be configured for the direct-egress behavior described by its vendor.
+
+Palo Alto Networks documents the corresponding VM-Series implementation as **GCP NSI Overlay Support**. Palo Alto describes this mode as enabling **direct packet egress** and **inner routing**, which allows PAN-OS to use its own routing table to forward an inspected inner packet instead of always re-encapsulating that allowed packet back to the consumer VPC first.
+
+**Primary references:**
+
+- Palo Alto Networks — Configure GCP NSI Overlay Support: https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configure-gcp-nsi-overlay-support
+- Google Cloud — NSI in-band integration overview / Direct Internet Egress: https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
+- Google Cloud — NSI release notes, August 20, 2026: https://docs.cloud.google.com/network-security-integration/docs/release-notes
+
+### 6.2.1 Palo Alto prerequisites and topology
+
+Palo Alto documents the following requirements for GCP NSI Overlay Support:
+
+- **VM-Series** firewall;
+- **PAN-OS 12.1.8 or later**;
+- an already deployed Google Cloud NSI environment;
+- `nic0` used for **Management**;
+- `nic1` used for **Trust**;
+- `nic2` used for **Untrust**;
+- the security endpoint placement and target consumer workloads must satisfy Google's documented regional-placement requirements;
+- Palo Alto currently states that **autoscaling is not supported for GCP NSI Overlay**.
+
+The important topology difference from standard NSI is:
+
+```text
+Standard NSI
+Consumer VM
+  -> NSI / GENEVE
+  -> VM-Series
+  -> GENEVE reinjection to consumer VPC
+  -> consumer VPC Internet route / Cloud NAT
+  -> Internet
+
+GCP NSI Overlay / direct Internet egress
+Consumer VM
+  -> NSI / GENEVE
+  -> VM-Series Trust (ethernet1/1)
+  -> PAN-OS inner route lookup
+  -> Trust-to-Untrust Security/NAT processing
+  -> VM-Series Untrust (ethernet1/2)
+  -> Internet
+```
+
+The firewall therefore becomes both:
+
+- the NSI inspection engine for the intercepted connection; and
+- the routed Internet egress/return point for that selected flow.
+
+### 6.2.2 Configure Trust and Untrust interfaces on PAN-OS
+
+Palo Alto's documented CLI example assigns intercepted workload traffic to `ethernet1/1` and direct Internet egress to `ethernet1/2`.
+
+Configure the Trust interface:
+
+```cli
+set network interface ethernet ethernet1/1 layer3 dhcp-client enable yes
+set network virtual-router default interface ethernet1/1
+set zone Trust network layer3 ethernet1/1
+```
+
+Configure the Untrust interface:
+
+```cli
+set network interface ethernet ethernet1/2 layer3 dhcp-client enable yes
+set network virtual-router default interface ethernet1/2
+set zone Untrust network layer3 ethernet1/2
+```
+
+**Why this matters:** `ethernet1/1` receives the inner workload traffic after GENEVE decapsulation. With NSI Overlay enabled, PAN-OS can perform an inner-packet route lookup and forward the packet out `ethernet1/2` instead of returning the allowed outbound packet to the consumer VPC.
+
+### 6.2.3 Disable the Trust-interface default route
+
+Palo Alto specifically instructs you to disable the default route learned on the application-facing dataplane interface:
+
+```cli
+set network interface ethernet1/1 layer3 config-type static no-default-route yes
+```
+
+Replace `ethernet1/1` if your application/Trust dataplane interface uses a different interface name.
+
+**What this accomplishes:** the Trust-facing interface should not install a competing default route that could cause Internet-bound inner traffic to route back toward the producer-side Trust/inspection path. The desired direct-egress path is through the Untrust side.
+
+Commit the interface/routing changes.
+
+### 6.2.4 Configure NAT for east-west and Internet traffic
+
+Palo Alto documents a **no-NAT** rule for Trust-to-Trust east-west traffic:
+
+```cli
+set rulebase nat rules no-nat-east-west from Trust to Trust
+set rulebase nat rules no-nat-east-west source any destination any service any
+```
+
+For Internet-bound Trust-to-Untrust traffic, Palo Alto documents source NAT using the Untrust interface address:
+
+```cli
+set rulebase nat rules egress-nat from Trust to Untrust
+set rulebase nat rules egress-nat source any destination any service any
+set rulebase nat rules egress-nat source-translation dynamic-ip-and-port interface-address interface ethernet1/2
+```
+
+Commit the NAT changes.
+
+**Packet-field effect:** before PAN-OS source NAT, the inner packet still has the consumer workload's private source address. After the Trust-to-Untrust source NAT rule, PAN-OS translates the source to the address associated with `ethernet1/2` and owns the corresponding NAT/session state for the Internet leg.
+
+Example, conceptually:
+
+```text
+Before PAN-OS SNAT:
+10.10.1.10:51514 -> 198.51.100.25:443
+
+After PAN-OS SNAT:
+UNTRUST_INTERFACE_ADDRESS:translated-port -> 198.51.100.25:443
+```
+
+The runtime translated source port should be verified from PAN-OS session/NAT state rather than assumed in advance.
+
+### 6.2.5 Enable Palo Alto GCP NSI Overlay inspection
+
+For this feature Palo Alto documents the following command:
+
+```cli
+request plugins vm_series gcp nsi inspect enable yes
+```
+
+This is the Palo Alto command specifically documented for **GCP NSI Overlay Support**. It enables VM-Series processing for the NSI GENEVE traffic and the overlay/direct-egress behavior used by this design.
+
+Verify the feature state:
+
+```cli
+show plugins vm_series gcp nsi status
+```
+
+Verify GENEVE encapsulation and decapsulation activity:
+
+```cli
+show counter global filter delta yes | match geneve
+```
+
+Palo Alto specifically recommends confirming that `geneve_encap` and `geneve_decap` counters increment while test traffic is flowing.
+
+To disable the overlay feature:
+
+```cli
+request plugins vm_series gcp nsi inspect enable no
+```
+
+Commit configuration changes where required by PAN-OS.
+
+### 6.2.6 PAN-OS Security policy is still required
+
+NSI interception does not replace PAN-OS policy enforcement. Once VM-Series decapsulates the packet, the resulting inner flow must be permitted by the applicable PAN-OS **Security policy** and any attached App-ID/content-security profiles.
+
+For Internet egress, the logical policy relationship is normally:
+
+```text
+Source zone:      Trust
+Destination zone: Untrust
+Source:           intended consumer workload ranges/tags represented in PAN-OS policy
+Destination:      approved Internet destinations / any as required
+Application:      explicitly allowed applications
+Service:          application-default or required service policy
+Action:           allow
+Security profiles: attach as required
+```
+
+The exact Security rule should follow your organization's policy model; Palo Alto's NSI Overlay setup page focuses on the NSI interface, routing, NAT, and plugin requirements rather than prescribing a universal Security policy.
+
+### 6.2.7 Forward packet flow after Overlay is enabled
+
+Example:
+
+```text
+Consumer: 10.10.1.10:51514
+Internet: 198.51.100.25:443
+```
+
+1. The consumer VM initiates the new connection.
+2. The consumer NSI firewall rule matches the new session and invokes `APPLY_SECURITY_PROFILE_GROUP`.
+3. Google sends the packet to the producer service in GENEVE.
+4. The producer ILB selects a healthy VM-Series backend.
+5. VM-Series decapsulates the packet and sees the original inner tuple.
+6. PAN-OS performs Security/App-ID/threat inspection.
+7. Because NSI Overlay enables **inner routing**, PAN-OS performs its route lookup for the inspected inner packet.
+8. The Internet route selects the Untrust side (`ethernet1/2`).
+9. The Trust-to-Untrust NAT rule performs source NAT using the `ethernet1/2` interface address.
+10. VM-Series sends the packet directly to the Internet instead of GENEVE-reinjecting this allowed outbound packet back into the consumer VPC.
+
+This is the key behavioral difference from standard NSI.
+
+### 6.2.8 Return path — Internet response back to the consumer
+
+1. The Internet server replies to the public source identity used by the VM-Series Untrust interface/NAT state.
+2. The response arrives on the VM-Series Untrust path.
+3. PAN-OS performs its existing-session lookup and reverse NAT.
+4. PAN-OS applies stateful inspection to the response.
+5. VM-Series uses metadata from the original NSI/Geneve flow to construct the response GENEVE packet for the consumer.
+6. Google documents that the appliance sends the Internet response **directly to the consumer VM using GENEVE**.
+7. Google reinjects the decapsulated response to the original consumer workload.
+8. The consumer receives the response without Cloud NAT or a consumer VPC default Internet route participating in this inspected direct-egress flow.
+
+This produces only two producer/consumer boundary crossings:
+
+```text
+Hop 1  consumer -> producer   intercepted outbound flow
+Hop 2  producer -> consumer   inspected Internet response over GENEVE
+```
+
+Google contrasts this with standard in-band NSI, which has four boundary crossings because the allowed outbound packet is first reinjected to the consumer VPC for Internet egress and the returning response subsequently traverses the inspection service again.
+
+### 6.2.9 Google-side configuration changes: what is and is not required
+
+Once the standard NSI producer/consumer resources are already working, Google states that direct Internet egress does **not** require additional configuration of the producer VPC, consumer VPC, or NSI in-band resources solely to turn on direct egress. Instead, configure the network appliance according to the vendor documentation.
+
+Therefore you still keep the normal NSI object chain:
+
+```text
+consumer firewall policy
+ -> APPLY_SECURITY_PROFILE_GROUP
+ -> security profile group
+ -> custom-intercept profile
+ -> intercept endpoint group
+ -> deployment group
+ -> zonal deployment
+ -> internal passthrough ILB
+ -> VM-Series
+```
+
+What changes is what VM-Series does **after inspection** of an allowed Internet-bound packet.
+
+Also, for the selected direct-egress flows, Google documents that the consumer VPC does **not** require:
+
+- Cloud NAT; or
+- a consumer default Internet route.
+
+### 6.2.10 Verification on VM-Series
+
+Verify the Palo Alto NSI Overlay feature:
+
+```cli
+show plugins vm_series gcp nsi status
+```
+
+Verify GENEVE processing:
+
+```cli
+show counter global filter delta yes | match geneve
+```
+
+Verify the PAN-OS session for the consumer-to-Internet flow:
+
+```cli
+show session all filter source 10.10.1.10 destination 198.51.100.25
+```
+
+Verify routing:
+
+```cli
+show routing route
+```
+
+**Success criteria:**
+
+- NSI Overlay reports enabled/healthy;
+- `geneve_decap` increases when consumer traffic arrives;
+- PAN-OS creates the expected session for the original inner flow;
+- routing selects the Untrust Internet path;
+- the egress NAT rule translates Trust-to-Untrust traffic;
+- Internet response traffic returns to VM-Series;
+- reverse NAT/session lookup succeeds;
+- `geneve_encap` increases when responses are returned to the consumer;
+- the consumer receives the response without depending on Cloud NAT.
+
+### 6.2.11 Troubleshooting direct Internet egress
+
+#### Outbound GENEVE reaches VM-Series but traffic does not leave Untrust
+
+**Where:** PAN-OS interface/routing/NAT state.
+
+**Check:**
+
+```cli
+show plugins vm_series gcp nsi status
+show routing route
+show session all filter source 10.10.1.10 destination 198.51.100.25
+show counter global filter severity drop delta yes
+```
+
+**What failure usually means:** NSI delivered the packet correctly, but PAN-OS did not have a usable inner route, Security policy, or Trust-to-Untrust NAT path.
+
+#### Traffic exits the wrong interface
+
+**Where:** PAN-OS virtual router and DHCP/default-route behavior.
+
+**Check:** verify `ethernet1/1` has `no-default-route yes` and that the expected Internet route resolves through the Untrust side.
+
+#### Internet server receives traffic but response does not reach consumer
+
+**Where:** PAN-OS NAT/session state and GENEVE response encapsulation.
+
+**Check:** confirm the response reaches Untrust, matches the established PAN-OS session, reverse NAT succeeds, and `geneve_encap` increments when the return packet is sent toward the consumer.
+
+#### GENEVE counters do not increment
+
+**Where:** Palo Alto NSI plugin and Google NSI producer chain.
+
+**Check:** `show plugins vm_series gcp nsi status`, producer ILB health, intercept deployment state, and consumer policy selection.
+
+### 6.2.12 Limitations and design cautions
+
+- Palo Alto requires **PAN-OS 12.1.8 or later** for GCP NSI Overlay Support.
+- Palo Alto currently states that **autoscaling is not supported** for GCP NSI Overlay.
+- Keep the documented `nic0` management, `nic1` Trust, and `nic2` Untrust interface role mapping unless a newer Palo Alto document explicitly supports a different topology.
+- Direct Internet egress changes the NAT owner: PAN-OS can own the Internet SNAT/session state instead of consumer Cloud NAT.
+- Do not troubleshoot this model as though the allowed outbound packet must be reinjected into the consumer VPC; that is the standard NSI model, not Overlay direct egress.
+- A working NSI control-plane chain does not prove PAN-OS has the correct inner route, Security policy, NAT policy, or Internet-facing Untrust connectivity.
+
+**Source information:** Palo Alto Networks documents GCP NSI Overlay Support, its PAN-OS 12.1.8 requirement, three-interface role mapping, Trust default-route suppression, Trust-to-Trust no-NAT, Trust-to-Untrust interface-address SNAT, the `request plugins vm_series gcp nsi inspect enable yes` enablement command, status/counter verification, and the current no-autoscaling limitation.
+
+**Additional explanation:** Google's direct-egress feature supplies the interception/reinjection framework, while PAN-OS becomes responsible for the inner-packet routing, Security/NAT policy, and Internet-facing forwarding leg.
+
+**Reasonable inference:** Operationally, direct Internet egress should be treated as a hybrid of transparent NSI service insertion on the consumer-to-firewall leg and a conventional routed/NATed PAN-OS Internet edge on the firewall-to-Internet leg.
+
+'''
+
+          p.write_text(text[:start] + replacement + text[end:])
+          PY
+
+      - name: Commit guide update and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name 'openai-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/update-pan-gcp-nsi-overlay-section.yml
+          git add 09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md
+          git commit -m 'Expand Palo Alto GCP NSI Overlay direct egress configuration'
+          git push
