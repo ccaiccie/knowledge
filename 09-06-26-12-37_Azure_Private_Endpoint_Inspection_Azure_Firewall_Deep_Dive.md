@@ -20,6 +20,8 @@ Examples use Azure SQL terminology where useful, but the networking principles a
 - https://learn.microsoft.com/en-us/azure/private-link/create-private-endpoint-cli
 - https://learn.microsoft.com/en-us/cli/azure/network/private-endpoint?view=azure-cli-latest
 - https://learn.microsoft.com/en-us/azure/private-link/secure-private-link
+- https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview
+- https://learn.microsoft.com/en-us/cli/azure/network/private-link-service?view=azure-cli-latest
 - https://learn.microsoft.com/en-us/azure/firewall/snat-private-range
 - https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
 - https://learn.microsoft.com/en-us/azure/load-balancer/components
@@ -48,6 +50,8 @@ Examples use Azure SQL terminology where useful, but the networking principles a
   - [9. Exact ILB/NVA return packet flow](#9-exact-ilbnva-return-packet-flow)
   - [10. HA behavior: what ILB does and does not provide](#10-ha-behavior-what-ilb-does-and-does-not-provide)
   - [11. Azure CLI — create the ILB and NVA service insertion layer](#11-azure-cli--create-the-ilb-and-nva-service-insertion-layer)
+    - [11.8 Can I link the ILB directly to a PaaS Private Endpoint without a UDR?](#118-can-i-link-the-ilb-directly-to-a-paas-private-endpoint-without-a-udr)
+    - [11.9 Why Private Link Service looks similar but is a different architecture](#119-why-private-link-service-looks-similar-but-is-a-different-architecture)
   - [12. Create workload UDR to the ILB frontend](#12-create-workload-udr-to-the-ilb-frontend)
   - [13. Verify the source NIC effective route](#13-verify-the-source-nic-effective-route)
   - [14. Verify ILB rule and health configuration](#14-verify-ilb-rule-and-health-configuration)
@@ -851,6 +855,114 @@ az network lb address-pool show \
 
 Because firewall vendors differ in NIC count, IP configuration, floating-IP requirements, and one-arm/two-arm architecture, this guide intentionally does not invent a universal NIC-association command that could place the wrong interface in the pool.
 
+### 11.8 Can I link the ILB directly to a PaaS Private Endpoint without a UDR?
+
+**No. Not for the Private Endpoint inspection design in this guide.**
+
+For an Azure PaaS Private Endpoint such as Azure SQL, Storage, Key Vault, App Service, or another service exposed through Private Link, there is no property on the PE that accepts an Internal Load Balancer frontend as an inspection hop. There is also no ILB property that says "forward this frontend to that existing PaaS Private Endpoint."
+
+If you omit the UDR or another supported route-steering mechanism, the normal path is conceptually:
+
+```text
+Client
+  |
+  | DNS resolves service FQDN -> 10.20.1.4
+  v
+Azure route lookup
+  |
+  | Private Endpoint / InterfaceEndpoint route
+  v
+Private Endpoint 10.20.1.4
+  |
+  v
+Private Link -> PaaS
+```
+
+The ILB/NVA tier is **not in that path** simply because it exists in the hub.
+
+The Standard ILB only becomes the NVA abstraction for this design when Azure is told to use the ILB frontend as the next hop for the PE destination prefix. In a classic VNet hub-and-spoke architecture, that is normally accomplished with the UDR described in sections 6.4 and 12.
+
+Therefore, these two statements are both true:
+
+```text
+PE is linked to PaaS through Private Link.
+ILB is linked to NVA backends through the Load Balancer backend pool/HA Ports rule.
+```
+
+But this statement is false for PaaS PE inspection:
+
+```text
+PE is linked directly to ILB.
+```
+
+### If you do not want to manage UDRs
+
+You need a different service-insertion architecture rather than a hidden ILB-to-PE association. For example, in **Azure Virtual WAN**, a secured virtual hub with Azure Firewall can use Virtual WAN security/routing controls to steer private traffic without you manually placing a traditional UDR on every spoke subnet. That is a different architecture from this classic ILB-backed NVA pattern.
+
+Microsoft's current Private Endpoint inspection guidance still describes route steering when an NVA or Azure Firewall must intercept traffic destined to a PE. In a traditional hub-and-spoke topology, there is no automatic ILB interception mechanism for an existing Azure PaaS Private Endpoint.
+
+### 11.9 Why Private Link Service looks similar but is a different architecture
+
+Azure **Private Link Service (PLS)** is the source of much of the confusion because PLS really does reference an **internal Standard Load Balancer frontend**.
+
+A provider-owned application can look like this:
+
+```text
+Consumer VNet
+  |
+  | Private Endpoint
+  v
+Private Link
+  |
+  v
+Private Link Service
+  |
+  | references Standard ILB frontend
+  v
+Internal Standard Load Balancer
+  |
+  v
+Provider application backends
+```
+
+That is a valid no-UDR Private Link pattern for **publishing your own service**.
+
+The provider creates a Private Link Service against an ILB frontend, conceptually:
+
+```cli
+az network private-link-service create \
+  --resource-group <PROVIDER_RG> \
+  --name <PLS_NAME> \
+  --vnet-name <PROVIDER_VNET> \
+  --subnet <PLS_NAT_SUBNET> \
+  --lb-name <PROVIDER_ILB> \
+  --lb-frontend-ip-configs <ILB_FRONTEND_NAME>
+```
+
+A consumer then creates a Private Endpoint **to that Private Link Service**.
+
+That does **not** let you take this existing relationship:
+
+```text
+Private Endpoint -> Azure SQL / Storage / Key Vault / other Azure PaaS
+```
+
+and insert your NVA ILB in the middle as:
+
+```text
+Private Endpoint -> ILB -> NVA -> existing Azure PaaS Private Endpoint
+```
+
+Those are different Private Link roles:
+
+| Design | What the Private Endpoint connects to | Is ILB directly referenced? |
+|---|---|---|
+| Azure PaaS Private Endpoint | Azure PaaS Private Link resource/subresource | **No** |
+| Customer Private Link Service | Customer-created Private Link Service | **Yes, by the PLS on the provider side** |
+| ILB-backed NVA inspection of PaaS PE | Existing PaaS PE remains destination; NVA inserted by routing | **No direct PE↔ILB link** |
+
+So if your goal is specifically **inspect traffic destined to an Azure PaaS Private Endpoint through third-party NVAs behind an ILB**, the ILB architecture requires traffic steering. If your goal is instead **publish an application behind an ILB privately to consumers**, Private Link Service is the correct no-UDR construct.
+
 ---
 
 ## 12. Create workload UDR to the ILB frontend
@@ -1318,6 +1430,7 @@ Check in order:
 ## 24. Common mistakes
 
 - Assuming the ILB must be attached or associated directly with the Private Endpoint object.
+- Assuming Private Link Service can be used to insert an ILB/NVA in front of an already-existing Azure PaaS Private Endpoint.
 - DNATing the PE address to the ILB VIP; the destination should remain the real PE IP.
 - Putting a route on the wrong subnet and expecting the PE object itself to discover the ILB.
 - Assuming Private Endpoint inspection requires Azure Firewall; third-party NVAs are valid.
@@ -1376,6 +1489,7 @@ Microsoft documentation directly supports the following:
 - SNAT is recommended for inspected Private Endpoint traffic, subject to documented advanced NVA exceptions.
 - Azure Firewall application rules always SNAT.
 - A Private Endpoint is created against a target resource/subresource and owns a private NIC/IP in the selected subnet.
+- A Private Link Service can reference an internal Standard Load Balancer frontend when publishing a customer-owned provider service; that is distinct from inspecting an existing Azure PaaS Private Endpoint.
 - Internal Standard Load Balancer supports HA Ports for NVA high availability/scale.
 - HA Ports uses protocol `All` and port `0`.
 - Load Balancer uses per-flow selection and health probes.
@@ -1384,7 +1498,7 @@ Microsoft documentation directly supports the following:
 
 ### Additional explanation
 
-There is no direct ILB-to-PE resource association. The packet walks in this guide combine the documented primitives into the actual PE inspection design:
+There is no direct ILB-to-PaaS-PE resource association. The packet walks in this guide combine the documented primitives into the actual PE inspection design:
 
 ```text
 DNS -> PE IP
@@ -1394,6 +1508,14 @@ NVA inspection/SNAT -> real PE IP
 Private Link -> service
 return -> SNAT/session owner -> reverse NAT -> client
 ```
+
+Private Link Service is a separate provider-publishing model:
+
+```text
+Consumer PE -> Private Link Service -> provider ILB -> provider backends
+```
+
+It is not an interception mechanism for an already-existing PaaS PE.
 
 ### Reasonable inference
 
@@ -1409,6 +1531,8 @@ The exact firewall-side SNAT address, session replication mechanics, zone names,
 - Microsoft Learn — What is a private endpoint?: https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview
 - Microsoft Learn — Create a private endpoint with Azure CLI: https://learn.microsoft.com/en-us/azure/private-link/create-private-endpoint-cli
 - Microsoft Learn — `az network private-endpoint`: https://learn.microsoft.com/en-us/cli/azure/network/private-endpoint?view=azure-cli-latest
+- Microsoft Learn — Private Link Service overview: https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview
+- Microsoft Learn — `az network private-link-service`: https://learn.microsoft.com/en-us/cli/azure/network/private-link-service?view=azure-cli-latest
 - Microsoft Learn — Secure your Azure Private Link deployment: https://learn.microsoft.com/en-us/azure/private-link/secure-private-link
 - Microsoft Learn — Azure Firewall SNAT private IP address ranges: https://learn.microsoft.com/en-us/azure/firewall/snat-private-range
 - Microsoft Learn — High availability ports overview: https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
