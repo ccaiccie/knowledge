@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#222"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1400" height="980" fill="white"/>
+  <text x="700" y="55" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700">Azure Firewall Policy processing order</text>
+  <text x="700" y="88" text-anchor="middle" font-family="Arial" font-size="17">Rule type controls the major processing pass; numeric priorities order groups/collections within each pass.</text>
+
+  <rect x="490" y="125" rx="14" ry="14" width="420" height="85" fill="#f5f5f5" stroke="#222" stroke-width="2"/>
+  <text x="700" y="160" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">Packet reaches Azure Firewall</text>
+  <text x="700" y="188" text-anchor="middle" font-family="Arial" font-size="16">Routing / Routing Intent already selected the firewall</text>
+
+  <rect x="490" y="260" rx="14" ry="14" width="420" height="85" fill="#fff7e6" stroke="#222" stroke-width="2"/>
+  <text x="700" y="296" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">1. Threat Intelligence</text>
+  <text x="700" y="323" text-anchor="middle" font-family="Arial" font-size="16">Highest priority when enabled; Alert / Deny behavior</text>
+
+  <rect x="120" y="405" rx="14" ry="14" width="330" height="120" fill="#fdecec" stroke="#222" stroke-width="2"/>
+  <text x="285" y="440" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">2. DNAT pass</text>
+  <text x="285" y="469" text-anchor="middle" font-family="Arial" font-size="16">RCGs by priority</text>
+  <text x="285" y="493" text-anchor="middle" font-family="Arial" font-size="16">Collections by priority</text>
+  <text x="285" y="517" text-anchor="middle" font-family="Arial" font-size="16">Match translates + allows</text>
+
+  <rect x="535" y="405" rx="14" ry="14" width="330" height="120" fill="#eaf3ff" stroke="#222" stroke-width="2"/>
+  <text x="700" y="440" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">3. Network pass</text>
+  <text x="700" y="469" text-anchor="middle" font-family="Arial" font-size="16">RCGs by priority</text>
+  <text x="700" y="493" text-anchor="middle" font-family="Arial" font-size="16">Collections by priority</text>
+  <text x="700" y="517" text-anchor="middle" font-family="Arial" font-size="16">IP / protocol / port match</text>
+
+  <rect x="950" y="405" rx="14" ry="14" width="330" height="120" fill="#eef9ee" stroke="#222" stroke-width="2"/>
+  <text x="1115" y="440" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">4. Application pass</text>
+  <text x="1115" y="469" text-anchor="middle" font-family="Arial" font-size="16">RCGs by priority</text>
+  <text x="1115" y="493" text-anchor="middle" font-family="Arial" font-size="16">Collections by priority</text>
+  <text x="1115" y="517" text-anchor="middle" font-family="Arial" font-size="16">HTTP/S FQDN / URL controls</text>
+
+  <rect x="535" y="635" rx="14" ry="14" width="330" height="95" fill="#f5f5f5" stroke="#222" stroke-width="2"/>
+  <text x="700" y="673" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">No allow match</text>
+  <text x="700" y="703" text-anchor="middle" font-family="Arial" font-size="16">Infrastructure processing where applicable</text>
+
+  <rect x="535" y="810" rx="14" ry="14" width="330" height="85" fill="#ededed" stroke="#222" stroke-width="2"/>
+  <text x="700" y="847" text-anchor="middle" font-family="Arial" font-size="23" font-weight="700">Implicit deny</text>
+  <text x="700" y="875" text-anchor="middle" font-family="Arial" font-size="16">Traffic not explicitly permitted is denied</text>
+
+  <path d="M700 210 L700 260" stroke="#222" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M700 345 L700 370 L285 370 L285 405" stroke="#222" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M450 465 L535 465" stroke="#222" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M865 465 L950 465" stroke="#222" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M1115 525 L1115 580 L700 580 L700 635" stroke="#222" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M700 730 L700 810" stroke="#222" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <text x="470" y="448" font-family="Arial" font-size="15">no DNAT match</text>
+  <text x="885" y="448" font-family="Arial" font-size="15">no network match</text>
+  <text x="720" y="775" font-family="Arial" font-size="15">still unmatched</text>
+
+  <rect x="70" y="635" rx="12" ry="12" width="360" height="150" fill="#fff" stroke="#777" stroke-dasharray="7,5" stroke-width="2"/>
+  <text x="250" y="670" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">Priority rule</text>
+  <text x="250" y="701" text-anchor="middle" font-family="Arial" font-size="15">Within each rule-type pass:</text>
+  <text x="250" y="728" text-anchor="middle" font-family="Arial" font-size="15">1. Parent policy before child policy</text>
+  <text x="250" y="753" text-anchor="middle" font-family="Arial" font-size="15">2. RCG lower number first</text>
+  <text x="250" y="778" text-anchor="middle" font-family="Arial" font-size="15">3. Collection lower number first</text>
+
+  <rect x="970" y="635" rx="12" ry="12" width="360" height="150" fill="#fff" stroke="#777" stroke-dasharray="7,5" stroke-width="2"/>
+  <text x="1150" y="670" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">Terminating behavior</text>
+  <text x="1150" y="701" text-anchor="middle" font-family="Arial" font-size="15">A matching network rule prevents</text>
+  <text x="1150" y="726" text-anchor="middle" font-family="Arial" font-size="15">later application-rule evaluation.</text>
+  <text x="1150" y="756" text-anchor="middle" font-family="Arial" font-size="15">A matching DNAT rule translates</text>
+  <text x="1150" y="781" text-anchor="middle" font-family="Arial" font-size="15">and allows the inbound connection.</text>
+</svg>
