@@ -25,6 +25,11 @@ The guide also explains site-to-cloud use, high availability, ECMP, active/stand
 - https://docs.cloud.google.com/network-connectivity/docs/router/concepts/how-cloud-router-works
 - https://docs.cloud.google.com/network-connectivity/docs/router/concepts/learned-routes
 - https://docs.cloud.google.com/vpc/docs/routes
+- https://docs.cloud.google.com/vpc/docs/policy-based-routes
+- https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
+- https://docs.cloud.google.com/firewall/docs/about-firewall-endpoints
+- https://docs.cloud.google.com/firewall/docs/about-firewalls
+- https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/vpc/docs/create-use-multiple-interfaces
 - https://docs.cloud.google.com/compute/docs/instances/create-instance-multiple-nics
 - https://docs.cloud.google.com/sdk/gcloud/reference/compute/instances/create
@@ -105,6 +110,176 @@ The same multi-NIC firewall VM participates in two different VPC networks. Each 
 - Each Cloud Router is in the same region as the corresponding firewall interface/subnet.
 - TCP/179 is permitted between Cloud Router interface addresses and the appliance interface.
 - The firewall advertises only the prefixes that should be reachable through it.
+
+## 2.1 Caveat — NCC Router Appliance does not by itself force same-VPC subnet-to-subnet traffic through the firewall
+
+This caveat is fundamental to choosing the correct GCP firewall-insertion method.
+
+**Source information:** Google VPC routing gives the VPC's own subnet routes precedence over ordinary custom destination routes such as static and dynamic routes. A subnet route represents native reachability for the subnet that belongs to the VPC. A BGP-learned Router Appliance route therefore is not a mechanism for replacing that native same-VPC subnet reachability.
+
+Consider a single VPC:
+
+```text
+production-vpc
+
+Subnet-A: 10.10.1.0/24
+  VM-A:   10.10.1.10
+
+Subnet-B: 10.10.2.0/24
+  VM-B:   10.10.2.20
+```
+
+Without service insertion, VM-A sends traffic to VM-B by using the VPC's built-in subnet route:
+
+```text
+VM-A 10.10.1.10
+      |
+      | dst=10.10.2.20
+      v
+VPC subnet route 10.10.2.0/24
+      |
+      v
+VM-B 10.10.2.20
+```
+
+If a Router Appliance advertises `10.10.2.0/24` through BGP, the advertisement does not turn the appliance into an override for that VPC subnet route. The VPC already owns `10.10.2.0/24` as a local subnet. This is why the primary Google-documented Router Appliance firewall topology uses the firewall as a **Layer-3 boundary between separate networks**, for example VPC-A and VPC-B.
+
+### 2.1.1 Why PBR can solve the same-VPC problem
+
+**Policy-Based Routes (PBRs)** are evaluated early enough in the forwarding decision to steer selected traffic away from the normal destination-based VPC route and toward a supported service next hop. For third-party firewall insertion, a common pattern is:
+
+```text
+VM-A
+  |
+  | 1. src=10.10.1.10, dst=10.10.2.20
+  v
+Policy-Based Route
+  |
+  | 2. match source/destination policy
+  v
+Internal passthrough Network Load Balancer
+  |
+  | 3. select firewall/NVA backend
+  v
+Firewall/NVA
+  |
+  | 4. inspect and forward
+  v
+VPC normal routing
+  |
+  | 5. subnet route 10.10.2.0/24
+  v
+VM-B
+```
+
+Example intent:
+
+```text
+source:      10.10.1.0/24
+destination: 10.10.2.0/24
+next hop:    internal passthrough Network Load Balancer
+```
+
+The important distinction is that the PBR changes **which forwarding policy is consulted first**; simply advertising the destination from NCC Router Appliance does not.
+
+A critical loop-prevention requirement is that traffic leaving the firewall must not be captured repeatedly by the same PBR. The appliance/backend traffic needs an exclusion or otherwise documented topology so that, after inspection, the packet can be reinjected into the VPC and use the ordinary destination route toward `10.10.2.0/24`.
+
+Also note that merely creating an ordinary static route whose next hop is an internal passthrough Network Load Balancer does not solve the same-VPC subnet-override problem. The important capability here is **PBR steering**, not simply `static route -> ILB`.
+
+### 2.1.2 Cloud NGFW Enterprise firewall endpoints: route-independent managed interception
+
+If the requirement is managed Google Cloud NGFW Enterprise inspection, a **firewall endpoint** is often a cleaner same-VPC solution than route manipulation.
+
+Conceptually:
+
+```text
+VM-A 10.10.1.10
+      |
+      | matching firewall policy
+      v
+Google packet interception
+      |
+      v
+Cloud NGFW Enterprise firewall endpoint
+      |
+      | Layer-7/threat/URL inspection as configured
+      v
+Reinjection into VPC forwarding
+      |
+      v
+VM-B 10.10.2.20
+```
+
+The important point is that firewall endpoint insertion does not depend on advertising a more attractive BGP route for `10.10.2.0/24`. Matching traffic is intercepted according to the Cloud NGFW policy and endpoint association model, inspected, and then returned to the normal forwarding path.
+
+This makes Cloud NGFW Enterprise firewall endpoints appropriate when:
+
+- both workloads are in the same VPC;
+- native subnet routes must remain unchanged;
+- you want Google-managed Layer-7 inspection rather than customer-managed NVA VMs;
+- policy determines which traffic receives deeper inspection.
+
+### 2.1.3 Network Security Integration (NSI): route-independent insertion for supported third-party appliances
+
+**Network Security Integration (NSI)** provides another model for transparent insertion of supported security appliances. Instead of attempting to replace the VPC's subnet route, NSI can use packet interception and service insertion semantics so traffic is delivered to a security deployment and then reinjected.
+
+A simplified in-band flow is:
+
+```text
+Application VM-A
+      |
+      | matching traffic
+      v
+NSI intercept endpoint
+      |
+      | GENEVE/service-insertion path
+      v
+Third-party security appliance deployment
+      |
+      | inspect / enforce
+      v
+NSI reinjection
+      |
+      v
+Application VM-B
+```
+
+NSI is especially relevant when you want third-party firewall capabilities but do not want the security appliance to become the routed boundary between separate VPCs.
+
+### 2.1.4 Decision table: which mechanism should you use?
+
+| Inspection requirement | Best-fit insertion model | Why |
+|---|---|---|
+| VPC-A ↔ VPC-B routed security boundary | **NCC Router Appliance + BGP** | The firewall advertises remote prefixes and becomes the routed next hop between separate networks. |
+| VPC ↔ on-premises / SD-WAN / external routed domain | **NCC Router Appliance + BGP** | Dynamic route exchange is part of the design and the appliance owns the routed boundary. |
+| Same VPC, subnet A ↔ subnet B, customer-managed NVA | **PBR + internal passthrough NLB** | PBR can steer selected flows before the normal subnet-route forwarding decision. |
+| Same VPC, managed Google NGFW Enterprise inspection | **Cloud NGFW Enterprise firewall endpoint** | Packet interception provides inspection without trying to override the local subnet route. |
+| Same VPC, supported third-party transparent service insertion | **NSI** | Packet interception/service insertion can place an appliance in path without making it the routed VPC boundary. |
+| Simple destination-based routing to a remote prefix not native to the VPC | **Static/dynamic routing, including NCC RA where appropriate** | Normal destination routing is sufficient when no authoritative local subnet route already owns the destination. |
+
+### 2.1.5 Mental model
+
+Use this distinction when designing or troubleshooting:
+
+```text
+NCC Router Appliance + BGP
+    = influence destination routing to remote prefixes
+
+PBR
+    = override/steer selected forwarding decisions by policy
+
+Cloud NGFW firewall endpoint
+    = intercept selected packets for Google-managed inspection
+
+NSI
+    = intercept selected packets for supported third-party service insertion
+```
+
+A concise rule is:
+
+> **NCC Router Appliance manipulates routed reachability. PBR steers traffic ahead of normal destination routing. Cloud NGFW firewall endpoints and NSI use packet-interception/service-insertion models.**
+
+Therefore, if the security requirement is **east-west inspection between two subnets that already belong to the same VPC**, do not assume that advertising one subnet through NCC Router Appliance will force traffic through the firewall. Use a mechanism specifically designed for same-VPC steering or interception.
 
 ---
 
@@ -1194,6 +1369,11 @@ If asked, “How does NCC Router Appliance insert a firewall?”, use this answe
 - Google Cloud, How Cloud Router works: https://docs.cloud.google.com/network-connectivity/docs/router/concepts/how-cloud-router-works
 - Google Cloud, Learned routes: https://docs.cloud.google.com/network-connectivity/docs/router/concepts/learned-routes
 - Google Cloud, VPC routes: https://docs.cloud.google.com/vpc/docs/routes
+- Google Cloud, Policy-based routes: https://docs.cloud.google.com/vpc/docs/policy-based-routes
+- Google Cloud, Internal passthrough NLB as a next hop: https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
+- Google Cloud, Cloud NGFW firewall endpoints: https://docs.cloud.google.com/firewall/docs/about-firewall-endpoints
+- Google Cloud, Cloud NGFW overview: https://docs.cloud.google.com/firewall/docs/about-firewalls
+- Google Cloud, Network Security Integration overview: https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - Google Cloud, Create VMs with multiple network interfaces: https://docs.cloud.google.com/vpc/docs/create-use-multiple-interfaces
 - Google Cloud, Compute Engine multiple NIC overview: https://docs.cloud.google.com/compute/docs/instances/create-instance-multiple-nics
 - Google Cloud SDK, `gcloud compute instances create`: https://docs.cloud.google.com/sdk/gcloud/reference/compute/instances/create
