@@ -23,6 +23,12 @@
 - https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-ngfw-deployment-guide/233362
 - https://docs.paloaltonetworks.com/cloud-ngfw-azure/deployment/cloud-ngfw-for-azure-deployment-architectures/cloud-ngfw-for-azure-virtual-wan
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-azure/panorama-orchestrated-deployments-in-azure
+- https://learn.microsoft.com/en-us/cli/azure/network/vwan?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub/connection?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub/routing-intent?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/firewall?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/firewall/policy?view=azure-cli-latest
 
 ## Table of contents
 
@@ -373,6 +379,57 @@ Propagate static route: enabled where required
 
 Microsoft's current hybrid Virtual WAN example uses this same pattern conceptually: a `0.0.0.0/0` static route on the DMZ/NVA VNet connection points to the NVA for Internet inspection and breakout, while other private traffic can still use Azure Firewall. This proves that customer-managed NVA service insertion can coexist with Virtual WAN rather than automatically breaking it.
 
+#### Azure CLI — create a customer-managed NVA VNet connection with an ILB static next hop
+
+The Virtual WAN CLI is delivered through the `virtual-wan` extension. Microsoft currently marks the connection routing-configuration arguments (`--associated-route-table`, `--propagated-route-tables`, `--labels`, `--route-name`, `--next-hop`, and `--address-prefixes`) as **Preview**, so verify the current CLI reference before production automation.
+
+```cli
+RG='rg-network'
+VHUB='vhub-eastus'
+NVA_VNET='vnet-nva'
+NVA_CONN='conn-nva'
+ILB_IP='10.5.10.10'
+
+az extension add --name virtual-wan --upgrade
+
+NVA_VNET_ID=$(az network vnet show \
+  --resource-group "$RG" \
+  --name "$NVA_VNET" \
+  --query id -o tsv)
+
+DEFAULT_RT_ID=$(az network vhub route-table show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name defaultRouteTable \
+  --query id -o tsv)
+
+az network vhub connection create \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$NVA_CONN" \
+  --remote-vnet "$NVA_VNET_ID" \
+  --associated-route-table "$DEFAULT_RT_ID" \
+  --propagated-route-tables "$DEFAULT_RT_ID" \
+  --labels default \
+  --route-name internet-via-ilb \
+  --next-hop "$ILB_IP" \
+  --address-prefixes 0.0.0.0/0
+```
+
+Verify the connection object rather than assuming the route was programmed:
+
+```cli
+az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$NVA_CONN" \
+  --output yaml
+```
+
+**Success criteria:** the connection is provisioned successfully, the static route is present in the connection routing configuration, the next hop is the ILB frontend IP, and the expected source connections learn/select the route.
+
+**Important:** the current CLI reference does not expose a dedicated `--propagate-static-route` switch matching the portal wording **Propagate static route**. Treat route-table propagation and effective-route validation as mandatory; use the current portal/ARM/PowerShell surface when a property required by the design is not exposed by the CLI version you are running.
+
 #### Detailed packet flow
 
 Assume a client at `10.1.1.10` is accessing an Internet server at `203.0.113.50:443`.
@@ -538,6 +595,42 @@ In a traditional hub VNet, each spoke often needs a UDR whose next hop is Azure 
 
 In a Virtual WAN secured hub, the **vHub router is the control point**. Connected VNet and branch routes are learned by the hub; Routing Intent changes how they are forwarded; and Virtual WAN programs/advertises the resulting route behavior toward connected networks.
 
+### Azure CLI — create and verify Routing Intent
+
+The Azure CLI command group `az network vhub routing-intent` is currently marked **Preview**. The underlying Routing Intent feature is central to the secured-hub design, but automation should be tested against the CLI version and `virtual-wan` extension version used in production.
+
+```cli
+RG='rg-network'
+VHUB='vhub-eastus'
+FW_NAME='azfw-vhub-eastus'
+ROUTING_INTENT='routing-intent'
+
+FIREWALL_ID=$(az network firewall show \
+  --resource-group "$RG" \
+  --name "$FW_NAME" \
+  --query id -o tsv)
+
+az network vhub routing-intent create \
+  --resource-group "$RG" \
+  --vhub "$VHUB" \
+  --name "$ROUTING_INTENT" \
+  --routing-policies "[{name:InternetTraffic,destinations:[Internet],next-hop:$FIREWALL_ID},{name:PrivateTrafficPolicy,destinations:[PrivateTraffic],next-hop:$FIREWALL_ID}]"
+```
+
+Verify the configured policies:
+
+```cli
+az network vhub routing-intent show \
+  --resource-group "$RG" \
+  --vhub "$VHUB" \
+  --name "$ROUTING_INTENT" \
+  --output yaml
+```
+
+**Success criteria:** the resource is provisioned successfully and both `Internet` and `PrivateTraffic` policy destinations reference the intended Azure Firewall or supported integrated security resource.
+
+**Failure indicator:** the Routing Intent object exists but the next-hop resource ID points to the wrong security provider, only one traffic class is configured, or the hub/connection effective routes do not reflect the expected secured path.
+
 ## 5. Control-plane route programming
 
 ![Routing Intent control plane](images/09-05-26-15-56_azure_vwan_routing-control-plane.svg)
@@ -549,6 +642,46 @@ In a Virtual WAN secured hub, the **vHub router is the control point**. Connecte
 **What matters:** The firewall does **not** log in to every spoke and edit a route table. The Virtual WAN control plane owns the hub route programming.
 
 **What to verify:** Inspect **Effective Routes** for the hub and VNet connections. Check route origin, next-hop type, and whether the expected default/private routes follow the secured-hub path.
+
+### Azure CLI — inspect vHub and VNet-connection effective routes
+
+```cli
+DEFAULT_RT_ID=$(az network vhub route-table show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name defaultRouteTable \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type RouteTable \
+  --resource-id "$DEFAULT_RT_ID" \
+  --output table
+```
+
+For a specific VNet connection:
+
+```cli
+SPOKE_CONN='conn-spoke-a'
+
+SPOKE_CONN_ID=$(az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type HubVirtualNetworkConnection \
+  --resource-id "$SPOKE_CONN_ID" \
+  --output table
+```
+
+**What it tests:** what the managed vHub has actually programmed, not merely what you intended to configure.
+
+**Success criteria:** the expected private prefixes and/or default route are present and the selected next hop represents the secured path.
 
 ## 6. Detailed packet flow — Spoke A to Spoke B
 
@@ -641,6 +774,52 @@ When **Internet Traffic → Azure Firewall/NVA** is enabled:
 
 The VNet connection’s Internet security setting controls whether the secured default-route behavior is advertised/applied to the spoke. Always verify the effective `0.0.0.0/0`; otherwise a workload may continue to use a direct Azure system route to the Internet.
 
+### Azure CLI — enable/check Internet security and verify the default route
+
+When creating a VNet connection, the current CLI exposes `--internet-security`:
+
+```cli
+SPOKE_VNET='vnet-spoke-a'
+SPOKE_CONN='conn-spoke-a'
+
+SPOKE_VNET_ID=$(az network vnet show \
+  --resource-group "$RG" \
+  --name "$SPOKE_VNET" \
+  --query id -o tsv)
+
+az network vhub connection create \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --remote-vnet "$SPOKE_VNET_ID" \
+  --internet-security true
+```
+
+Verify the connection and then its effective routes:
+
+```cli
+az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --output yaml
+
+SPOKE_CONN_ID=$(az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type HubVirtualNetworkConnection \
+  --resource-id "$SPOKE_CONN_ID" \
+  --output table
+```
+
+**Success criterion:** the effective forwarding view contains the expected secured default route; merely enabling the connection property is not sufficient proof that the workload path is correct.
+
 ## 10. Internet inbound / DNAT
 
 ### Azure Firewall
@@ -676,11 +855,48 @@ When troubleshooting, examine DNS first, then the source NIC route, then the PE 
 - Firewall Policy design.
 - VPN/ExpressRoute gateways if branch connectivity is required.
 
+### Azure CLI prerequisites and variables
+
+```cli
+az login
+az account set --subscription '<SUBSCRIPTION_ID_OR_NAME>'
+
+az extension add --name virtual-wan --upgrade
+az extension add --name azure-firewall --upgrade
+
+RG='rg-network'
+LOCATION='eastus'
+VWAN='vwan-prod'
+VHUB='vhub-eastus'
+VHUB_PREFIX='10.0.0.0/23'
+FW_NAME='azfw-vhub-eastus'
+FW_POLICY='azfw-policy-eastus'
+SPOKE_VNET='vnet-spoke-a'
+SPOKE_CONN='conn-spoke-a'
+ROUTING_INTENT='routing-intent'
+```
+
 ### Step 1 — Create/select the Virtual WAN
 
 1. Open **Virtual WANs**.
 2. Create or select the required Virtual WAN.
 3. Ensure **Type = Standard**.
+
+Azure CLI equivalent:
+
+```cli
+az network vwan create \
+  --resource-group "$RG" \
+  --name "$VWAN" \
+  --location "$LOCATION" \
+  --type Standard \
+  --branch-to-branch-traffic true
+
+az network vwan show \
+  --resource-group "$RG" \
+  --name "$VWAN" \
+  --output yaml
+```
 
 ### Step 2 — Create the virtual hub
 
@@ -689,6 +905,33 @@ When troubleshooting, examine DNS first, then the source NIC route, then the PE 
 3. Allocate the hub address space.
 4. Add VPN and/or ExpressRoute gateways when required.
 
+Azure CLI equivalent:
+
+```cli
+az network vhub create \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --vwan "$VWAN" \
+  --address-prefix "$VHUB_PREFIX" \
+  --location "$LOCATION" \
+  --sku Standard
+
+az network vhub show \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --output yaml
+```
+
+If the hub requires an Azure Virtual WAN site-to-site VPN gateway:
+
+```cli
+az network vpn-gateway create \
+  --resource-group "$RG" \
+  --name vpn-gw-eastus \
+  --vhub "$VHUB" \
+  --location "$LOCATION"
+```
+
 ### Step 3 — Deploy Azure Firewall into the hub
 
 1. Open **Network Security** / Firewall Manager or the Virtual WAN hub security workflow.
@@ -696,6 +939,39 @@ When troubleshooting, examine DNS first, then the source NIC route, then the PE 
 3. Deploy Azure Firewall.
 4. Select Standard or Premium according to security requirements.
 5. Associate an Azure Firewall Policy.
+
+Azure CLI equivalent:
+
+```cli
+az network firewall policy create \
+  --resource-group "$RG" \
+  --name "$FW_POLICY" \
+  --location "$LOCATION" \
+  --sku Premium
+
+FW_POLICY_ID=$(az network firewall policy show \
+  --resource-group "$RG" \
+  --name "$FW_POLICY" \
+  --query id -o tsv)
+
+az network firewall create \
+  --resource-group "$RG" \
+  --name "$FW_NAME" \
+  --sku AZFW_Hub \
+  --tier Premium \
+  --virtual-hub "$VHUB" \
+  --public-ip-count 1
+
+az network firewall update \
+  --resource-group "$RG" \
+  --name "$FW_NAME" \
+  --firewall-policy "$FW_POLICY_ID"
+
+az network firewall show \
+  --resource-group "$RG" \
+  --name "$FW_NAME" \
+  --output yaml
+```
 
 Microsoft notes an important availability-zone caveat: when upgrading an existing hub through some portal/Firewall Manager paths, you cannot choose Azure Firewall Availability Zones. Microsoft recommends the PowerShell upgrade procedure when you need to specify zones during an upgrade. Also, when zones are available, Microsoft recommends aligning the firewall deployment with the hub’s resiliency model by selecting all available zones.
 
@@ -708,6 +984,28 @@ Microsoft notes an important availability-zone caveat: when upgrading an existin
 5. Review **Internet security**.
 6. Save.
 
+Azure CLI equivalent:
+
+```cli
+SPOKE_VNET_ID=$(az network vnet show \
+  --resource-group "$RG" \
+  --name "$SPOKE_VNET" \
+  --query id -o tsv)
+
+az network vhub connection create \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --remote-vnet "$SPOKE_VNET_ID" \
+  --internet-security true
+
+az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --output yaml
+```
+
 ### Step 5 — Configure Routing Intent
 
 In the hub **Security configuration**:
@@ -717,6 +1015,29 @@ In the hub **Security configuration**:
 3. **Inter-hub** → enable where hub-to-hub / branch-to-branch inspection is required.
 4. Add non-RFC1918 corporate prefixes under **Private Traffic Prefixes** when they are intended to be treated as private.
 5. Save and wait for route programming to converge. Microsoft’s tutorial notes that route-table updates can take a few minutes.
+
+CLI equivalent for the core Internet/Private policies (**Preview CLI command group**):
+
+```cli
+FIREWALL_ID=$(az network firewall show \
+  --resource-group "$RG" \
+  --name "$FW_NAME" \
+  --query id -o tsv)
+
+az network vhub routing-intent create \
+  --resource-group "$RG" \
+  --vhub "$VHUB" \
+  --name "$ROUTING_INTENT" \
+  --routing-policies "[{name:InternetTraffic,destinations:[Internet],next-hop:$FIREWALL_ID},{name:PrivateTrafficPolicy,destinations:[PrivateTraffic],next-hop:$FIREWALL_ID}]"
+
+az network vhub routing-intent show \
+  --resource-group "$RG" \
+  --vhub "$VHUB" \
+  --name "$ROUTING_INTENT" \
+  --output yaml
+```
+
+Do not infer every Firewall Manager GUI property from this command. For example, validate current support for **Inter-hub** and custom **Private Traffic Prefixes** in the specific automation surface you use instead of inventing flags that the current CLI reference does not document.
 
 ### Step 6 — Configure Firewall Policy
 
@@ -730,6 +1051,17 @@ At minimum define:
 - logging/diagnostics;
 - Premium controls such as IDPS/TLS inspection where licensed and required.
 
+The policy object itself can be inspected with:
+
+```cli
+az network firewall policy show \
+  --resource-group "$RG" \
+  --name "$FW_POLICY" \
+  --output yaml
+```
+
+Rule-collection-group syntax is more detailed and policy-specific; build only the network/application/NAT rules required by the actual design rather than using an indiscriminate allow-all example in production.
+
 ### Step 7 — Validate before production
 
 Check:
@@ -740,6 +1072,36 @@ Check:
 - branch BGP tables;
 - firewall logs;
 - test sessions in both directions.
+
+CLI validation:
+
+```cli
+DEFAULT_RT_ID=$(az network vhub route-table show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name defaultRouteTable \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type RouteTable \
+  --resource-id "$DEFAULT_RT_ID" \
+  --output table
+
+SPOKE_CONN_ID=$(az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type HubVirtualNetworkConnection \
+  --resource-id "$SPOKE_CONN_ID" \
+  --output table
+```
 
 ## 13. Step-by-step configuration — supported integrated NVA
 
@@ -758,6 +1120,16 @@ The exact workflow is vendor-specific, but the architecture is consistent:
 11. Test HA, upgrade behavior, backend-instance failure, and convergence.
 
 **Licensing caveat:** Azure consumption and vendor licensing are separate. Depending on the offer, the vendor may use PAYG, Marketplace subscription, or BYOL. Verify the current Marketplace plan and support entitlement.
+
+Azure exposes generic Network Virtual Appliance inventory commands, but creation parameters and vendor onboarding remain offer-specific. Use the vendor's documented Marketplace/orchestrator workflow for the actual integrated NVA. You can inventory Azure NVA resources with:
+
+```cli
+az network virtual-appliance list \
+  --resource-group "$RG" \
+  --output table
+```
+
+Do not substitute a generic `az network virtual-appliance create` example for a vendor-specific integrated-vHub deployment unless that vendor explicitly documents that exact workflow.
 
 ## 14. Does the NVA need to be in the hub?
 
@@ -787,6 +1159,59 @@ A Virtual WAN hub has routing objects that determine what routes a connection us
 Routing Intent adds a security-steering layer to this model. When building a secured hub, treat Routing Intent as the primary service-insertion mechanism for integrated security providers. When deliberately using a customer-managed NVA VNet, static route propagation and/or supported BGP next-hop behavior become part of the service-insertion design and must be validated independently.
 
 Microsoft’s Zero Trust guidance specifically warns that custom Virtual WAN route tables should not be treated as a substitute for Routing Intent and security policies when the requirement is the managed secured-hub model.
+
+### Azure CLI — inspect and manage vHub route tables
+
+List the hub route tables:
+
+```cli
+az network vhub route-table list \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --output table
+```
+
+Inspect the default route table and its explicit static routes:
+
+```cli
+az network vhub route-table show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name defaultRouteTable \
+  --output yaml
+
+az network vhub route-table route list \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name defaultRouteTable \
+  --output table
+```
+
+For a deliberate custom-route-table design, create a route table and add a route with a **resource-ID** next hop such as Azure Firewall:
+
+```cli
+az network vhub route-table create \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name rt-custom
+
+FIREWALL_ID=$(az network firewall show \
+  --resource-group "$RG" \
+  --name "$FW_NAME" \
+  --query id -o tsv)
+
+az network vhub route-table route add \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name rt-custom \
+  --route-name private-via-firewall \
+  --destination-type CIDR \
+  --destinations 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 \
+  --next-hop-type ResourceId \
+  --next-hop "$FIREWALL_ID"
+```
+
+**Important:** do not use custom route tables as a substitute for Routing Intent when your requirement is the managed secured-hub security model. This command example is for understanding/operating vHub route tables and for architectures where custom routing is deliberately required.
 
 ## 16. Common bypass mistakes
 
@@ -939,6 +1364,52 @@ Use the vendor’s route table, BGP, session, NAT, policy hit counters, HA statu
 
 For customer-managed NVA VMs in a connected VNet, also verify the VNet connection static routes, `Propagate static route`, next-hop IP, `Bypass Next Hop IP` setting, load-balancer rule/HA Ports, health probes/backend membership, VMSS/VM state, IP forwarding, firewall route table, NAT/session state, and effective routes.
 
+### Azure CLI — repeatable verification chain
+
+```cli
+# 1. Virtual WAN and hub provisioning
+az network vwan show -g "$RG" -n "$VWAN" -o yaml
+az network vhub show -g "$RG" -n "$VHUB" -o yaml
+
+# 2. Routing Intent
+az network vhub routing-intent show \
+  -g "$RG" --vhub "$VHUB" -n "$ROUTING_INTENT" -o yaml
+
+# 3. VNet connections
+az network vhub connection list \
+  -g "$RG" --vhub-name "$VHUB" -o table
+
+# 4. Hub route tables and explicit routes
+az network vhub route-table list \
+  -g "$RG" --vhub-name "$VHUB" -o table
+
+az network vhub route-table route list \
+  -g "$RG" --vhub-name "$VHUB" -n defaultRouteTable -o table
+
+# 5. Effective routes for the default route table
+DEFAULT_RT_ID=$(az network vhub route-table show \
+  -g "$RG" --vhub-name "$VHUB" -n defaultRouteTable \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  -g "$RG" -n "$VHUB" \
+  --resource-type RouteTable \
+  --resource-id "$DEFAULT_RT_ID" \
+  -o table
+
+# 6. Azure Firewall state
+az network firewall show \
+  -g "$RG" -n "$FW_NAME" -o yaml
+
+# 7. Workload NIC effective routes
+az network nic show-effective-route-table \
+  -g '<WORKLOAD_RG>' \
+  -n '<WORKLOAD_NIC>' \
+  -o table
+```
+
+**Success criteria:** provisioning is `Succeeded`, Routing Intent references the intended security provider, VNet connections are present, effective routing contains the secured path, and the workload NIC does not contain an unexpected UDR/system route that bypasses inspection.
+
 ## 20. Troubleshooting by symptom
 
 ### Spoke A cannot reach Spoke B
@@ -952,6 +1423,19 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 **Failure means:** route propagation, policy, bypass, or return-path problem.
 
 **Next action:** inspect VNet connection association/propagation and Routing Intent or the customer-managed static/BGP next-hop route, depending on the architecture.
+
+Useful CLI:
+
+```cli
+az network nic show-effective-route-table \
+  -g '<WORKLOAD_RG>' -n '<WORKLOAD_NIC>' -o table
+
+az network vhub get-effective-routes \
+  -g "$RG" -n "$VHUB" \
+  --resource-type RouteTable \
+  --resource-id "$DEFAULT_RT_ID" \
+  -o table
+```
 
 ### Branch reaches the hub but not the spoke
 
@@ -968,6 +1452,16 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 **Test:** inspect `0.0.0.0/0`.
 
 **Failure means:** Internet security/default-route programming is absent, static route propagation is missing, or another more specific route overrides the intended path.
+
+Useful CLI:
+
+```cli
+az network vhub connection show \
+  -g "$RG" --vhub-name "$VHUB" -n "$SPOKE_CONN" -o yaml
+
+az network nic show-effective-route-table \
+  -g '<WORKLOAD_RG>' -n '<WORKLOAD_NIC>' -o table
+```
 
 ### Firewall sees outbound SYN only
 
@@ -988,6 +1482,16 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 **Failure means:** The ILB exists, but service insertion was never programmed in the Virtual WAN control plane.
 
 **Next action:** Fix the static route/BGP next-hop advertisement and propagation before troubleshooting firewall policy.
+
+Useful CLI:
+
+```cli
+az network vhub connection show \
+  -g "$RG" --vhub-name "$VHUB" -n "$NVA_CONN" -o yaml
+
+az network vhub route-table route list \
+  -g "$RG" --vhub-name "$VHUB" -n defaultRouteTable -o table
+```
 
 ### One firewall fails and new sessions work, but existing sessions reset
 
@@ -1085,6 +1589,8 @@ For customer-managed NVA VMs in a connected VNet, also verify the VNet connectio
 - NVA DNAT/Internet Inbound is not universal; Microsoft currently restricts it to specific integrated offers.
 - Private Endpoint inspection has additional subnet/network-policy and route considerations.
 - Custom Virtual WAN route tables should not be treated as a substitute for Routing Intent when the requirement is secured traffic steering through an integrated security provider.
+- The Virtual WAN Azure CLI reference is part of the `virtual-wan` extension (current Microsoft reference requires Azure CLI 2.55.0 or later) and some routing-configuration command arguments are still marked Preview.
+- The `az network vhub routing-intent` command group is currently marked Preview; test automation against the exact CLI/extension version before production deployment.
 
 ## 22. Design checklist
 
@@ -1129,9 +1635,9 @@ Prefer a customer-managed hub VNet when you require arbitrary appliances, exact 
 
 ## 24. Source information, explanation, and inference
 
-**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, Virtual WAN SaaS security integrations, connected-VNet static next-hop behavior, propagated static routes, Bypass Next Hop IP, BGP Next Hop IP to load balancers, and Private Endpoint inspection requirements. Cisco, Fortinet, and Palo Alto Networks provide vendor-specific deployment documentation for their respective Azure Virtual WAN and Azure VNet firewall architectures.
+**Source information:** Microsoft defines secured virtual hubs, automated routing, Routing Intent, Private/Internet policies, supported integrated NVAs, inter-hub behavior, integrated-NVA VMSS/load-balancer backing infrastructure, NVA scale-unit instance counts, Virtual WAN SaaS security integrations, connected-VNet static next-hop behavior, propagated static routes, Bypass Next Hop IP, BGP Next Hop IP to load balancers, Private Endpoint inspection requirements, and Azure CLI command surfaces for Virtual WAN, Virtual Hub, VNet connections, Routing Intent, and Azure Firewall. Cisco, Fortinet, and Palo Alto Networks provide vendor-specific deployment documentation for their respective Azure Virtual WAN and Azure VNet firewall architectures.
 
-**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA/SaaS distribution or customer-managed ILB next hop → stateful inspection → onward forwarding → symmetric return.
+**Additional explanation:** The packet walks and control-plane descriptions in this guide translate those documented behaviors into network-engineering terms: ingress → route lookup → service insertion → managed integrated-NVA/SaaS distribution or customer-managed ILB next hop → stateful inspection → onward forwarding → symmetric return. The CLI examples translate the same architecture into reproducible Azure-side configuration and verification steps.
 
 **Reasonable inference:** Exact convergence, per-flow backend selection details, state synchronization, session preservation, all-backend failure behavior, and scale behavior of a third-party NVA depend on the vendor implementation, selected scale units, topology, and active traffic. For customer-managed NVA VMs, those responsibilities shift much more directly to the customer and vendor architecture. Test them rather than assuming them from the generic Virtual WAN architecture.
 
@@ -1177,3 +1683,15 @@ Prefer a customer-managed hub VNet when you require arbitrary appliances, exact 
    https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 20. Microsoft Learn — Secure traffic destined to private endpoints in Azure Virtual WAN  
    https://learn.microsoft.com/en-us/azure/firewall-manager/private-link-inspection-secure-virtual-hub
+21. Microsoft Learn — Azure CLI: `az network vwan`  
+   https://learn.microsoft.com/en-us/cli/azure/network/vwan?view=azure-cli-latest
+22. Microsoft Learn — Azure CLI: `az network vhub`  
+   https://learn.microsoft.com/en-us/cli/azure/network/vhub?view=azure-cli-latest
+23. Microsoft Learn — Azure CLI: `az network vhub connection`  
+   https://learn.microsoft.com/en-us/cli/azure/network/vhub/connection?view=azure-cli-latest
+24. Microsoft Learn — Azure CLI: `az network vhub routing-intent`  
+   https://learn.microsoft.com/en-us/cli/azure/network/vhub/routing-intent?view=azure-cli-latest
+25. Microsoft Learn — Azure CLI: `az network firewall`  
+   https://learn.microsoft.com/en-us/cli/azure/network/firewall?view=azure-cli-latest
+26. Microsoft Learn — Azure CLI: `az network firewall policy`  
+   https://learn.microsoft.com/en-us/cli/azure/network/firewall/policy?view=azure-cli-latest
