@@ -24,6 +24,37 @@
 - https://docs.paloaltonetworks.com/cloud-ngfw-azure/deployment/cloud-ngfw-for-azure-deployment-architectures/cloud-ngfw-for-azure-virtual-wan
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-azure/panorama-orchestrated-deployments-in-azure
 
+## Table of contents
+
+- [1. What this method is](#1-what-this-method-is)
+- [2. High-level topology](#2-high-level-topology)
+- [3. Azure Firewall versus integrated NVA](#3-azure-firewall-versus-integrated-nva)
+  - [3.1 How can an integrated NVA have multiple instances? Do you need your own ILB?](#31-how-can-an-integrated-nva-have-multiple-instances-do-you-need-your-own-ilb)
+  - [3.2 Can you deploy your own NVA VMs? Vendor examples from Cisco, Fortinet, and Palo Alto Networks](#32-can-you-deploy-your-own-nva-vms-vendor-examples-from-cisco-fortinet-and-palo-alto-networks)
+  - [3.3 Customer-managed NVA VNet behind an ILB — does this break service insertion?](#33-customer-managed-nva-vnet-behind-an-ilb--does-this-break-service-insertion)
+- [4. Routing Intent — the key mechanism](#4-routing-intent--the-key-mechanism)
+- [5. Control-plane route programming](#5-control-plane-route-programming)
+- [6. Detailed packet flow — Spoke A to Spoke B](#6-detailed-packet-flow--spoke-a-to-spoke-b)
+- [7. Branch to spoke flow](#7-branch-to-spoke-flow)
+- [8. Multi-region inter-hub inspection](#8-multi-region-inter-hub-inspection)
+- [9. Internet egress](#9-internet-egress)
+- [10. Internet inbound / DNAT](#10-internet-inbound--dnat)
+- [11. Private Endpoint inspection](#11-private-endpoint-inspection)
+- [12. Step-by-step configuration — Azure Firewall secured hub](#12-step-by-step-configuration--azure-firewall-secured-hub)
+- [13. Step-by-step configuration — supported integrated NVA](#13-step-by-step-configuration--supported-integrated-nva)
+- [14. Does the NVA need to be in the hub?](#14-does-the-nva-need-to-be-in-the-hub)
+- [15. Route tables, association, propagation, and labels](#15-route-tables-association-propagation-and-labels)
+- [16. Common bypass mistakes](#16-common-bypass-mistakes)
+- [17. Asymmetric routing](#17-asymmetric-routing)
+- [18. High availability and failure behavior](#18-high-availability-and-failure-behavior)
+- [19. Monitoring and verification](#19-monitoring-and-verification)
+- [20. Troubleshooting by symptom](#20-troubleshooting-by-symptom)
+- [21. Important Microsoft caveats and limits](#21-important-microsoft-caveats-and-limits)
+- [22. Design checklist](#22-design-checklist)
+- [23. When to choose this method](#23-when-to-choose-this-method)
+- [24. Source information, explanation, and inference](#24-source-information-explanation-and-inference)
+- [Sources](#sources)
+
 ---
 
 ## 1. What this method is
