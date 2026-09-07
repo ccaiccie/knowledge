@@ -1041,17 +1041,13 @@ Do not infer every Firewall Manager GUI property from this command. For example,
 
 ### Step 6 — Configure Firewall Policy
 
-At minimum define:
+Building the Firewall Policy is substantial enough to warrant its own guide. The standalone deep dive includes complete Azure CLI examples for rule collection groups, east-west and branch network rules, Internet application/FQDN rules, DNS/DNS Proxy, DNAT, Premium IDPS and TLS-inspection considerations, structured logging, packet-processing order, verification, and troubleshooting:
 
-- east-west allow rules;
-- branch-to-spoke rules;
-- Internet application/network rules;
-- DNS dependencies;
-- DNAT where publishing services;
-- logging/diagnostics;
-- Premium controls such as IDPS/TLS inspection where licensed and required.
+**[Azure Firewall Policy — Rule Collections, DNAT, Network/Application Rules, DNS, IDPS, TLS Inspection, Logging, and Azure CLI Deep Dive](09-07-26-15-20_Azure_Firewall_Policy_Rule_Collections_Deep_Dive.md)**
 
-The policy object itself can be inspected with:
+The key processing rule to remember is that Azure Firewall evaluates **DNAT rules before Network rules, and Network rules before Application rules**. Numeric priorities order rule collection groups and collections within each rule-type pass; they do not override that rule-type order.
+
+You can still verify which policy object is attached/configured with:
 
 ```cli
 az network firewall policy show \
@@ -1059,8 +1055,6 @@ az network firewall policy show \
   --name "$FW_POLICY" \
   --output yaml
 ```
-
-Rule-collection-group syntax is more detailed and policy-specific; build only the network/application/NAT rules required by the actual design rather than using an indiscriminate allow-all example in production.
 
 ### Step 7 — Validate before production
 
