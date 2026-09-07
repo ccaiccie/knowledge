@@ -2,7 +2,7 @@
 
 ## Scope
 
-This guide focuses specifically on **Cloud Next Generation Firewall (Cloud NGFW) Enterprise firewall endpoints**: what an endpoint is, how endpoint associations work, how traffic is intercepted without a customer-managed firewall next-hop route, how security profile groups and firewall-policy rules select traffic for Layer 7 inspection, how TLS inspection changes the flow, how to deploy organization-level and project-level endpoints, how multi-zone coverage works, and how to verify and troubleshoot the service.
+This guide focuses specifically on **Cloud Next Generation Firewall (Cloud NGFW) Enterprise firewall endpoints**: what an endpoint is, how endpoint associations work, how traffic is intercepted without a customer-managed firewall next-hop route, how security profile groups and firewall-policy rules select traffic for Layer 7 inspection, how TLS inspection changes the flow, how to deploy organization-level and project-level endpoints, how multi-zone coverage works, how URL filtering is customized, and how to verify and troubleshoot the service.
 
 The guide intentionally separates firewall endpoints from other GCP service-insertion mechanisms such as Policy-Based Routes (PBR), internal passthrough Network Load Balancers in front of third-party appliances, Network Security Integration intercept endpoint groups, and Network Connectivity Center router appliances.
 
@@ -15,17 +15,26 @@ Primary Google Cloud documentation used for this guide:
 - https://docs.cloud.google.com/firewall/docs/manage-firewall-endpoints
 - https://docs.cloud.google.com/firewall/docs/about-app-layer-inspection
 - https://docs.cloud.google.com/firewall/docs/configure-security-profiles
+- https://docs.cloud.google.com/firewall/docs/about-url-filtering
+- https://docs.cloud.google.com/firewall/docs/configure-urlf-security-profiles
+- https://docs.cloud.google.com/firewall/docs/tutorials/set-up-urlf-tutorial
+- https://docs.cloud.google.com/firewall/docs/urlf_best_practices
 - https://docs.cloud.google.com/firewall/docs/use-network-firewall-policies
 - https://docs.cloud.google.com/firewall/docs/using-firewall-policies
 - https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details
 - https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-eval-order
 - https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
-- https://docs.cloud.google.com/firewall/docs/about-url-filtering
 - https://docs.cloud.google.com/firewall/docs/about-tls-inspection
 - https://docs.cloud.google.com/firewall/docs/setup-tls-inspection
 - https://docs.cloud.google.com/firewall/docs/firewall-policy-rules-log-examples
 - https://docs.cloud.google.com/firewall/docs/quotas
 - https://docs.cloud.google.com/firewall/docs/release-notes
+
+Useful Palo Alto Networks material about the jointly engineered service:
+
+- https://www.paloaltonetworks.com/resources/techbriefs/achieving-simplicity-scale-and-security-with-google-cloud-ngfw-enterprise
+- https://www.paloaltonetworks.com/blog/2024/04/google-cloud-ngfw-enterprise/
+- https://www.paloaltonetworks.com/partners/nextwave-for-csp/google-cloud-and-palo-alto-networks
 
 ---
 
@@ -53,9 +62,32 @@ This is very different from a third-party NVA pattern in which a route points to
 
 Google states that Packet Intercept inserts network appliances into selected traffic **without modifying the existing routing policies**. Google also states that `apply_security_profile_group` intercepts a new connection, sends it to the firewall endpoint, and creates connection-tracking state so both directions of the connection are intercepted.
 
+Palo Alto Networks describes Cloud NGFW Enterprise as a **managed firewall service** from Google that is powered by Palo Alto Networks security technology. That does not mean customers receive hidden VM-Series/PAN-OS appliances that can be enrolled into Panorama.
+
 ### Additional explanation
 
 Think of the endpoint as an **inspection attachment to Google's distributed VPC forwarding plane**, not as a customer-visible router hop. Your route still answers the question “where should this packet ultimately go?” The firewall policy answers the separate question “must this connection be inspected before it proceeds?”
+
+### 1.1 Is this a Palo Alto firewall that you can manage with Panorama?
+
+No. The most accurate mental model is:
+
+> **Palo Alto Networks security technology is used in the managed inspection service, but the service is not exposed to you as a PAN-OS appliance.**
+
+You do not receive or manage:
+
+- PAN-OS management interfaces;
+- appliance serial numbers;
+- Panorama device groups;
+- Panorama templates or template stacks;
+- PAN-OS zones or virtual routers;
+- PAN-OS NAT rules;
+- PAN-OS CLI access;
+- direct access to the underlying Google-managed firewall instances.
+
+Instead, you manage Cloud NGFW Enterprise by using Google Cloud resources such as firewall policies, security profiles, security profile groups, firewall endpoints, endpoint associations, TLS inspection policies, Certificate Authority Service resources, IAM, and Cloud Logging/Monitoring.
+
+This distinction is important because Palo Alto Networks' own **Cloud NGFW for AWS** has a different management model and supports Panorama integration. Do not transfer that management assumption to Google Cloud NGFW Enterprise.
 
 ---
 
@@ -264,7 +296,7 @@ This does **not** mean general network asymmetry is irrelevant. The underlying a
 Cloud NGFW Enterprise application-layer inspection uses security profiles. Current profile types documented by Google include:
 
 - `THREAT_PREVENTION` — intrusion detection and prevention;
-- `URL_FILTERING` — URL category/filter enforcement;
+- `URL_FILTERING` — custom domain/URL matcher enforcement;
 - `WILDFIRE_ANALYSIS` — Advanced malware sandbox behavior.
 
 A **security profile group** is a container. A group can contain at most one profile of each supported type. The firewall-policy rule references the group, not each individual profile.
@@ -273,9 +305,252 @@ A **security profile group** is a container. A group can contain at most one pro
 
 Cloud NGFW's threat prevention capability is powered by Palo Alto Networks threat-prevention technology. Security profiles can use default threat-signature behavior and can define severity or threat-ID overrides where supported.
 
-### 6.2 URL filtering
+### 6.2 URL filtering — how you actually customize the policy
 
-For encrypted traffic without TLS decryption, URL filtering can use information available from TLS negotiation such as Server Name Indication (SNI). With TLS inspection, the endpoint can inspect decrypted application content and apply deeper controls.
+Cloud NGFW Enterprise URL filtering is configured in a Google Cloud **URL filtering security profile**. It is not configured in Panorama and it is not a customer-visible PAN-OS URL Filtering profile.
+
+The object relationship is:
+
+```text
+Hierarchical or global network firewall policy rule
+        |
+        | action = apply_security_profile_group
+        v
+Security profile group
+        |
+        +--> URL filtering security profile
+        |      |
+        |      +--> priority 1000: ALLOW example.com
+        |      +--> priority 1100: DENY bad.example.net
+        |      +--> implicit/default action
+        |
+        +--> optional Threat Prevention profile
+        +--> optional WildFire/advanced malware profile
+        |
+        v
+Zonal Cloud NGFW Enterprise firewall endpoint
+```
+
+#### 6.2.1 What a URL filter contains
+
+Google documents URL filtering security profiles as Layer 7 policy structures made of URL filters. Each configured URL filter contains:
+
+- a **unique priority**;
+- one or more **matcher strings** representing domains/URLs;
+- a filtering action such as **ALLOW** or **DENY**.
+
+The firewall endpoint compares the observed domain information against these configured matcher strings and applies the action associated with the matching URL filter.
+
+This is the customer-facing customization surface. You control the matcher strings, ordering, and allow/deny decisions; you do not log in to the underlying Palo Alto-powered inspection engine.
+
+#### 6.2.2 What information is matched
+
+For **unencrypted HTTP**, the service can evaluate the domain from the HTTP `Host` header.
+
+For **HTTPS without TLS inspection**, Cloud NGFW relies on the plaintext **Server Name Indication (SNI)** in the TLS ClientHello for URL/domain matching.
+
+For **HTTPS with TLS inspection enabled**, Cloud NGFW can decrypt the selected TLS traffic and use the domain information available in the HTTP host header in addition to SNI information.
+
+This distinction matters operationally. Without TLS inspection, Cloud NGFW does not have arbitrary visibility into the encrypted HTTP payload or path. The useful Layer 7 identity comes primarily from TLS SNI.
+
+#### 6.2.3 Important distinction from PAN-OS / PAN-DB URL Filtering
+
+Do not interpret the Palo Alto Networks technology relationship as meaning the Google service exposes the complete PAN-OS URL Filtering/PAN-DB policy model.
+
+| Capability | Google Cloud NGFW Enterprise URL filtering | Customer-managed PAN-OS / VM-Series |
+|---|---|---|
+| Management plane | Google Cloud Network Security | PAN-OS / Panorama / Strata Cloud Manager as applicable |
+| Custom domain/URL matcher lists | Yes | Yes |
+| Per-filter priority | Yes | PAN-OS policy/profile semantics differ |
+| Allow/deny action on configured matcher | Yes | Yes, with broader PAN-OS URL actions/features |
+| PAN-DB category policy exposed to customer | **Not the documented Cloud NGFW Enterprise URL-filtering model** | Yes |
+| Custom URL categories in PAN-OS | Not exposed as PAN-OS objects | Yes |
+| Panorama device group/template management | No | Yes |
+| PAN-OS CLI/Web UI | No | Yes |
+| App-ID policy model | Not exposed as PAN-OS security policy | Yes |
+| Customer-managed PAN-OS zones/virtual routers/NAT | No | Yes |
+
+**Practical design consequence:** if your requirement is specifically to reproduce an enterprise PAN-OS/Panorama URL-category policy with PAN-DB categories, custom categories, PAN-OS URL actions, App-ID-oriented rules, and related PAN-OS controls, use a Palo Alto Networks deployment model that exposes PAN-OS, such as VM-Series, rather than assuming Cloud NGFW Enterprise exposes the same policy surface.
+
+#### 6.2.4 Example URL filtering profile YAML
+
+Google documents creating/importing URL filtering profiles from YAML. A simple allow-list style profile can look like this:
+
+```yaml
+name: sec-profile-urlf
+type: url-filtering
+urlFilteringProfile:
+  urlFilters:
+    - filteringAction: ALLOW
+      priority: 1000
+      urls:
+        - "www.example.com"
+        - "*.example.com"
+```
+
+The exact matcher strings should follow the syntax documented by Google for URL filtering security profiles.
+
+Import the profile:
+
+```cli
+gcloud network-security security-profiles import sec-profile-urlf \
+  --location global \
+  --source url-filtering-profile.yaml \
+  --organization "$ORG_ID"
+```
+
+For a project-level profile, use `--project "$PROJECT_ID"` rather than `--organization`.
+
+#### 6.2.5 Default/implicit behavior is critical
+
+In Google's URL-filtering tutorial, the created allow-list profile has an **implicit deny URL filter at the lowest priority**, which means traffic that does not match an allowed URL is denied.
+
+Do not assume an allow-list profile is merely additive to a general allow rule. Its default behavior can determine what happens to every HTTP(S) connection intercepted by the firewall policy rule.
+
+This is one of the most important design points when moving from traditional firewall thinking to the Cloud NGFW security-profile model:
+
+```text
+Firewall policy rule decides WHICH CONNECTIONS get intercepted.
+URL filtering security profile decides WHAT DOMAINS within those connections are allowed/denied.
+```
+
+If the interception rule is broad, the profile's default behavior is correspondingly broad.
+
+#### 6.2.6 Create a security profile group containing the URL profile
+
+The firewall policy rule does not directly reference the URL filtering profile. It references a **security profile group**, which in turn contains the URL profile.
+
+For an organization-level profile:
+
+```cli
+gcloud network-security security-profile-groups create sec-profile-group-urlf \
+  --organization "$ORG_ID" \
+  --location global \
+  --project "$SEC_PROJECT" \
+  --url-filtering-profile="organizations/$ORG_ID/locations/global/securityProfiles/sec-profile-urlf" \
+  --description="Cloud NGFW Enterprise URL filtering profile group"
+```
+
+A security profile group can also contain other supported profile types, such as Threat Prevention, so a single intercepted connection can be evaluated by multiple advanced security services where supported.
+
+#### 6.2.7 Select HTTP/HTTPS traffic with the firewall policy
+
+Google recommends constraining URL-filtering interception to the traffic that the URL filtering service is designed to inspect, commonly TCP ports 80 and 443.
+
+Conceptually:
+
+```text
+Priority:       500
+Direction:      EGRESS
+Source:         selected workloads / subnet / secure tags
+Destination:    0.0.0.0/0
+Protocol:       TCP
+Ports:          80,443
+Action:         apply_security_profile_group
+Profile group:  sec-profile-group-urlf
+```
+
+For wildcard domain filtering such as `*.example.com`, Google documents using `0.0.0.0/0` as the destination range because the wildcard decision occurs at Layer 7 in the security profile rather than through an IP-prefix match in the firewall rule.
+
+#### 6.2.8 Use network contexts to separate internet and non-internet policy
+
+Google recommends using **network contexts** to keep internet-bound and non-internet/east-west traffic from accidentally inheriting the wrong URL-filtering default action.
+
+An example policy structure is:
+
+| Priority | Direction | Network context | Protocol | Destination ports | Action |
+|---:|---|---|---|---|---|
+| 500 | Egress | Non-internet | TCP | 80,443 | Apply internal URL-filter profile group |
+| 600 | Egress | Internet | TCP | 80,443 | Apply internet URL-filter profile group |
+
+Why this matters:
+
+- An internet allow-list profile might implicitly deny unmatched destinations.
+- An internal east-west profile might have a different default action.
+- Without network-context separation, a broad interception rule can make a profile's default behavior affect traffic classes you did not intend.
+
+#### 6.2.9 Example packet decision — HTTPS without TLS inspection
+
+Assume:
+
+```text
+Client VM:       10.10.1.10
+Destination IP:  142.250.x.x
+Destination TCP: 443
+TLS SNI:         www.example.com
+TLS inspection:  disabled
+```
+
+Flow:
+
+1. The VM starts a TCP connection to the destination IP on port 443.
+2. The global or hierarchical firewall policy evaluates the new connection.
+3. The connection matches an `apply_security_profile_group` rule for TCP/443.
+4. Packet Intercept sends the connection through the zonal firewall endpoint.
+5. The endpoint observes the TLS ClientHello.
+6. The endpoint extracts the plaintext SNI `www.example.com`.
+7. The URL filtering profile compares the SNI against its configured matcher strings in priority order.
+8. If `www.example.com` matches an ALLOW filter, the connection is allowed to continue.
+9. If it matches a DENY filter, the endpoint blocks it.
+10. If no explicit filter matches, the profile's default/implicit behavior applies.
+11. Because TLS inspection is disabled, Cloud NGFW does not decrypt the HTTPS application payload for host-header inspection.
+
+#### 6.2.10 Example packet decision — HTTPS with TLS inspection
+
+When TLS inspection is enabled for the matching firewall rule and the endpoint association has a valid TLS inspection policy:
+
+1. The connection matches the `apply_security_profile_group` rule.
+2. Packet Intercept sends it through the endpoint.
+3. Cloud NGFW performs TLS interception using the configured CA Service trust chain.
+4. The client must trust the Cloud NGFW signing chain.
+5. Cloud NGFW decrypts the selected TLS connection.
+6. URL filtering can use domain information from the HTTP host header in addition to the SNI information available during TLS negotiation.
+7. The configured URL-filter action is enforced.
+8. Allowed traffic is re-encrypted and continues to the original destination.
+
+Remember that TLS inspection has separate protocol and compatibility limitations; enabling it solely for URL filtering should be tested against applications that use HTTP/2, QUIC/HTTP/3, certificate pinning, or unusual TLS behavior.
+
+#### 6.2.11 Verify the URL filtering security profile
+
+Export the current profile so you can inspect the effective configuration:
+
+```cli
+gcloud network-security security-profiles export sec-profile-urlf \
+  --organization "$ORG_ID" \
+  --location global \
+  --destination exported-url-filtering-profile.yaml
+```
+
+**What it tests:** whether the expected matcher strings, priorities, and actions are present in the deployed profile.
+
+**Success criteria:** the exported profile contains the intended URL filters and their expected priorities/actions.
+
+**Failure indicators:** missing URL, incorrect wildcard, wrong action, duplicate/unintended priority, or wrong organization/project scope.
+
+**Next action:** correct the YAML and re-import/update the profile, then test with a new connection.
+
+#### 6.2.12 URL filtering troubleshooting checklist
+
+**Symptom: an allowed domain is blocked**
+
+- **Where:** URL filtering profile and matcher syntax.
+- **What to test:** exported profile, SNI/host name actually used by the application, default action.
+- **Likely causes:** matcher doesn't match the actual SNI, application redirects to another domain, supporting CDN/authentication domains are not allowed, or the implicit/default action denies unmatched traffic.
+- **Next action:** identify the exact domain/SNI used by the failed connection and add only the required matcher(s).
+
+**Symptom: a blocked HTTPS domain still works**
+
+- **Where:** firewall policy match, endpoint association, URL profile, protocol.
+- **What to test:** whether the new connection is actually intercepted and whether the application uses TCP/443 versus QUIC/UDP/443.
+- **Likely causes:** higher-priority allow rule bypasses inspection, workload zone has no endpoint association, wrong profile group is referenced, or the application is using traffic outside the rule's Layer 4 match.
+- **Next action:** verify `INTERCEPTED` logging, endpoint association, and the actual transport protocol before changing the URL profile.
+
+**Symptom: only some pages in an application work**
+
+- **Where:** application dependency domains.
+- **What to test:** redirects, authentication endpoints, CDNs, APIs, telemetry endpoints, and supporting hostnames.
+- **What failure means:** the main site hostname was allowed, but the application requires other domains that hit the profile's default deny behavior.
+- **Next action:** build the smallest documented dependency allow list rather than changing the profile to allow everything.
 
 ### 6.3 Advanced malware sandbox
 
@@ -391,6 +666,7 @@ The following example uses:
 - zone: `us-central1-a`;
 - organization-level endpoint: `ngfw-ent-a`;
 - threat-prevention profile: `tp-prod`;
+- URL filtering profile: `urlf-prod`;
 - security profile group: `spg-prod`;
 - global network firewall policy: `prod-ngfw-policy`.
 
@@ -408,6 +684,7 @@ export NETWORK="prod-vpc"
 export ENDPOINT="ngfw-ent-a"
 export ENDPOINT_ASSOC="ngfw-ent-a-prod-vpc"
 export TP_PROFILE="tp-prod"
+export URLF_PROFILE="urlf-prod"
 export SPG="spg-prod"
 export FW_POLICY="prod-ngfw-policy"
 ```
@@ -460,6 +737,8 @@ gcloud network-security security-profile-groups create "$SPG" \
   --threat-prevention-profile="organizations/$ORG_ID/locations/global/securityProfiles/$TP_PROFILE" \
   --description="Cloud NGFW Enterprise production security profile group"
 ```
+
+If you also want URL filtering, create/import the URL filtering profile as described in section 6.2 and include it in the profile group using `--url-filtering-profile`.
 
 ### 10.6 Create the zonal firewall endpoint
 
@@ -777,6 +1056,23 @@ gcloud compute networks describe "$NETWORK" \
 
 For a VM-based workload, inspect its effective routing using the normal Compute Engine/VPC routing tools. The key question is still whether the original destination has a valid route; you should not expect a route whose next hop is the firewall endpoint.
 
+### 16.7 Verify URL filtering policy objects
+
+```cli
+gcloud network-security security-profiles export "$URLF_PROFILE" \
+  --organization="$ORG_ID" \
+  --location=global \
+  --destination=/tmp/urlf-effective.yaml
+```
+
+**What it tests:** the configured URL matchers, priorities, actions, and profile scope.
+
+**Success criteria:** expected allow/deny entries are present and the security profile group references this profile.
+
+**Failure indicators:** wrong scope, wrong profile, missing matcher, wrong wildcard, or unexpected implicit/default behavior.
+
+**Next action:** correct the profile, confirm the profile group reference, and retest with a new session.
+
 ---
 
 ## 17. Troubleshooting by symptom
@@ -866,6 +1162,18 @@ gcloud compute networks describe "$NETWORK" \
 
 **Next action:** create/use the security profile group in the correct project or use the appropriate organization-level resource model.
 
+### Symptom: URL filtering behaves differently than a Panorama policy you expected to reproduce
+
+**Where:** architecture/design assumption.
+
+**What it tests:** whether the design depends on PAN-OS/PAN-DB constructs that Cloud NGFW Enterprise does not expose.
+
+**Expected state:** Cloud NGFW Enterprise uses Google Cloud URL filtering security profiles with domain/URL matcher strings and allow/deny actions.
+
+**Failure meaning:** the requirement may actually call for customer-managed Palo Alto PAN-OS capabilities rather than the Google-managed service abstraction.
+
+**Next action:** map every required PAN-OS feature to a documented Cloud NGFW Enterprise equivalent. If a required feature such as PAN-DB category policy, custom PAN-OS URL categories, App-ID security policy, Panorama templates, or PAN-OS routing/NAT has no documented equivalent, evaluate VM-Series or another architecture that exposes PAN-OS.
+
 ---
 
 ## 18. Common mistakes
@@ -882,6 +1190,10 @@ gcloud compute networks describe "$NETWORK" \
 10. **Assuming Cloud NAT is performed by the firewall endpoint.** The endpoint is an inspection service; NAT remains a separate VPC service.
 11. **Assuming serverless egress is supported.** Google documents serverless egress inspection as unsupported for Cloud NGFW Enterprise TLS/IPS scenarios.
 12. **Treating endpoint capacity as unlimited.** Aggregate and per-connection throughput limits are documented and should be monitored.
+13. **Assuming the service is directly Panorama-managed because Palo Alto technology is underneath.** The customer management surface is Google Cloud, not PAN-OS/Panorama.
+14. **Assuming PAN-DB category controls are exposed.** The documented Google URL-filtering model uses configured URL/domain matcher strings and allow/deny actions.
+15. **Forgetting the implicit/default URL action.** A broad interception rule plus an allow-list profile can deny every unmatched HTTP(S) destination.
+16. **Testing only the primary website hostname.** Modern applications often require authentication, API, CDN, and supporting domains that must also satisfy the URL profile.
 
 ---
 
@@ -891,13 +1203,13 @@ Choose Cloud NGFW Enterprise firewall endpoints when you want:
 
 - Google-managed advanced inspection rather than self-managed NGFW VM appliances;
 - IPS/threat prevention integrated with Google Cloud firewall policy;
-- URL filtering;
+- Google-managed URL/domain filtering with explicit matcher lists;
 - optional TLS decryption;
 - central policy with distributed/zonal managed inspection;
 - no customer-managed service-insertion route topology;
 - security enforcement based on firewall-policy matching instead of explicit NVA next hops.
 
-Do **not** assume firewall endpoints replace every NVA use case. A third-party appliance may still be necessary when you require vendor-specific VPN termination, routing protocols, SD-WAN, custom NAT, application proxies, unsupported inspection protocols, or firewall features not exposed by Cloud NGFW Enterprise.
+Do **not** assume firewall endpoints replace every NVA use case. A third-party appliance may still be necessary when you require vendor-specific VPN termination, routing protocols, SD-WAN, custom NAT, PAN-OS/PAN-DB URL-category policy, App-ID-oriented policy, Panorama management, application proxies, unsupported inspection protocols, or other firewall features not exposed by Cloud NGFW Enterprise.
 
 ---
 
@@ -931,6 +1243,11 @@ Before production deployment, confirm all of the following:
 - [ ] Global/hierarchical firewall-policy rule uses `apply_security_profile_group`.
 - [ ] Rule order does not allow traffic before the interception rule.
 - [ ] Rule targets only the intended workloads/services.
+- [ ] URL filtering rules are scoped deliberately to HTTP/HTTPS traffic.
+- [ ] URL matcher strings, priorities, allow/deny actions, and default behavior are documented.
+- [ ] Internet and non-internet URL policies use separate network contexts where appropriate.
+- [ ] Required supporting application domains are included in allow-list designs.
+- [ ] No design assumption depends on Panorama/PAN-OS objects that the managed service does not expose.
 - [ ] Firewall-policy logging is enabled during rollout.
 - [ ] VPC MTU is compatible with endpoint packet-size support.
 - [ ] Endpoint throughput and single-flow limits are acceptable.
@@ -944,32 +1261,46 @@ Before production deployment, confirm all of the following:
 
 ## 22. Key takeaways
 
-1. A Cloud NGFW Enterprise firewall endpoint is a **zonal managed inspection service**, not a route next hop.
+1. A Cloud NGFW Enterprise firewall endpoint is a **zonal managed inspection service**, not a route next hop and not a customer-managed PAN-OS appliance.
 2. **Packet Intercept** transparently diverts only connections selected by an `apply_security_profile_group` rule.
 3. The VPC must have a **firewall endpoint association in every workload zone** that needs Layer 7 inspection.
 4. Policy intent can be centralized even though endpoint data-plane capacity is zonal.
 5. `apply_security_profile_group` creates connection-tracking state so both directions of the connection remain intercepted.
-6. TLS inspection requires both a TLS inspection policy on the endpoint association and TLS-inspection enablement on the firewall-policy rule.
-7. MTU, protocol support, project/org scope, and endpoint capacity are operationally significant; failures in these areas can produce security gaps or packet loss without any need for a route-table problem.
-8. Cloud NAT, hybrid routes, and normal VPC routing remain separate from endpoint insertion because the endpoint does not replace the original forwarding path.
+6. URL filtering is customized through Google Cloud **URL filtering security profiles** containing prioritized domain/URL matcher strings and allow/deny actions.
+7. Without TLS inspection, HTTPS URL filtering primarily relies on TLS SNI; with TLS inspection, Cloud NGFW can also use domain information from decrypted HTTP headers.
+8. The documented Cloud NGFW Enterprise URL-filtering surface is **not the same as PAN-OS/PAN-DB URL Filtering**, and Panorama does not manage these Google-managed endpoints.
+9. TLS inspection requires both a TLS inspection policy on the endpoint association and TLS-inspection enablement on the firewall-policy rule.
+10. MTU, protocol support, project/org scope, URL-filter default behavior, and endpoint capacity are operationally significant; failures in these areas can produce security gaps or packet loss without any need for a route-table problem.
+11. Cloud NAT, hybrid routes, and normal VPC routing remain separate from endpoint insertion because the endpoint does not replace the original forwarding path.
 
 ---
 
 ## Sources
+
+### Google Cloud
 
 - Google Cloud, Firewall endpoint overview: https://docs.cloud.google.com/firewall/docs/about-firewall-endpoints
 - Google Cloud, Create firewall endpoints and endpoint associations: https://docs.cloud.google.com/firewall/docs/configure-firewall-endpoints
 - Google Cloud, Manage firewall endpoints and endpoint associations: https://docs.cloud.google.com/firewall/docs/manage-firewall-endpoints
 - Google Cloud, Application layer inspection overview: https://docs.cloud.google.com/firewall/docs/about-app-layer-inspection
 - Google Cloud, Create and manage threat prevention security profiles: https://docs.cloud.google.com/firewall/docs/configure-security-profiles
+- Google Cloud, URL filtering service overview: https://docs.cloud.google.com/firewall/docs/about-url-filtering
+- Google Cloud, Create and manage URL filtering security profiles: https://docs.cloud.google.com/firewall/docs/configure-urlf-security-profiles
+- Google Cloud, Set up URL filtering service in your network: https://docs.cloud.google.com/firewall/docs/tutorials/set-up-urlf-tutorial
+- Google Cloud, Best practices for URL filtering service: https://docs.cloud.google.com/firewall/docs/urlf_best_practices
 - Google Cloud, Create global network firewall policies and rules: https://docs.cloud.google.com/firewall/docs/use-network-firewall-policies
 - Google Cloud, Create hierarchical firewall policies and rules: https://docs.cloud.google.com/firewall/docs/using-firewall-policies
 - Google Cloud, Firewall policy rule components: https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details
 - Google Cloud, Firewall policy evaluation order: https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-eval-order
 - Google Cloud, Intrusion detection and prevention overview: https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
-- Google Cloud, URL filtering overview: https://docs.cloud.google.com/firewall/docs/about-url-filtering
 - Google Cloud, TLS inspection overview: https://docs.cloud.google.com/firewall/docs/about-tls-inspection
 - Google Cloud, Set up TLS inspection: https://docs.cloud.google.com/firewall/docs/setup-tls-inspection
 - Google Cloud, Firewall policy rule logging examples: https://docs.cloud.google.com/firewall/docs/firewall-policy-rules-log-examples
 - Google Cloud, Quotas and limits: https://docs.cloud.google.com/firewall/docs/quotas
 - Google Cloud, Release notes: https://docs.cloud.google.com/firewall/docs/release-notes
+
+### Palo Alto Networks
+
+- Palo Alto Networks, Achieving Simplicity, Scale, and Security With Google Cloud NGFW Enterprise: https://www.paloaltonetworks.com/resources/techbriefs/achieving-simplicity-scale-and-security-with-google-cloud-ngfw-enterprise
+- Palo Alto Networks, Google Cloud and Palo Alto Networks Deliver Cloud-Native NGFW Service: https://www.paloaltonetworks.com/blog/2024/04/google-cloud-ngfw-enterprise/
+- Palo Alto Networks, Google Cloud partnership page: https://www.paloaltonetworks.com/partners/nextwave-for-csp/google-cloud-and-palo-alto-networks
