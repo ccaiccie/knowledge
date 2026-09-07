@@ -37,7 +37,7 @@ This guide separates three concepts that are easy to conflate:
       - [4.3.3.4 Launch the first VM-Series instance](#4334-launch-the-first-vm-series-instance)
       - [4.3.3.5 Verify GCE NIC order before touching PAN-OS](#4335-verify-gce-nic-order-before-touching-pan-os)
       - [4.3.3.6 Swap the PAN-OS management interface for standard NSI behind the ILB](#4336-swap-the-pan-os-management-interface-for-standard-nsi-behind-the-ilb)
-      - [4.3.3.7 Enable GENEVE inspection and verify PAN-OS](#4337-enable-geneve-inspection-and-verify-panos)
+      - [4.3.3.7 Enable GENEVE inspection and verify PAN-OS](#4337-enable-geneve-inspection-and-verify-pan-os)
       - [4.3.3.8 Create the unmanaged instance group and add the firewall](#4338-create-the-unmanaged-instance-group-and-add-the-firewall)
       - [4.3.3.9 Add a second firewall and verify membership](#4339-add-a-second-firewall-and-verify-membership)
       - [4.3.3.10 Standard NSI versus NSI Overlay NIC model](#43310-standard-nsi-versus-nsi-overlay-nic-model)
@@ -131,9 +131,8 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.cloud.google.com/network-security-integration/docs/release-notes
 - https://docs.cloud.google.com/vpc/docs/policy-based-routes
 - https://docs.cloud.google.com/vpc/docs/use-policy-based-routes
-- https://docs.cloud.google.com/vpc/docs/vpc-peering
+- https://docs.cloud.google.com/sdk/gcloud/reference/network-connectivity/policy-based-routes/create
 - https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
-- https://docs.cloud.google.com/load-balancing/docs/internal/deploying-ilb-next-hop-vm
 - https://docs.cloud.google.com/load-balancing/docs/internal/setting-up-ilb-next-hop
 - https://cloud.google.com/blog/products/networking/policy-based-routing-network-patterns-for-virtual-appliances
 
@@ -1900,23 +1899,19 @@ gcloud network-connectivity policy-based-routes create pbr-db-to-app \
 
 ## 7.6 Inter-VPC / hub-and-spoke east-west inspection
 
-This is one of the most useful—and easiest to misunderstand—traditional VM-Series insertion patterns in GCP.
+This design deserves special attention because **VPC Network Peering is not transitive**. If `spoke-a-vpc` peers only with `hub-vpc`, and `spoke-b-vpc` also peers only with `hub-vpc`, Spoke A does **not** automatically learn or use Spoke B's subnet route through the hub.
 
-The key design fact is:
+The supported service-insertion pattern is different: create an **untagged custom static route in the hub whose next hop is an internal passthrough Network Load Balancer**, export that custom route over the hub's VPC peerings, and import it in each spoke. The imported route sends otherwise-unreachable remote-spoke traffic to VM-Series. After VM-Series inspects and re-emits the packet into the hub VPC, the hub's own directly learned peering subnet route reaches the destination spoke.
 
-> **VPC Network Peering is not transitive, but Google can exchange untagged custom static routes whose next hop is an internal passthrough Network Load Balancer.**
+**Source information:** Google documents internal passthrough Network Load Balancers as static-route next hops and specifically documents hub-and-spoke deployments in which custom routes using the load balancer as a next hop are exported over VPC Network Peering. Google also documents that VPC peering is non-transitive and that tagged static routes are not exchanged over peering.
 
-That distinction is what makes the hub-and-spoke inspection design work. The hub does **not** become a generic router between peers. Instead, each spoke imports a deliberately exported custom route that sends otherwise-unreachable private destinations to the VM-Series service in the hub. After inspection, the firewall emits the packet into the hub VPC, where the hub's own directly learned peering subnet route can deliver it to the destination spoke.
-
-**Primary Google references:**
+**Primary references:**
 
 - https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
 - https://docs.cloud.google.com/load-balancing/docs/internal/deploying-ilb-next-hop-vm
 - https://docs.cloud.google.com/vpc/docs/vpc-peering
 
 ### 7.6.1 Concrete topology
-
-Use this example throughout the section:
 
 ```text
 Project: SEC_PROJECT
@@ -1936,112 +1931,117 @@ spoke-b-vpc
   app-b VM              10.20.1.20
 ```
 
-Peering relationships are only:
+The only peerings are:
 
 ```text
-spoke-a-vpc <---- VPC Peering ----> hub-vpc
-spoke-b-vpc <---- VPC Peering ----> hub-vpc
+spoke-a-vpc <---- VPC Network Peering ----> hub-vpc
+spoke-b-vpc <---- VPC Network Peering ----> hub-vpc
 ```
 
-There is **no** direct `spoke-a-vpc <-> spoke-b-vpc` peering.
-
-Therefore Spoke A normally has no subnet route for `10.20.0.0/16`, and Spoke B normally has no subnet route for `10.10.0.0/16`. Peering does not re-export another peer's subnet routes.
-
-### 7.6.2 Why an aggregate inspection route works
-
-A practical east-west-only design is to create this route in `hub-vpc`:
+There is no direct Spoke A-to-Spoke B peering. Consequently:
 
 ```text
-10.0.0.0/8 -> internal passthrough ILB 10.0.0.10
+Spoke A does not receive 10.20.0.0/16 as a transitively learned subnet route.
+Spoke B does not receive 10.10.0.0/16 as a transitively learned subnet route.
 ```
 
-Then export that custom route from the hub and import it into each spoke.
+That absence is important: it leaves room for a broader imported inspection route to catch the remote-spoke destination.
 
-Why use an aggregate such as `10.0.0.0/8` instead of creating a route exactly for Spoke B's `10.20.0.0/16` subnet?
+### 7.6.2 Why a broader inspection route is used
 
-Google's route rules matter:
-
-- a static route cannot have a destination equal to or more specific than a conflicting subnet route;
-- local and directly peered subnet routes remain the authoritative, more-specific paths for those subnet ranges;
-- the other spoke's subnet route is not transitively imported into the source spoke;
-- an aggregate custom route can therefore catch the remote-spoke destination in the source spoke while remaining less specific than the hub's directly learned destination-spoke subnet route after the packet leaves VM-Series.
-
-This produces the following two-stage routing behavior.
-
-**Spoke A before inspection:**
+A useful private-only inspection route is:
 
 ```text
-Destination = 10.20.1.20
-
-Spoke A route candidates:
-  local subnet route 10.10.0.0/16     no match
-  peering routes from hub             no 10.20.0.0/16 transit route
-  imported custom route 10.0.0.0/8    MATCH
-
-Winner:
-  10.0.0.0/8 -> hub trust ILB -> VM-Series
+10.0.0.0/8 -> next hop internal passthrough ILB 10.0.0.10
 ```
 
-**Hub after inspection:**
+The hub owns that route. Each spoke imports it from the hub.
+
+The route should be **less specific** than the actual workload subnet routes. This gives you two different outcomes at two routing stages.
+
+Before inspection, in Spoke A:
 
 ```text
-VM-Series emits packet toward 10.20.1.20 into hub-vpc
+Destination: 10.20.1.20
 
-Hub route candidates:
-  custom inspection route 10.0.0.0/8  matches
-  peering subnet route 10.20.0.0/16   matches and is more specific
+10.10.0.0/16  local Spoke A subnet       no match
+10.20.0.0/16  transit peering route       does not exist
+10.0.0.0/8    imported hub custom route   MATCH
 
-Winner:
-  10.20.0.0/16 -> hub-to-spoke-b peering
+Result:
+10.20.1.20 -> imported 10.0.0.0/8 -> trust ILB -> VM-Series
 ```
 
-That more-specific peering subnet route is what prevents the inspected packet from immediately looping back to the ILB.
-
-If your enterprise uses multiple RFC1918 ranges, use the smallest aggregate that represents the networks you actually intend to inspect rather than blindly using `10.0.0.0/8`.
-
-### 7.6.3 Why `0.0.0.0/0` also works—but changes the design
-
-Google's hub-and-spoke next-hop-ILB tutorial commonly uses:
+After inspection, when VM-Series emits the packet into `hub-vpc`:
 
 ```text
-0.0.0.0/0 -> ILB
+Destination: 10.20.1.20
+
+10.0.0.0/8   hub inspection static route  matches
+10.20.0.0/16 direct hub-to-Spoke-B route   matches and is more specific
+
+Result:
+10.20.1.20 -> 10.20.0.0/16 peering subnet route -> Spoke B
 ```
 
-That works because directly connected/local/peering subnet routes are more specific than the default route. In a spoke, the absent remote-spoke subnet route means the imported default can steer the remote destination to the firewall.
+That second, more-specific lookup prevents the packet from being sent straight back to the ILB after inspection.
 
-But importing the hub's `0.0.0.0/0` also affects destinations outside your private spoke aggregates—including Internet destinations—unless another more-specific route wins.
+Do not blindly use `10.0.0.0/8` if your environment uses a different addressing plan. Use an aggregate that covers the private destinations you intend to inspect while remaining broader than the destination spoke subnet routes.
 
-Therefore:
+### 7.6.3 Why `0.0.0.0/0` is another valid pattern
 
-| Imported route | Typical effect |
+Google's documented hub-and-spoke next-hop-ILB example uses an exported custom default route:
+
+```text
+0.0.0.0/0 -> internal passthrough ILB
+```
+
+That also catches an otherwise-unreachable remote-spoke destination because local and directly peered subnet routes are more specific than `0.0.0.0/0`.
+
+The architectural difference is scope:
+
+| Hub route exported to spokes | Effect |
 |---|---|
-| `10.0.0.0/8 -> ILB` | Inspect private destinations in that aggregate; ordinary Internet default can remain separate |
-| `0.0.0.0/0 -> ILB` | Treat the VM-Series service as the spoke's broad default next hop, potentially combining east-west and Internet egress inspection |
+| `10.0.0.0/8 -> ILB` | Steers destinations in that private aggregate; Internet can continue using a different default route |
+| `0.0.0.0/0 -> ILB` | Makes the firewall service the broad next hop for otherwise-unmatched destinations, potentially including Internet egress |
 
-Choose deliberately.
+Use the default route only if that broader steering is intentional.
 
-### 7.6.4 PBR is not the route-exchange mechanism here
+### 7.6.4 PBR is not exchanged through peering
 
-Do **not** model this peering design as “export the PBR from the hub.”
+Do not try to build this particular design by creating a hub PBR and expecting the spokes to import it.
 
-Policy-Based Routes are a different GCP routing construct and are not exchanged by VPC Network Peering. Likewise, a custom static route that uses a **network tag** is not exported/imported through VPC Network Peering.
+**Policy-Based Routes are not exchanged by VPC Network Peering.** In addition, a static route that uses a **network tag** is not exported/imported across VPC Network Peering.
 
-For this specific peering-based hub design, the route that the spokes import must be an **exportable custom static route**, normally untagged, with the hub internal passthrough ILB as its next hop.
+Therefore the peering-based inter-spoke service-insertion route should be:
 
-Use PBR when you need same-VPC source/protocol/tag-aware steering as described in section 7.5. Use exported/imported custom static routes for this VPC-peering hub/spoke pattern.
+```text
+custom static route
++ untagged
++ next hop = internal passthrough NLB
++ created in hub-vpc
++ exported by hub peering
++ imported by spoke peering
+```
 
-### 7.6.5 Create or verify the hub trust ILB
+Use PBR for the same-VPC traffic-selection cases described in section 7.5, where source, destination, protocol, tag, or hybrid-ingress context must influence service insertion.
 
-The trust-side firewall service must already exist before a static route can reference it.
+### 7.6.5 Create or verify the trust-side internal passthrough ILB
 
-At minimum verify the forwarding rule and backend health:
+The ILB must exist before the static route can reference it.
+
+Verify the forwarding rule:
 
 ```cli
 gcloud compute forwarding-rules describe pan-trust-ilb \
   --project=SEC_PROJECT \
   --region=us-central1 \
   --format='yaml(name,IPAddress,network,subnetwork,backendService,loadBalancingScheme,allowGlobalAccess)'
+```
 
+Verify backend health:
+
+```cli
 gcloud compute backend-services get-health pan-trust-ilb-bs \
   --project=SEC_PROJECT \
   --region=us-central1
@@ -2049,17 +2049,15 @@ gcloud compute backend-services get-health pan-trust-ilb-bs \
 
 **Success criteria:**
 
-- forwarding rule belongs to `hub-vpc`;
-- VIP is the intended internal address such as `10.0.0.10`;
+- forwarding rule is in `hub-vpc`;
+- frontend address is the intended trust VIP, for example `10.0.0.10`;
 - load-balancing scheme is internal passthrough;
-- intended VM-Series backends are healthy;
-- global access is enabled if client resources outside the ILB's region must use it as a next hop.
+- intended VM-Series instances are healthy backends;
+- global access is enabled if clients in other regions need to use this ILB as a route next hop.
 
-Google requires the next-hop ILB and the static route that references it to be in the same VPC network. The route itself is global, but without ILB global access, sources in other regions cannot successfully use that next hop.
+The static route and its next-hop ILB must belong to the same VPC. The route is global, but the regional ILB still needs global access for sources outside the ILB's region.
 
-### 7.6.6 Create the hub custom static inspection route
-
-For east-west private inspection only:
+### 7.6.6 Create the hub static route for private east-west inspection
 
 ```cli
 gcloud compute routes create pan-east-west-summary \
@@ -2072,7 +2070,22 @@ gcloud compute routes create pan-east-west-summary \
   --description="Exportable private-summary route for VM-Series inter-spoke inspection"
 ```
 
-If your design intentionally sends every otherwise-unmatched destination through VM-Series, use a default route instead:
+Verify it:
+
+```cli
+gcloud compute routes describe pan-east-west-summary \
+  --project=SEC_PROJECT \
+  --format='yaml(name,network,destRange,priority,nextHopIlb,tags)'
+```
+
+**What to verify:**
+
+- `network` is `hub-vpc`;
+- destination is the intended aggregate;
+- next hop is the intended internal passthrough ILB;
+- `tags` is empty if this route must be exchanged over peering.
+
+If you intentionally want the hub firewall to be the default service for the spokes, create the broader alternative instead:
 
 ```cli
 gcloud compute routes create pan-default-via-firewall \
@@ -2085,27 +2098,11 @@ gcloud compute routes create pan-default-via-firewall \
   --description="Exportable default route through VM-Series"
 ```
 
-Do not create both examples blindly; choose the route scope that matches the intended security policy.
+Do not create both merely because both examples are shown. Pick the route that matches the desired traffic scope.
 
-Verify:
+### 7.6.7 Configure VPC peerings to exchange the hub custom route
 
-```cli
-gcloud compute routes describe pan-east-west-summary \
-  --project=SEC_PROJECT \
-  --format='yaml(name,network,destRange,priority,nextHopIlb,routeType,tags)'
-```
-
-**What to verify:**
-
-- destination is the expected aggregate;
-- next hop resolves to the intended internal passthrough ILB;
-- the route has **no network tag** if you expect to exchange it over peering.
-
-### 7.6.7 Create the four peering directions with custom-route exchange
-
-VPC Network Peering is configured from each network's side. Route import/export is also controlled independently on each side.
-
-For Spoke A:
+Peering is configured independently from each network's side. For the hub-to-Spoke-A relationship:
 
 ```cli
 gcloud compute networks peerings create hub-to-spoke-a \
@@ -2123,7 +2120,7 @@ gcloud compute networks peerings create spoke-a-to-hub \
   --import-custom-routes
 ```
 
-For Spoke B:
+For the hub-to-Spoke-B relationship:
 
 ```cli
 gcloud compute networks peerings create hub-to-spoke-b \
@@ -2141,7 +2138,7 @@ gcloud compute networks peerings create spoke-b-to-hub \
   --import-custom-routes
 ```
 
-If the peerings already exist, update their route-exchange settings rather than trying to recreate them:
+If the peerings already exist, update them instead of recreating them:
 
 ```cli
 gcloud compute networks peerings update hub-to-spoke-a \
@@ -2165,9 +2162,26 @@ gcloud compute networks peerings update spoke-b-to-hub \
   --import-custom-routes
 ```
 
-If the hub and spokes are in different projects, replace `--peer-project=SEC_PROJECT` with the actual peer project ID. Both sides still need the correct IAM permissions and peering configuration.
+If the hub and spokes live in different projects, replace `--peer-project=SEC_PROJECT` with the appropriate project ID for the opposite network.
 
-### 7.6.8 Verify peering route-exchange flags
+The control-plane intent is:
+
+```text
+hub-vpc
+   custom static route 10.0.0.0/8 -> pan-trust-ilb
+        |
+        +-- hub-to-spoke-a: export custom routes
+        |       |
+        |       +-- spoke-a-to-hub: import custom routes
+        |
+        +-- hub-to-spoke-b: export custom routes
+                |
+                +-- spoke-b-to-hub: import custom routes
+```
+
+This does **not** mean the hub re-exports Spoke A's subnet routes to Spoke B. The exported object of interest is the hub's own eligible custom static route.
+
+### 7.6.8 Verify peering route-exchange state
 
 ```cli
 gcloud compute networks peerings list \
@@ -2183,24 +2197,18 @@ gcloud compute networks peerings list \
   --network=spoke-b-vpc
 ```
 
-For the hub side, verify custom-route export is enabled. For each spoke side, verify custom-route import is enabled.
-
-The control-plane intent should be:
+Verify:
 
 ```text
-hub-vpc
-  exportCustomRoutes = true
-        |
-        +----> spoke-a-vpc importCustomRoutes = true
-        |
-        +----> spoke-b-vpc importCustomRoutes = true
+hub-to-spoke-a  exportCustomRoutes = true
+spoke-a-to-hub  importCustomRoutes = true
+hub-to-spoke-b  exportCustomRoutes = true
+spoke-b-to-hub  importCustomRoutes = true
 ```
 
-This does **not** mean Spoke A exports its routes through the hub to Spoke B. It means the hub exports routes that exist in the hub and qualify for export.
+### 7.6.9 Verify the effective route in each spoke
 
-### 7.6.9 Verify the imported inspection route in each spoke
-
-List effective routes associated with the spoke network:
+Start with route inventory:
 
 ```cli
 gcloud compute routes list \
@@ -2214,46 +2222,46 @@ gcloud compute routes list \
   --format='table(name,destRange,priority,nextHopIlb,nextHopGateway,nextHopPeering,routeType)'
 ```
 
-Depending on the command/view, imported peering/custom routes can be represented differently from locally created static routes, so also inspect the VPC's effective routes in the Google Cloud console or Network Intelligence Center when necessary.
+Also use the VPC effective-routes view / Network Intelligence Center when you need the resolved imported route perspective.
 
-**Spoke A success criteria:**
-
-```text
-10.10.0.0/16 -> local subnet                 present
-10.0.0.0/8   -> imported custom/ILB path     present
-10.20.0.0/16 -> direct peering subnet route  absent
-```
-
-**Spoke B success criteria:**
+For Spoke A, the important state is conceptually:
 
 ```text
-10.20.0.0/16 -> local subnet                 present
-10.0.0.0/8   -> imported custom/ILB path     present
-10.10.0.0/16 -> direct peering subnet route  absent
+10.10.0.0/16  local subnet route                 present
+10.0.0.0/8    imported hub custom inspection     present
+10.20.0.0/16  direct transit peering route        absent
 ```
 
-The absence of a direct remote-spoke subnet route is expected. If Spoke A somehow had a more-specific direct path to `10.20.0.0/16`, that path would win over the `10.0.0.0/8` inspection aggregate and bypass this steering model.
+For Spoke B:
 
-### 7.6.10 PAN-OS routing for the post-inspection leg
+```text
+10.20.0.0/16  local subnet route                 present
+10.0.0.0/8    imported hub custom inspection     present
+10.10.0.0/16  direct transit peering route        absent
+```
 
-Once the ILB selects a VM-Series backend, Google delivers the packet to the firewall with the original inner IP tuple preserved:
+The absence of the direct remote-spoke subnet route is normal in this topology. It is precisely why the imported broader route can steer the packet to VM-Series.
+
+### 7.6.10 PAN-OS route for the post-inspection packet
+
+The ILB sends the original packet to VM-Series without changing the workload tuple merely because it is a route next hop. Example:
 
 ```text
 10.10.1.10:51514 -> 10.20.1.20:443
 ```
 
-PAN-OS must then have a route that sends private spoke destinations back toward the GCP hub/trust dataplane.
+PAN-OS must route the allowed packet back toward GCP's hub/trust forwarding plane.
 
 Assume:
 
 ```text
 PAN-OS Trust interface: ethernet1/1
-GCP hub trust subnet:    10.0.0.0/24
+hub-trust-subnet:        10.0.0.0/24
 GCP subnet gateway:      10.0.0.1
-Private spoke summary:   10.0.0.0/8
+private workload range:  10.0.0.0/8
 ```
 
-A representative PAN-OS static route is:
+Representative PAN-OS configuration:
 
 ```cli
 set network virtual-router default interface ethernet1/1
@@ -2262,177 +2270,192 @@ set network virtual-router default routing-table ip static-route gcp-private-spo
 set network virtual-router default routing-table ip static-route gcp-private-spokes nexthop ip-address 10.0.0.1
 ```
 
-Commit the PAN-OS configuration.
+Commit the configuration.
 
-**Why this does not create an ILB loop:** PAN-OS sends the packet to the GCP subnet gateway. The packet is now emitted by the firewall VM into `hub-vpc`. Google's hub route lookup sees the destination-spoke peering subnet route (`10.20.0.0/16`), which is more specific than the hub's `10.0.0.0/8 -> ILB` inspection route.
-
-If your PAN-OS design has separate trust interfaces/virtual routers, use the actual interface, virtual router, and next-hop topology rather than copying these placeholders.
+This route does not mean PAN-OS knows the GCP peering topology. It simply sends matching private destinations to the GCP trust-side gateway. Once the packet leaves the firewall VM, Google performs a new `hub-vpc` route lookup and chooses the more-specific destination-spoke peering subnet route.
 
 ### 7.6.11 PAN-OS Security policy and NAT
 
-In this single hub/trust-interface pattern, the packet can enter and leave the same logical Trust zone. Create an explicit policy for the permitted inter-spoke flows rather than relying on an unintended broad intrazone allow.
+In a one-trust-interface hub design, an inter-spoke packet can enter and leave the same logical Trust zone. Define the intended security rule explicitly rather than accidentally relying on a permissive intrazone rule.
 
-Representative policy intent:
+Example policy intent:
 
 ```text
-Rule: inter-spoke-east-west
-From: Trust
-To:   Trust
+Rule:        inter-spoke-east-west
+From zone:   Trust
+To zone:     Trust
 Source:      10.10.0.0/16, 10.20.0.0/16
 Destination: 10.10.0.0/16, 10.20.0.0/16
-Applications/services: organization-specific
-Action: allow
-Security profiles: attach required Threat Prevention / URL / WildFire profiles
-Log at session end: yes
+Application: approved applications
+Service:     application-default or required ports
+Action:      allow
+Profiles:    required Threat Prevention / WildFire / URL profiles
+Logging:     session end
 ```
 
-For normal private east-west routing, source NAT is generally unnecessary and removes useful workload identity from logs. Use a no-NAT policy when a broader NAT rule would otherwise match the flow.
-
-Conceptually:
+Private east-west traffic normally does not require SNAT merely to make the routing model work. Preserving the original source address is useful for policy and logging. If a broader NAT rule might catch Trust-to-Trust traffic, place an appropriate no-NAT rule above it. Palo Alto's CLI syntax for a conceptual no-NAT match begins with:
 
 ```cli
 set rulebase nat rules no-nat-interspoke from Trust to Trust
 set rulebase nat rules no-nat-interspoke source any destination any service any
 ```
 
-If the firewall uses the same Trust zone for both sides, validate rule ordering carefully so Internet SNAT or another broad NAT rule does not accidentally translate inter-spoke traffic.
+Complete the NAT rule according to the PAN-OS version and interface topology you actually deploy, and commit it.
 
-### 7.6.12 Complete forward packet walk: Spoke A -> Spoke B
+### 7.6.12 Forward packet flow: Spoke A -> Spoke B
 
-Example:
+Example connection:
 
 ```text
-Source:      10.10.1.10:51514
-Destination: 10.20.1.20:443
+10.10.1.10:51514 -> 10.20.1.20:443
 ```
 
-1. `10.10.1.10` sends the packet in `spoke-a-vpc`.
-2. Spoke A has no directly peered `10.20.0.0/16` subnet route because VPC peering is non-transitive.
-3. The imported `10.0.0.0/8` custom route matches.
-4. That route's next hop is the hub internal passthrough ILB.
-5. Google reaches the ILB through the hub/spoke peering relationship.
-6. The ILB performs its backend selection and selects a healthy VM-Series instance.
-7. VM-Series receives the original packet—there is no destination NAT merely because the ILB is acting as a route next hop.
-8. PAN-OS creates/looks up the session, evaluates Security policy/App-ID/security profiles, and performs NAT policy evaluation.
-9. PAN-OS route lookup selects the private-spoke route through the Trust interface toward the GCP hub subnet gateway.
-10. VM-Series emits the packet into `hub-vpc`.
-11. Google performs a **new hub VPC route lookup**.
-12. `10.20.0.0/16` learned from the direct hub-to-Spoke-B peering is more specific than `10.0.0.0/8`.
-13. Google sends the packet across the hub-to-Spoke-B peering.
-14. Spoke B's local subnet route delivers it to `10.20.1.20`.
+1. `10.10.1.10` emits the packet in `spoke-a-vpc`.
+2. Spoke A has no transitively learned `10.20.0.0/16` subnet route.
+3. Its imported `10.0.0.0/8` custom route matches `10.20.1.20`.
+4. The route identifies the hub internal passthrough ILB as next hop.
+5. Google sends the packet across the peering-supported next-hop path to the ILB.
+6. The ILB hashes the flow and selects a healthy VM-Series backend.
+7. VM-Series receives the packet with the original source/destination tuple.
+8. PAN-OS performs ingress-zone determination, session creation, Security policy, App-ID/content inspection, NAT policy evaluation, and its virtual-router lookup.
+9. PAN-OS chooses the private-spoke route via Trust and emits the allowed packet toward the GCP hub subnet gateway.
+10. The packet re-enters `hub-vpc` as traffic emitted by the firewall VM.
+11. Google performs a fresh hub VPC route lookup.
+12. Both `10.0.0.0/8 -> ILB` and `10.20.0.0/16 -> Spoke B peering` match.
+13. `10.20.0.0/16` is more specific, so the destination-spoke peering route wins.
+14. Google sends the packet across the hub-to-Spoke-B peering.
+15. Spoke B's local subnet route delivers it to `10.20.1.20`.
 
-Tuple through the inspection service, assuming no NAT:
+With no NAT, the tuple stays:
 
 ```text
 Before ILB:      10.10.1.10:51514 -> 10.20.1.20:443
 At VM-Series:    10.10.1.10:51514 -> 10.20.1.20:443
 After VM-Series: 10.10.1.10:51514 -> 10.20.1.20:443
-At Spoke B:      10.10.1.10:51514 -> 10.20.1.20:443
+At destination:  10.10.1.10:51514 -> 10.20.1.20:443
 ```
 
-### 7.6.13 Complete return packet walk: Spoke B -> Spoke A
+### 7.6.13 Return packet flow: Spoke B -> Spoke A
 
-The server response is:
+The server replies:
 
 ```text
 10.20.1.20:443 -> 10.10.1.10:51514
 ```
 
-1. Spoke B has no transitively learned `10.10.0.0/16` route from Spoke A.
+1. Spoke B does not have a transitively learned `10.10.0.0/16` route.
 2. Its imported `10.0.0.0/8 -> hub ILB` route matches the destination.
-3. The packet is sent to the same logical firewall service.
-4. The internal passthrough ILB's symmetric hashing behavior is designed to make the reverse flow select the same eligible backend when the backend set/health configuration is compatible.
-5. PAN-OS finds the existing session and applies stateful return processing/reverse NAT if applicable.
-6. PAN-OS emits the packet into `hub-vpc` toward `10.10.1.10`.
-7. The hub's directly learned `10.10.0.0/16` peering subnet route is more specific than the `10.0.0.0/8` inspection route.
-8. Google sends the packet through the hub-to-Spoke-A peering.
-9. Spoke A delivers it to `10.10.1.10`.
+3. The packet returns to the same logical internal passthrough ILB inspection service.
+4. The ILB's symmetric hashing behavior helps the reverse five-tuple select the same eligible firewall backend when backend membership, health, and configuration meet Google's requirements.
+5. PAN-OS finds the existing session and applies stateful return processing and reverse NAT if any translation was used.
+6. PAN-OS routes the packet toward the GCP trust gateway.
+7. The firewall emits the packet into `hub-vpc`.
+8. The hub's direct `10.10.0.0/16` peering subnet route is more specific than the `10.0.0.0/8` inspection route.
+9. Google selects the hub-to-Spoke-A peering route.
+10. Spoke A delivers the packet to `10.10.1.10`.
 
-This is the symmetry that matters:
-
-```text
-Forward:
-Spoke A -> imported aggregate -> hub ILB -> VM-Series -> hub peering route -> Spoke B
-
-Return:
-Spoke B -> imported aggregate -> hub ILB -> same PAN-OS session -> hub peering route -> Spoke A
-```
-
-### 7.6.14 What VPC peering is—and is not—doing
-
-It is useful to separate three different forwarding events:
+The complete stateful path is therefore:
 
 ```text
-1. Spoke -> hub firewall service
-   Enabled by imported hub custom route + reachable ILB next hop
+Forward
+Spoke A
+  -> imported 10.0.0.0/8
+  -> hub trust ILB
+  -> VM-Series session
+  -> hub 10.20.0.0/16 peering subnet route
+  -> Spoke B
 
-2. Firewall -> destination spoke
-   Enabled by the hub's own direct peering subnet route
-
-3. Spoke A -> Spoke B transit
-   NOT supplied by generic VPC peering transit
+Return
+Spoke B
+  -> imported 10.0.0.0/8
+  -> hub trust ILB
+  -> existing VM-Series session
+  -> hub 10.10.0.0/16 peering subnet route
+  -> Spoke A
 ```
 
-The firewall is a real service-insertion hop. Google is not simply forwarding packets from one peering directly into another peering as a transit router.
+### 7.6.14 What peering is actually doing
 
-### 7.6.15 Route precedence is what makes the second stage work
+There are three different forwarding functions in the design:
 
-The relevant route specificity can be pictured as:
+```text
+Function 1: Spoke -> firewall service
+            imported hub custom route
+            -> internal passthrough ILB
+
+Function 2: Firewall -> destination spoke
+            PAN-OS forwards into hub
+            -> hub's directly learned peering subnet route
+
+Function 3: Spoke A -> Spoke B generic transit
+            NOT provided by VPC Network Peering
+```
+
+This is why saying “the hub makes VPC peering transitive” is inaccurate. The firewall insertion creates a new forwarding stage; generic peering transit still does not exist.
+
+### 7.6.15 Route specificity is the anti-loop mechanism
+
+For the example flow:
 
 ```text
 IN SPOKE A
-10.10.0.0/16  local subnet route     <- source's own network
-10.0.0.0/8    imported ILB route     <- catches remote private destinations
+10.10.0.0/16  local subnet
+10.0.0.0/8    imported inspection route -> ILB
 
-IN HUB AFTER FIREWALL
-10.20.0.0/16  peering subnet route   <- destination spoke, MOST SPECIFIC
-10.0.0.0/8    ILB inspection route   <- broader, loses
+IN HUB AFTER VM-SERIES
+10.20.0.0/16  direct peering subnet route -> Spoke B
+10.0.0.0/8    inspection route -> ILB
 ```
 
-If you accidentally create a route in the hub that is more specific than the destination-spoke peering subnet route and points back to the ILB, the packet can loop or be misrouted. Route design must preserve a more-specific post-inspection path to the final destination.
+The `/16` wins over the `/8` after inspection. If the hub loses the destination-spoke peering route or you create an erroneous route that changes this outcome, the packet can loop back toward the firewall or become unreachable.
 
-### 7.6.16 Regional behavior and global access
+### 7.6.16 Cross-region spokes and ILB global access
 
-An internal passthrough Network Load Balancer is regional. A static route that uses it as a next hop is programmed broadly, but whether a source can use that next hop depends on the ILB's global-access setting.
+An internal passthrough NLB is regional. Google supports using it as a next hop from other regions when **global access** is enabled on the forwarding rule.
 
-If all spokes and the ILB are in `us-central1`, regional access can be sufficient. If a spoke workload in `us-east1` imports the hub route and tries to use a `us-central1` next-hop ILB without global access, the route can exist while packets are dropped because the next hop is unavailable from that region.
+A route can be visible to a remote-region spoke while its next hop is unusable from that region if global access is not configured.
 
-Verify:
+Check:
 
 ```cli
 gcloud compute forwarding-rules describe pan-trust-ilb \
   --project=SEC_PROJECT \
   --region=us-central1 \
-  --format='get(allowGlobalAccess)'
+  --format='yaml(name,IPAddress,allowGlobalAccess)'
 ```
 
-Enable global access when the design requires cross-region clients, using the documented forwarding-rule update procedure for your load balancer.
+**Success:** `allowGlobalAccess` is enabled when clients outside `us-central1` must use the ILB next hop.
 
-### 7.6.17 Firewall rules are not shared across peering
+### 7.6.17 GCP firewall policy remains independent in every VPC
 
-VPC Network Peering shares routes—not firewall policy.
+VPC Network Peering exchanges routes; it does not merge firewall policies.
 
-The hub must allow the required spoke source ranges to reach the VM-Series trust/backend interfaces and health-check traffic must reach the backends. The spokes must independently allow the final east-west application traffic under their own VPC firewall policy.
+You must separately ensure:
 
-For example, the spoke workload firewall policy must permit the intended `10.10.0.0/16 <-> 10.20.0.0/16` application flows. The fact that VM-Series allowed the connection does not override a GCP firewall rule that later denies delivery to the destination VM.
+- hub firewall rules/policies allow the spoke source ranges to reach the VM-Series backend path;
+- health-check sources can reach the VM-Series health-check listener;
+- Spoke B's firewall policy allows the intended application flow from Spoke A's source range;
+- the return direction is allowed where a new connection could originate independently.
 
-### 7.6.18 HA and backend symmetry requirements
+PAN-OS allowing the session does not override a later GCP firewall-policy deny on the destination workload.
 
-For stateful firewalls, both directions must reach the same logical PAN-OS state owner or a supported state-synchronized peer.
+### 7.6.18 HA and symmetric-hashing considerations
 
-Google's symmetric hashing for next-hop internal passthrough ILBs helps, but do not treat it as magic. Verify:
+For a stateful firewall, both directions need to reach the same PAN-OS state owner or a supported state-synchronized peer.
 
-- the same internal passthrough ILB is used by both spokes for the imported route;
-- the eligible backend set is stable;
-- health checks see the intended active firewall(s);
-- active/passive state and load-balancer health behavior match the Palo Alto architecture;
-- session synchronization is healthy when the Palo Alto HA design relies on it.
+Google's symmetric hashing for modern next-hop internal passthrough load balancers is helpful because the hash is direction-independent, but it assumes a compatible eligible-backend set and health state.
 
-If a backend becomes ineligible mid-session, a later packet can be sent to another appliance that does not own the session, depending on the architecture and state synchronization.
+Verify:
 
-### 7.6.19 Verification checklist
+- both spokes import a route to the same logical firewall service;
+- the intended firewall backend set is healthy;
+- paired/HA VM-Series state and session synchronization are healthy where applicable;
+- backend failover behavior is compatible with the Palo Alto deployment model;
+- no alternate more-specific route bypasses inspection in only one direction.
 
-#### Verify the hub custom route
+### 7.6.19 Verification workflow
+
+#### Verify the hub inspection route
 
 ```cli
 gcloud compute routes describe pan-east-west-summary \
@@ -2440,9 +2463,9 @@ gcloud compute routes describe pan-east-west-summary \
   --format='yaml(name,network,destRange,priority,nextHopIlb,tags)'
 ```
 
-**Success:** route belongs to `hub-vpc`, destination is the intended aggregate, next hop is the trust ILB, and no network tag prevents peering exchange.
+**Expected state:** `hub-vpc`, intended aggregate, next-hop ILB, and no network tag.
 
-#### Verify custom-route exchange on peering
+#### Verify peering configuration
 
 ```cli
 gcloud compute networks peerings list \
@@ -2452,11 +2475,15 @@ gcloud compute networks peerings list \
 gcloud compute networks peerings list \
   --project=SEC_PROJECT \
   --network=spoke-a-vpc
+
+gcloud compute networks peerings list \
+  --project=SEC_PROJECT \
+  --network=spoke-b-vpc
 ```
 
-**Success:** hub exports custom routes; spoke imports custom routes.
+**Expected state:** hub exports custom routes; each spoke imports custom routes.
 
-#### Verify ILB/backend health
+#### Verify ILB health
 
 ```cli
 gcloud compute backend-services get-health pan-trust-ilb-bs \
@@ -2464,7 +2491,7 @@ gcloud compute backend-services get-health pan-trust-ilb-bs \
   --region=us-central1
 ```
 
-**Success:** intended VM-Series backends report healthy.
+**Expected state:** intended VM-Series backends are healthy.
 
 #### Verify PAN-OS route and session
 
@@ -2474,76 +2501,83 @@ show session all filter source 10.10.1.10 destination 10.20.1.20
 show counter global filter severity drop delta yes
 ```
 
-**Success:** PAN-OS has a private-spoke route via Trust, creates the expected session, and does not show relevant routing/policy drops.
+**Success:** private route resolves through Trust, the session is created on the expected firewall, and no relevant policy/routing drops increment.
 
-#### Verify reverse traffic
-
-```cli
-show session all filter source 10.20.1.20 destination 10.10.1.10
-```
-
-For an established stateful flow, confirm the reverse packets belong to the expected session/state owner rather than appearing as an unrelated new asymmetric flow.
+Also use **Monitor > Traffic** to confirm the original source and destination addresses, security rule, zones, application, session end reason, and bytes in both directions.
 
 ### 7.6.20 Troubleshooting by symptom
 
-#### Spoke A cannot reach the firewall service
+#### Spoke A never reaches VM-Series
 
-**Where:** peering/custom-route exchange and ILB reachability.
+**Where:** Spoke A route import and hub ILB.
 
-**Check:** hub export flag, Spoke A import flag, imported aggregate route, ILB global access for cross-region clients, hub ingress firewall rules, and backend health.
+**Check:**
 
-**Failure meaning:** the source spoke either did not receive a usable next-hop route or cannot use/reach the next-hop ILB.
+- hub peering has `export-custom-routes`;
+- Spoke A peering has `import-custom-routes`;
+- hub inspection route is untagged;
+- imported aggregate appears in Spoke A's effective routes;
+- ILB is usable from Spoke A's region;
+- VM-Series backends are healthy.
 
-#### Spoke A reaches VM-Series but traffic never arrives in Spoke B
+**What failure means:** first-stage service insertion is not established.
 
-**Where:** PAN-OS route and hub post-inspection route lookup.
+#### VM-Series sees the packet but Spoke B never receives it
 
-**Check:** PAN-OS route to `10.20.0.0/16` or private aggregate via the GCP Trust gateway, hub peering status, and hub effective route for `10.20.0.0/16`.
+**Where:** PAN-OS route and hub post-inspection lookup.
 
-**Failure meaning:** first-stage steering worked, but the firewall or hub has no valid second-stage path.
+**Check:**
 
-#### Packet loops back through VM-Series after inspection
+```cli
+show routing route
+```
+
+Then verify the hub has the directly learned `10.20.0.0/16` peering subnet route.
+
+**What failure means:** inspection succeeded, but the second routing stage cannot reach the destination spoke.
+
+#### Packet loops through the firewall repeatedly
 
 **Where:** hub route specificity.
 
-**Check:** ensure the direct hub-to-destination-spoke subnet route is present and more specific than the inspection aggregate. Check for a more-specific custom route that mistakenly points to the ILB.
+**Check:** destination-spoke peering subnet route must exist and be more specific than the exported inspection aggregate. Look for an erroneous more-specific static route that sends the same destination back to the ILB.
 
-#### Forward path works; return path bypasses or fails
+#### Forward path works but response fails
 
-**Where:** destination-spoke imported route and backend/session symmetry.
+**Where:** Spoke B route import, ILB backend selection, and PAN-OS state.
 
-**Check:** Spoke B also imports the hub inspection route, ILB backend health/eligibility is consistent, and PAN-OS owns or synchronizes the session.
+**Check:** Spoke B imports the same inspection route; reverse flow reaches the ILB; backend health/eligibility is consistent; the expected PAN-OS session exists.
 
-#### Internet traffic unexpectedly starts using VM-Series
+#### Internet traffic unexpectedly uses VM-Series
 
-**Where:** exported route scope.
+**Where:** exported route prefix.
 
-**Check:** whether you exported `0.0.0.0/0` instead of only the intended private aggregate. Replace the default with an enterprise-private aggregate if the design should inspect only east-west traffic.
+**Check:** whether the hub exported `0.0.0.0/0` when you intended only a private summary such as `10.0.0.0/8`.
 
-#### Route exists but another-region spoke traffic is dropped
+#### Remote-region route exists but packets disappear
 
-**Where:** next-hop ILB global access.
+**Where:** ILB global access.
 
-**Check:** forwarding rule `allowGlobalAccess` and source/ILB region placement.
+**Check:** `allowGlobalAccess` on the trust forwarding rule.
 
-#### Custom route does not appear in the spoke
+#### Hub route exists but does not appear in a spoke
 
-**Where:** route eligibility and peering flags.
+**Where:** custom route export eligibility.
 
-**Check:** route is untagged, hub `export-custom-routes` is enabled, spoke `import-custom-routes` is enabled, and the route is not excluded by Google's route-exchange rules.
+**Check:** route has no network tag, hub exports custom routes, spoke imports custom routes, and the route satisfies Google's VPC peering route-exchange rules.
 
-### 7.6.21 Common mistakes specific to the peering design
+### 7.6.21 Common mistakes
 
-1. Assuming Spoke A learns Spoke B's subnet route through the hub. It does not; VPC Network Peering is non-transitive.
-2. Creating only hub/spoke peerings and expecting the hub to forward arbitrary transit traffic without a service-insertion route.
-3. Trying to export a PBR through peering.
-4. Adding a network tag to the static ILB route and then wondering why the route is not exchanged.
-5. Creating a static route equal to a spoke subnet prefix instead of using a valid broader aggregate/default strategy.
-6. Forgetting that the firewall needs its own PAN-OS route back toward the GCP trust gateway.
-7. Using a `0.0.0.0/0` exported route when only east-west RFC1918 inspection was intended.
-8. Assuming hub GCP firewall rules are inherited by the spokes. Firewall rules are not shared through VPC peering.
-9. Forgetting ILB global access when spokes in other regions need the next hop.
-10. Treating symmetric hashing as a substitute for having both forward and return traffic use the firewall path.
+1. **Assuming peering is transitive.** Spoke A does not learn Spoke B's subnet simply because both peer with the hub.
+2. **Trying to export a PBR.** PBRs are not the route-exchange mechanism for this design.
+3. **Tagging the hub static route.** Tagged static routes are not exchanged over VPC Network Peering.
+4. **Using a destination route that conflicts with subnet-route constraints.** Use an appropriate broader aggregate/default route and let the hub's more-specific peering subnet route win after inspection.
+5. **Forgetting the PAN-OS post-inspection route.** GCP route knowledge is not automatically copied into the PAN-OS virtual router.
+6. **Importing `0.0.0.0/0` unintentionally.** That can turn an east-west-only design into broad egress steering.
+7. **Assuming firewall policy is shared over peering.** It is not.
+8. **Forgetting ILB global access for other-region spokes.** Route visibility and next-hop usability are separate checks.
+9. **Relying on forward-only steering.** Spoke B must also send the reverse flow through the firewall service for stateful symmetry.
+10. **Assuming symmetric hashing fixes incorrect routes.** It helps select the same backend only after both directions actually reach the ILB.
 
 ## 7.7 Internet egress — workload to Internet
 
@@ -2715,12 +2749,24 @@ Google does not let you scope the route to one individual VLAN attachment. The d
 
 Only VLAN attachments that meet Google's current PBR dataplane requirements can use policy-based routes; verify the current Cloud Interconnect dataplane version requirements before deployment.
 
-### 7.9.3 Inbound on-prem -> GCP packet walk
+### 7.9.3 Inbound on-prem → GCP packet walk
 
 1. On-prem router sends the packet across Dedicated or Partner Interconnect toward Google.
 2. The packet enters `trust-vpc` through a VLAN attachment in `us-central1`.
 3. Because `pbr-interconnect-to-apps` has `--interconnect-attachment-region=us-central1`, this PBR is applicable at that ingress point.
-4. Google evaluates the PBR filter.
+4. Google evaluates the PBR filter:
+
+```text
+source      10.100.0.0/16
+             matches
+
+destination 10.10.0.0/16
+             matches
+
+protocol    ALL
+             matches
+```
+
 5. The PBR wins before ordinary destination routing and selects the internal passthrough ILB `10.250.10.25`.
 6. The ILB selects a healthy VM-Series backend.
 7. PAN-OS performs Security/App-ID/threat inspection and its own route lookup.
@@ -2728,9 +2774,40 @@ Only VLAN attachments that meet Google's current PBR dataplane requirements can 
 9. The packet re-enters the Google VPC dataplane.
 10. Normal VPC routing delivers it to the final workload in `10.10.0.0/16`.
 
-### 7.9.4 Return GCP -> on-prem
+So the forward path is:
+
+```text
+On-prem
+   |
+   v
+Cloud Interconnect
+VLAN attachment in us-central1
+   |
+   | PBR applies HERE because of
+   | --interconnect-attachment-region=us-central1
+   v
+PBR filter match
+   |
+   v
+Trust ILB 10.250.10.25
+   |
+   v
+VM-Series
+   |
+   v
+normal VPC routing
+   |
+   v
+10.10.0.0/16 workload
+```
+
+### 7.9.4 Return GCP → on-prem — the Interconnect-scoped PBR does not apply to the workload VM
+
+This is where designs commonly become confusing.
 
 The inbound PBR is scoped to **Interconnect VLAN attachments**. A workload VM sending a return packet is a different packet source, so the `--interconnect-attachment-region` scope does not make that route automatically applicable to the workload VM.
+
+For the workload-to-on-prem direction, use an appropriate return steering method. A clean PBR example is to tag the workload VMs that should send hybrid traffic through VM-Series.
 
 Tag the workload:
 
@@ -2741,7 +2818,7 @@ gcloud compute instances add-tags app-vm-1 \
   --tags=inspect-hybrid
 ```
 
-Then create the return-side PBR in the same VPC:
+Then create the return-side PBR in the **same VPC**, scoped to that VM tag:
 
 ```cli
 gcloud network-connectivity policy-based-routes create pbr-apps-to-onprem \
@@ -2757,40 +2834,120 @@ gcloud network-connectivity policy-based-routes create pbr-apps-to-onprem \
   --description="Inspect workload traffic returning to on-prem"
 ```
 
+Again, there is no subnet/route-table association. The logic is:
+
+```text
+app-vm-1 has network tag inspect-hybrid
+        |
+        v
+VM emits packet to 10.100.0.0/16
+        |
+        v
+pbr-apps-to-onprem is applicable
+because --tags=inspect-hybrid
+        |
+        v
+PBR sends packet to trust ILB
+        |
+        v
+VM-Series
+        |
+        v
+Google performs normal routing after firewall
+        |
+        v
+Cloud Router dynamic route
+        |
+        v
+Interconnect VLAN attachment
+        |
+        v
+On-prem
+```
+
+The two PBRs therefore solve **different source contexts**:
+
+| Direction | Packet source | PBR scope |
+|---|---|---|
+| On-prem → GCP | Interconnect VLAN attachment | `--interconnect-attachment-region=us-central1` |
+| GCP → on-prem | Workload VM | `--tags=inspect-hybrid` |
+
 ### 7.9.5 Return packet walk
 
 1. Workload sends traffic to `10.100.0.0/16`.
-2. Because the workload VM has the `inspect-hybrid` network tag, `pbr-apps-to-onprem` is applicable.
+2. Because the workload VM has the `inspect-hybrid` network tag, `pbr-apps-to-onprem` is applicable to packets it emits.
 3. Source and destination ranges match.
 4. PBR selects the trust ILB.
 5. ILB sends the flow to the VM-Series service.
 6. PAN-OS finds the existing session, inspects the response, and routes toward the on-prem prefix.
 7. VM-Series emits the packet back into `trust-vpc`.
-8. Section 7.11's firewall-bypass PBR prevents recursive insertion.
+8. Section 7.11's firewall-bypass PBR prevents this post-inspection packet from being recursively sent to the ILB again.
 9. Google resumes ordinary VPC routing.
 10. The Cloud Router-learned dynamic route identifies the appropriate Interconnect path.
 11. The packet exits through the selected VLAN attachment and reaches on-prem.
 
-### 7.9.6 Verification
+This separation is important:
+
+```text
+PBR scope:        Where can this PBR apply?
+PBR filter:       Does this packet match source/destination/protocol?
+PBR next hop:     Should it visit VM-Series first?
+PAN-OS:           Is it allowed and which firewall egress path is used?
+Cloud Router/BGP: After inspection, which hybrid path reaches on-prem?
+```
+
+### 7.9.6 Verification — prove scope instead of looking for a subnet association
+
+Because there is no subnet attachment to inspect, verify the PBR object itself and the resource that provides its scope.
+
+Describe the Interconnect ingress PBR:
 
 ```cli
 gcloud network-connectivity policy-based-routes describe pbr-interconnect-to-apps \
   --project=SEC_PROJECT
+```
 
+Verify:
+
+- `network` points to `trust-vpc`;
+- source/destination ranges are correct;
+- next-hop ILB IP is correct;
+- priority is correct;
+- Interconnect attachment region is `us-central1`.
+
+Describe the workload return PBR:
+
+```cli
 gcloud network-connectivity policy-based-routes describe pbr-apps-to-onprem \
   --project=SEC_PROJECT
+```
 
+Verify that its VM scope contains `inspect-hybrid`.
+
+Verify the workload actually has the tag:
+
+```cli
 gcloud compute instances describe app-vm-1 \
   --project=SEC_PROJECT \
   --zone=us-central1-a \
   --format='yaml(name,tags.items,networkInterfaces.networkIP)'
 ```
 
+**Success criteria:** the workload shows `inspect-hybrid`, the return PBR references the same tag, and the PBR belongs to the expected VPC.
+
 ## 7.10 On-premises inspection through HA VPN
 
 Yes — **HA VPN traffic can also be inspected using traditional PBR + ILB insertion**.
 
-Google documents that if a PBR has neither `--tags` nor `--interconnect-attachment-region`, the route is installed for all applicable network endpoints, including VMs, Cloud VPN tunnels, and Cloud Interconnect attachments.
+However, the scoping model differs from Cloud Interconnect.
+
+Google documents that if a PBR has neither `--tags` nor `--interconnect-attachment-region`, the route is installed for **all applicable network endpoints**, including:
+
+- VM instances;
+- Cloud VPN tunnels;
+- Cloud Interconnect attachments.
+
+Therefore a network-wide PBR can match packets arriving through HA VPN and steer them to the ILB.
 
 Conceptual inbound path:
 
@@ -2819,6 +2976,8 @@ workload
 
 ### HA VPN PBR example
 
+A route that deliberately applies network-wide might look like:
+
 ```cli
 gcloud network-connectivity policy-based-routes create pbr-hybrid-to-apps \
   --project=SEC_PROJECT \
@@ -2836,13 +2995,45 @@ Because no VM tag or Interconnect-specific scope is supplied, understand the bro
 
 ## 7.11 Avoid PBR recursion through the firewall backends
 
-If a network-wide PBR also applies to packets emitted by the VM-Series backend after inspection, the firewall can send a packet back into Google and have Google immediately steer it back to the ILB/firewall again, creating a loop.
+This is one of the most important traditional-service-insertion design details.
+
+If a network-wide PBR also applies to packets emitted by the VM-Series backend after inspection, the firewall can send a packet back into Google and have Google immediately steer it **back to the ILB/firewall again**, creating a loop.
 
 ### 7.11.1 Where is the bypass PBR applied?
 
-The bypass PBR belongs to `trust-vpc`, is scoped to VM instances carrying the `pan-fw` network tag, and uses `--next-hop-other-routes=DEFAULT_ROUTING` so matching packets skip lower-priority PBRs and continue with normal Google VPC destination routing.
+Just like the inspection PBRs, the bypass PBR is **not attached to the firewall subnet or to a route table**.
 
-### 7.11.2 Tag every VM-Series backend that must bypass interception
+The bypass PBR:
+
+1. belongs to `trust-vpc` because of `--network`;
+2. is scoped to VM instances carrying the `pan-fw` **network tag** because of `--tags=pan-fw`;
+3. uses `--next-hop-other-routes=DEFAULT_ROUTING` so matching packets skip lower-priority PBRs and continue with normal Google VPC destination routing.
+
+Therefore the effective association is:
+
+```text
+VM-Series VM
+   |
+   | network tag: pan-fw
+   v
+PBR pbr-pan-fw-bypass
+   |
+   | belongs to trust-vpc
+   | --tags=pan-fw
+   | priority 100
+   | DEFAULT_ROUTING
+   v
+skip lower-priority interception PBRs
+   |
+   v
+normal VPC routing
+```
+
+You do not apply it to `10.250.10.0/24`. You apply the **tag to the firewall VM**, and the PBR itself says that VMs with that tag are in scope.
+
+### 7.11.2 First tag every VM-Series backend that must bypass interception
+
+For example:
 
 ```cli
 gcloud compute instances add-tags pan-fw-a1 \
@@ -2850,6 +3041,17 @@ gcloud compute instances add-tags pan-fw-a1 \
   --zone=us-central1-a \
   --tags=pan-fw
 ```
+
+If there is another firewall backend:
+
+```cli
+gcloud compute instances add-tags pan-fw-b1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-b \
+  --tags=pan-fw
+```
+
+The tag is a **GCP Compute Engine network tag** on the VM instance. It is not a PAN-OS tag, security tag, subnet tag, or firewall-policy tag.
 
 Verify:
 
@@ -2860,7 +3062,15 @@ gcloud compute instances describe pan-fw-a1 \
   --format='yaml(name,tags.items,networkInterfaces.networkIP)'
 ```
 
-### 7.11.3 Create the higher-priority bypass PBR
+Expected state includes:
+
+```text
+tags:
+  items:
+  - pan-fw
+```
+
+### 7.11.3 Create the higher-priority bypass PBR in the same VPC
 
 ```cli
 gcloud network-connectivity policy-based-routes create pbr-pan-fw-bypass \
@@ -2876,27 +3086,133 @@ gcloud network-connectivity policy-based-routes create pbr-pan-fw-bypass \
   --description="Prevent VM-Series post-inspection traffic from re-entering interception PBRs"
 ```
 
+Read the command as:
+
+```text
+PBR pbr-pan-fw-bypass
+        |
+        +-- belongs to trust-vpc
+        |
+        +-- only applies to VMs tagged pan-fw
+        |
+        +-- matches any IPv4 source/destination/protocol
+        |
+        +-- priority 100
+        |
+        +-- action = DEFAULT_ROUTING
+                |
+                +-- ignore lower-priority PBRs
+                +-- resume normal VPC destination routing
+```
+
 The lower numeric priority wins between matching PBRs. Therefore a priority `100` firewall bypass is evaluated before inspection PBRs at priority `400` or `500`.
 
 ### 7.11.4 Why this stops the loop
 
-After PAN-OS emits the inspected packet, the source endpoint is the VM-Series VM tagged `pan-fw`. The high-priority bypass PBR selects `DEFAULT_ROUTING`, skips lower-priority interception PBRs, and lets normal subnet/dynamic/static route selection continue.
+Assume the inbound Interconnect PBR sends this packet to VM-Series:
+
+```text
+10.100.1.10 -> 10.10.1.20
+```
+
+Forward inspection:
+
+```text
+Interconnect VLAN attachment
+    |
+    | pbr-interconnect-to-apps priority 400
+    v
+Trust ILB
+    |
+    v
+VM-Series pan-fw-a1
+```
+
+PAN-OS allows the packet and emits it toward `10.10.1.20`.
+
+At that moment this is a **new GCP routing decision for a packet emitted by the VM-Series VM**. Because that VM has tag `pan-fw`, the bypass PBR is applicable:
+
+```text
+VM-Series emits post-inspection packet
+    |
+    | source endpoint = VM tagged pan-fw
+    v
+pbr-pan-fw-bypass priority 100
+    |
+    | DEFAULT_ROUTING
+    v
+skip interception PBRs
+    |
+    v
+normal subnet/dynamic/static route selection
+    |
+    v
+10.10.1.20
+```
+
+Without the bypass, a broad network-wide PBR could match the packet after VM-Series emits it:
+
+```text
+VM-Series
+   -> broad PBR
+   -> ILB
+   -> VM-Series
+   -> broad PBR
+   -> ILB
+   -> loop
+```
 
 ### 7.11.5 Why tagging the firewall is different from tagging the workload
+
+The two tags have opposite purposes:
 
 | Tag | Applied to | Purpose |
 |---|---|---|
 | `inspect-hybrid` | Application/workload VMs | Make their emitted traffic eligible for inspection PBRs |
 | `pan-fw` | VM-Series firewall VMs | Make their post-inspection emitted traffic eligible for the high-priority `DEFAULT_ROUTING` bypass PBR |
 
+Example evaluation for a workload return packet:
+
+```text
+app-vm-1 tag = inspect-hybrid
+        |
+        v
+pbr-apps-to-onprem priority 400
+        |
+        v
+Trust ILB -> VM-Series
+        |
+        v
+pan-fw-a1 emits inspected packet
+pan-fw-a1 tag = pan-fw
+        |
+        v
+pbr-pan-fw-bypass priority 100
+        |
+        v
+DEFAULT_ROUTING
+        |
+        v
+Cloud Router dynamic route
+        |
+        v
+Interconnect / HA VPN
+```
+
+There is no route-table association anywhere in this sequence. Applicability follows the **VPC + endpoint scope + packet filter** model.
+
 ### 7.11.6 Scope alternatives and design cautions
+
+Typical techniques include:
 
 1. Scope interception PBRs only to tagged workload VMs where possible.
 2. Do not give firewall backend VMs the workload interception tag.
 3. Tag firewall VMs separately with `pan-fw`.
 4. Create a higher-priority `DEFAULT_ROUTING` PBR for `pan-fw` VMs.
 5. Make source/destination match ranges precise enough to avoid unwanted matches.
-6. Use network-wide PBR scope cautiously.
+6. Use network-wide PBR scope cautiously because Google explicitly warns that it can also apply to packets emitted by an internal passthrough ILB backend VM.
+
+The bypass PBR is particularly valuable when the inspection rule must be network-wide, such as when it needs to apply to Cloud VPN tunnel traffic and cannot be limited with a VM tag.
 
 ### 7.11.7 Verify the bypass PBR
 
@@ -2905,7 +3221,26 @@ gcloud network-connectivity policy-based-routes describe pbr-pan-fw-bypass \
   --project=SEC_PROJECT
 ```
 
-Verify network, tag, priority, next-hop-other-routes, and match ranges.
+Verify:
+
+- network is `trust-vpc`;
+- VM scope/tag is `pan-fw`;
+- priority is `100`;
+- next-hop-other-routes is `DEFAULT_ROUTING`;
+- source and destination cover the intended bypass traffic.
+
+Also verify firewall instance tags:
+
+```cli
+gcloud compute instances describe pan-fw-a1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-a \
+  --format='yaml(name,tags.items)'
+```
+
+**Success criteria:** the VM contains `pan-fw`, the bypass PBR contains the same tag, and all lower-priority interception PBRs have numerically larger priorities.
+
+If the VM does not have the tag, the bypass PBR is not applicable to packets emitted by that VM even though the PBR exists in the same VPC.
 
 ## 7.12 Cloud Interconnect versus HA VPN for this inspection design
 
@@ -2925,9 +3260,15 @@ Google's internal passthrough Network Load Balancer provides **symmetric hashing
 
 This is extremely useful for stateful NGFWs, but it is not a substitute for correct routing.
 
-Success requires forward traffic reaching an ILB next hop, return traffic reaching the paired service path, compatible backend sets/health state, appropriate session-affinity configuration, and PAN-OS state on the selected firewall.
+Success requires:
 
-SNAT is therefore **not inherently required merely to force path symmetry** in a correctly built modern ILB-next-hop design.
+- forward traffic actually reaching an ILB next hop;
+- return traffic also reaching the paired ILB/service path;
+- compatible backend sets and health state;
+- appropriate session-affinity configuration;
+- PAN-OS state on the selected firewall.
+
+SNAT is therefore **not inherently required merely to force path symmetry** in a correctly built modern ILB-next-hop design. Use NAT only when the addressing/Internet/security architecture requires it.
 
 ## 7.14 HA and failure behavior
 
@@ -2939,7 +3280,14 @@ If backend eligibility changes during a live session, a later packet can end up 
 
 ### Active/passive VM-Series
 
-Palo Alto's active/passive GCP model uses load-balancer health and firewall HA so production traffic is directed to the active peer. For hybrid/east-west trust paths, verify active-peer health, passive selection behavior, HA synchronization, and consistent routing/security/NAT configuration.
+Palo Alto's active/passive GCP model uses load-balancer health and firewall HA so production traffic is directed to the active peer. Palo Alto specifically requires an **external passthrough load balancer** for active/passive Internet inbound/outbound because that load balancer supports the needed connection tracking.
+
+For hybrid/east-west trust paths, verify:
+
+- active peer is healthy in the internal backend service;
+- passive peer is not unintentionally selected for production traffic;
+- HA state synchronization is healthy;
+- both firewalls have consistent routing/security/NAT configuration.
 
 ## 7.15 Traditional design verification
 
@@ -2948,7 +3296,12 @@ Palo Alto's active/passive GCP model uses load-balancer health and firewall HA s
 ```cli
 gcloud network-connectivity policy-based-routes list \
   --project=SEC_PROJECT
+
+gcloud network-connectivity policy-based-routes describe pbr-interconnect-to-apps \
+  --project=SEC_PROJECT
 ```
+
+**Verify:** source range, destination range, protocol, priority, endpoint scope, next-hop ILB IP.
 
 ### Verify ILB health
 
@@ -2958,6 +3311,8 @@ gcloud compute backend-services get-health TRUST_BACKEND_SERVICE \
   --project=SEC_PROJECT
 ```
 
+**Success:** intended VM-Series backends are healthy.
+
 ### Verify forwarding rule/global access
 
 ```cli
@@ -2966,6 +3321,8 @@ gcloud compute forwarding-rules describe TRUST_ILB_FORWARDING_RULE \
   --project=SEC_PROJECT
 ```
 
+For PBR use across regions, Google recommends enabling global access on the next-hop internal passthrough ILB.
+
 ### Verify Cloud Router routes
 
 ```cli
@@ -2973,6 +3330,8 @@ gcloud compute routers get-status HYBRID_ROUTER \
   --region=us-central1 \
   --project=SEC_PROJECT
 ```
+
+**Verify:** on-prem prefixes are learned and expected advertisements are being sent.
 
 ### Verify PAN-OS
 
@@ -2989,31 +3348,51 @@ Also inspect **Monitor > Traffic** and **Monitor > Threat**.
 
 ### Workload sends traffic directly and bypasses firewall
 
-Check PBR/static route scope, tag, match ranges, route priority, and next-hop ILB validity.
+**Where:** PBR/static route selection.
+
+**Check:** PBR scope/tag, source/destination match, route priority, next-hop ILB validity.
+
+**Likely cause:** workload is not in PBR scope or a different routing path is winning.
 
 ### Forward path works but return traffic bypasses firewall
 
-Check destination-side reverse PBR/static route and ILB backend symmetry.
+**Where:** destination-side/workload return steering.
+
+**Check:** reverse PBR/static route and ILB backend symmetry.
+
+**Failure meaning:** the state owner never sees the return packet.
 
 ### Packet loops repeatedly through VM-Series
 
-Check whether post-inspection firewall egress traffic matches the same network-wide PBR; apply a firewall-tag bypass PBR or refine interception scope.
+**Where:** PBR scope on firewall backend VMs.
+
+**Check:** whether post-inspection firewall egress traffic matches the same network-wide PBR.
+
+**Next action:** apply a firewall-tag bypass PBR or refine interception match/scope.
 
 ### Interconnect traffic bypasses inspection
 
-Check `--interconnect-attachment-region`, source/destination ranges, and next-hop ILB global access.
+**Where:** PBR attachment scope.
+
+**Check:** `--interconnect-attachment-region`, source/destination ranges, and next-hop ILB global access.
 
 ### HA VPN traffic bypasses inspection
 
-Check whether the PBR is network-wide. A VM-tag-scoped PBR does not mean “apply to VPN tunnels.”
+**Where:** PBR installation scope.
+
+**Check:** whether the PBR is network-wide. A VM-tag-scoped PBR does not mean “apply to VPN tunnels.”
 
 ### Cloud Router knows on-prem prefix but firewall cannot forward to it
 
-Check the PAN-OS virtual router and firewall interface topology. Google Cloud's route knowledge does not automatically populate PAN-OS with an equivalent route.
+**Where:** PAN-OS virtual router and firewall interface topology.
+
+**Check:** firewall route table and next-hop path after the packet leaves VM-Series. Google Cloud's VPC/Cloud Router route knowledge does not automatically populate PAN-OS with an equivalent route unless your design/configuration provides it.
 
 ### ILB has healthy backends but stateful sessions still fail intermittently
 
-Check eligible backend symmetry/session affinity/HA state and PAN-OS session synchronization if required.
+**Where:** eligible backend symmetry/session affinity/HA state.
+
+**Check:** paired ILBs use the same eligible backend set, health is consistent, session affinity isn't incompatible with symmetric hashing, and PAN-OS HA/session synchronization is functioning if required.
 
 ---
 
@@ -3135,7 +3514,7 @@ Exact output varies by PAN-OS/plugin release, so success should be judged by the
 
 **Where:** consumer firewall policy and NSI resource chain.
 
-**Check:** rule -> security profile group -> custom-intercept profile -> endpoint group -> deployment group -> zonal deployment.
+**Check:** rule → security profile group → custom-intercept profile → endpoint group → deployment group → zonal deployment.
 
 ## Deployment is active but packets do not pass
 
@@ -3157,28 +3536,41 @@ Verify required reboot and interface/plugin state.
 
 ## Standard NSI Internet outbound works but responses do not reach the VM
 
-Check consumer Cloud NAT/external-IP return path, reverse NAT, Google NSI state, automatic reverse-packet interception, PAN-OS response session state, and GENEVE DSR reinjection.
+**Check in order:**
+
+1. consumer Cloud NAT/external-IP return path;
+2. reverse NAT back to the private consumer VM;
+3. Google NSI state for the already intercepted connection;
+4. automatic reverse-packet interception to the producer VM-Series service;
+5. PAN-OS response session state;
+6. GENEVE DSR reinjection.
 
 A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** normally the explanation for return packets that already belong to the tracked outbound NSI session.
 
 ## `apply_security_profile_group` unexpectedly falls back to allow
 
-Search firewall logs for:
+**Where:** consumer firewall-policy logging and the NSI endpoint/profile chain.
+
+**Check:** search firewall logs for:
 
 ```text
 jsonPayload.rule_details.action="APPLY_SECURITY_PROFILE_GROUP"
 jsonPayload.rule_details.apply_security_profile_fallback_action="ALLOW"
 ```
 
-Validate the consumer profile chain, endpoint association, producer deployment, ILB health, and VM-Series availability.
+**What it tests:** whether traffic that was intended for advanced inspection failed to use a valid inspection path and used Google's documented fallback action instead.
+
+**Failure meaning:** the connection may have been permitted without the intended VM-Series inspection.
+
+**Next action:** verify `pan-spg` → `pan-custom-intercept` → `pan-ieg`, the endpoint-group association to `app-vpc`, the producer deployment group, zonal intercept deployment, ILB health, and VM-Series availability.
 
 ## Direct Internet egress sends outbound traffic but receives no usable response
 
-Check PAN-OS untrust return route/NAT state, Security policy, response session lookup, and GENEVE response reinjection metadata.
+**Check:** PAN-OS untrust return route/NAT state, Security policy, response session lookup, and GENEVE response reinjection metadata.
 
 ## Traditional ILB/PBR design has one-way sessions
 
-Check reverse PBR/custom route, paired ILB eligible backends, symmetric hashing requirements, and PAN-OS state owner.
+**Check:** reverse PBR/custom route, paired ILB eligible backends, symmetric hashing requirements, and PAN-OS state owner.
 
 ---
 
@@ -3204,8 +3596,6 @@ Check reverse PBR/custom route, paired ILB eligible backends, symmetric hashing 
 18. Using the standard-NSI management-interface-swap NIC model and the NSI Overlay `nic0=Management, nic1=Trust, nic2=Untrust` model as though they were the same topology.
 19. Treating `goto_next` as equivalent to `allow`; `goto_next` delegates evaluation to the next firewall-policy stage rather than making a final permit decision.
 20. Assuming `apply_security_profile_group` fails closed by default. Google documents a default fallback of `allow`; monitor `apply_security_profile_fallback_action=ALLOW` and treat it as a security-relevant condition.
-21. Assuming VPC Network Peering is transitive between spokes.
-22. Trying to exchange PBRs or tagged static routes through VPC Network Peering for the inter-spoke inspection pattern.
 
 ---
 
@@ -3255,8 +3645,7 @@ Check reverse PBR/custom route, paired ILB eligible backends, symmetric hashing 
 - https://docs.cloud.google.com/network-security-integration/docs/release-notes
 - https://docs.cloud.google.com/vpc/docs/policy-based-routes
 - https://docs.cloud.google.com/vpc/docs/use-policy-based-routes
-- https://docs.cloud.google.com/vpc/docs/vpc-peering
+- https://docs.cloud.google.com/sdk/gcloud/reference/network-connectivity/policy-based-routes/create
 - https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
-- https://docs.cloud.google.com/load-balancing/docs/internal/deploying-ilb-next-hop-vm
 - https://docs.cloud.google.com/load-balancing/docs/internal/setting-up-ilb-next-hop
 - https://cloud.google.com/blog/products/networking/policy-based-routing-network-patterns-for-virtual-appliances
