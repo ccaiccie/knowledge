@@ -1,1071 +1,1102 @@
-# AWS Cloud WAN Service Insertion — Deep Dive
+# AWS Cloud WAN Service Insertion — Explained from GWLBE, DMZ, Policy Routing, and Azure Virtual WAN Concepts
 
-> **Generated:** 2026-09-06  
-> **Scope:** Network Function Groups (NFGs), `send-via`, `send-to`, single-hop/dual-hop inspection, same-segment and cross-segment steering, multi-Region selection, Direct Connect, VPN, Connect/SD-WAN, AWS Network Firewall, Gateway Load Balancer (GWLB), third-party NGFWs, Internet egress, routing, symmetry, CLI, verification, failover, limitations, and troubleshooting.
+> **Rewritten:** 2026-09-06  
+> **Audience:** Network/security engineers who understand firewall DMZ (demilitarized zone), route tables, policy routing, centralized inspection, Gateway Load Balancer, or Azure Virtual WAN, but are new to AWS Cloud WAN.  
+> **Learning rule used in this guide:** Every important acronym is expanded inline so you do not have to jump back to a glossary.
 
-## Supplied and supporting URLs
+## URLs used
 
-### Primary AWS documentation
 - https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-service-insertion.html
 - https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-network-function-groups.html
-- https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-network-actions-routes.html
 - https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policies-json.html
-- https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-examples.html
-
-### AWS implementation references
 - https://aws.amazon.com/blogs/networking-and-content-delivery/simplify-global-security-inspection-with-aws-cloud-wan-service-insertion/
-- https://aws.amazon.com/blogs/networking-and-content-delivery/simplifying-egress-inspection-with-aws-cloud-wan-service-insertion-for-greenfield-deployments/
-- https://aws.amazon.com/blogs/networking-and-content-delivery/simplify-hybrid-inspection-using-aws-cloud-wan-service-insertion/
-- https://aws.amazon.com/blogs/networking-and-content-delivery/migration-to-aws-cloud-wan-multi-region-inspection-using-service-insertion/
-- https://aws.amazon.com/cloud-wan/faqs/
-- https://aws.amazon.com/cloud-wan/pricing/
+- https://aws.amazon.com/blogs/networking-and-content-delivery/centralized-ingress-inspection-architecture-in-aws-cloud-wan/
+- https://aws.amazon.com/blogs/networking-and-content-delivery/centralized-outbound-inspection-architecture-in-aws-cloud-wan/
+- https://learn.microsoft.com/en-us/azure/virtual-wan/about-virtual-hub-routing
+- https://learn.microsoft.com/en-us/azure/firewall-manager/secured-virtual-hub
+- https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 
 ---
 
-## 1. The mental model
+# 1. Start with the routing problem, not with AWS terminology
 
-AWS Cloud WAN service insertion is **policy-driven route steering in the Cloud WAN core**. The Core Network Edge (CNE) does not become a firewall. Instead, AWS changes the next hop for selected traffic so the packet is delivered to an attachment that belongs to a **Network Function Group (NFG)**.
+Suppose you have:
 
-That NFG attachment normally leads to an Inspection VPC containing:
+```text
+Production network  10.10.0.0/16
+Development network 10.20.0.0/16
+```
 
-- AWS Network Firewall (ANFW), or
-- Gateway Load Balancer (GWLB) + Gateway Load Balancer Endpoint (GWLBE) + third-party NGFW, or
-- another supported network/security function.
+and the rule is:
 
-After inspection, the flow either returns to Cloud WAN for another attachment or exits the Cloud WAN-connected environment.
+```text
+Production
+   |
+   v
+Firewall
+   |
+   v
+Development
+```
 
-| Action | Meaning | Re-enters Cloud WAN after inspection? | Typical use |
-|---|---|---:|---|
-| `send-via` | attachment-to-attachment steering | Yes | VPC↔VPC, VPC↔DX/VPN/Connect, segment↔segment |
-| `send-to` | steer to function, then leave Cloud WAN | No | Internet egress or external/on-prem egress |
-| `send-via` single-hop | insert one NFG attachment | Yes | inspect once |
-| `send-via` dual-hop | insert at source and destination CNEs | Yes | inspect both sides of inter-Region traffic |
+On a traditional network you might achieve this with a DMZ (demilitarized zone), VRFs (Virtual Routing and Forwarding instances), route leaking through a firewall, policy-based routing, static routes toward firewall interfaces, or a service chain.
 
-**Source information:** AWS documents `send-via` as bidirectional east-west steering and `send-to` as north-south steering. Service insertion works for same-Region and cross-Region traffic, and for both IPv4 and IPv6.
+The concept is simple:
 
-**Additional explanation:** In this context, “east-west” should be read as **Cloud WAN attachment-to-attachment**. A Direct Connect Gateway attachment in a `HYBRID` segment communicating with a VPC attachment in `PROD` is therefore a `send-via` design even though one endpoint is on-premises.
+> **The routing system must not forward directly to the destination. It must first select the firewall as an intermediate service hop.**
+
+AWS Cloud WAN service insertion applies that same idea to a managed multi-Region WAN (Wide Area Network).
 
 ---
 
-## 2. Architecture — Cloud WAN steering versus firewall dataplane
+# 2. Relate it to distributed GWLBE (Gateway Load Balancer Endpoint)
 
-![AWS Cloud WAN service insertion architecture](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_architecture.svg)
+In a distributed GWLBE (Gateway Load Balancer Endpoint) design, inspection is inserted close to the workload or edge:
 
-[Editable draw.io source](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_architecture.drawio)
+```text
+Workload subnet
+      |
+      | VPC (Virtual Private Cloud) route table
+      v
+GWLBE (Gateway Load Balancer Endpoint)
+      |
+      v
+GWLB (Gateway Load Balancer)
+      |
+      v
+NGFW (Next-Generation Firewall)
+      |
+      v
+Destination
+```
+
+The VPC (Virtual Private Cloud) route table performs the steering decision. The GWLBE (Gateway Load Balancer Endpoint) takes the flow into the GWLB (Gateway Load Balancer) service, and the GWLB (Gateway Load Balancer) selects a healthy NGFW (Next-Generation Firewall).
+
+Think of this as **per-VPC service insertion**.
+
+---
+
+# 3. Relate it to centralized GWLBE (Gateway Load Balancer Endpoint)
+
+In a centralized GWLBE (Gateway Load Balancer Endpoint) design, many VPCs (Virtual Private Clouds) share one Inspection VPC (Virtual Private Cloud):
+
+```text
+Application VPC
+      |
+      v
+Transit fabric
+      |
+      v
+Inspection VPC
+      |
+      v
+GWLBE (Gateway Load Balancer Endpoint)
+      |
+      v
+GWLB (Gateway Load Balancer)
+      |
+      v
+NGFW (Next-Generation Firewall)
+      |
+      v
+Transit fabric
+      |
+      v
+Destination VPC
+```
+
+With TGW (Transit Gateway), you normally build explicit PRE-inspection and POST-inspection route-table behavior:
+
+```text
+Application attachment
+ -> PRE-INSPECTION TGW (Transit Gateway) route table
+ -> Inspection VPC attachment
+ -> GWLBE (Gateway Load Balancer Endpoint)
+ -> GWLB (Gateway Load Balancer)
+ -> NGFW (Next-Generation Firewall)
+ -> POST-INSPECTION path
+ -> destination attachment
+```
+
+AWS Cloud WAN does **not** replace the GWLBE (Gateway Load Balancer Endpoint), GWLB (Gateway Load Balancer), or NGFW (Next-Generation Firewall). It replaces or simplifies much of the **transit steering logic above those components**.
+
+---
+
+# 4. Where AWS Cloud WAN fits
+
+Compare the two models:
+
+```text
+Centralized TGW (Transit Gateway)
+
+TGW route-table engineering
+        |
+        v
+Inspection VPC
+        |
+        v
+GWLBE -> GWLB -> NGFW
+```
+
+versus:
+
+```text
+AWS Cloud WAN
+
+Central policy:
+"PROD traffic going to DEV must use the firewall service"
+        |
+        v
+NFG (Network Function Group)
+        |
+        v
+Inspection VPC
+        |
+        v
+GWLBE -> GWLB -> NGFW
+```
+
+The sentence to remember is:
+
+> **NFG (Network Function Group) is not the firewall. NFG (Network Function Group) is the AWS Cloud WAN object representing where the firewall or other network function lives.**
+
+---
+
+# 5. Concept map
+
+![Cloud WAN related to GWLBE and DMZ policy routing](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_concept_map.svg)
+
+[Editable draw.io source](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_concept_map.drawio)
 
 **What this image shows**
 
-Workload and hybrid attachments enter the regional CNE. A service-insertion segment action redirects selected destinations toward an NFG attachment. Inside the Inspection VPC, VPC route tables send traffic through ANFW or GWLBE/GWLB/NGFW. The allowed packet either comes back to Cloud WAN (`send-via`) or leaves toward NAT Gateway/IGW or another external exit (`send-to`).
+Distributed GWLBE (Gateway Load Balancer Endpoint), centralized GWLBE (Gateway Load Balancer Endpoint), and AWS Cloud WAN service insertion all answer the same security-routing question: **how do I force selected traffic through a security service?**
 
 **What matters**
 
-Cloud WAN gets traffic **to the inspection attachment**. It does not build the internal inspection-VPC route tables for you. The Inspection VPC must have correct routes from the Core Network attachment subnet to firewall endpoints and from the firewall back toward Cloud WAN or the egress stack.
+AWS Cloud WAN adds a WAN-level policy layer. The firewall dataplane can still be the centralized GWLBE (Gateway Load Balancer Endpoint) + GWLB (Gateway Load Balancer) + NGFW (Next-Generation Firewall) architecture.
 
 **What to verify**
 
-- attachment is associated with the intended NFG
-- NFG has a usable attachment in the desired Region
-- appliance mode is enabled on the inspection VPC attachment
-- per-AZ routes point to the intended ANFW endpoint or GWLBE
-- return traffic crosses the same stateful inspection path
+```text
+AWS Cloud WAN policy
+    = Which traffic requires inspection?
+
+Inspection VPC route tables
+    = How does the packet physically reach the firewall endpoint?
+
+GWLB (Gateway Load Balancer)
+    = Which firewall appliance receives the flow?
+
+NGFW (Next-Generation Firewall)
+    = Is the packet/session permitted?
+```
 
 ---
 
-## 3. Core components
+# 6. Translate AWS Cloud WAN terminology into familiar network concepts
 
-### 3.1 Core Network Edge (CNE)
-
-A CNE is the AWS-managed regional routing node for a Cloud WAN core network. Segments exist as routing domains at each enabled CNE, and CNEs are interconnected across the AWS backbone.
-
-### 3.2 Segment
-
-A segment is a global Layer-3 routing domain, conceptually similar to a VRF. Common examples are `PROD`, `DEV`, `SHARED`, and `HYBRID`.
-
-### 3.3 Network Function Group (NFG)
-
-The NFG is the key service-insertion construct.
-
-AWS documents these properties:
-
-- an NFG is global and can contain attachments from multiple Cloud WAN Regions;
-- only **one attachment per NFG per Region** is allowed;
-- an attachment can belong to a segment **or** an NFG, but not both;
-- NFG route tables are managed as part of service insertion;
-- you can inspect NFG routes, but you do not manually treat the NFG like a normal workload segment;
-- Cloud WAN can successfully apply a policy referencing an NFG that currently has no attachment, but affected traffic is **black-holed** until an appropriate NFG attachment exists.
-
-### 3.4 Supported attachment types
-
-AWS currently documents these service-insertion-capable Cloud WAN attachment categories:
-
-- VPC
-- Direct Connect Gateway
-- Site-to-Site VPN
-- Connect
-- Transit Gateway route table
-
-This means service insertion is not limited to VPC-to-VPC traffic.
-
-### 3.5 Attachment policies and tags
-
-NFG association is driven by tags on the **Cloud WAN attachment**. Do not assume a tag on the underlying VPC resource by itself controls Cloud WAN association.
-
-For example, an Inspection VPC attachment might be tagged:
-
-```text
-environment = InspectionNFG
-```
-
-and the attachment policy maps that attachment to `InspectionNFG`.
+| AWS Cloud WAN term | Think of it as |
+|---|---|
+| CNE (Core Network Edge) | AWS-managed regional router |
+| Segment | VRF-like routing/security domain |
+| Attachment | Logical interface/connection to the managed WAN router |
+| NFG (Network Function Group) | Logical firewall/service-chain next-hop group |
+| `send-via` | Policy route: “before reaching another attached network, traverse this service” |
+| `send-to` | Policy route: “traverse this security/egress service and then leave AWS Cloud WAN” |
+| Core Network Policy | Central declarative WAN configuration |
+| Edge override | Prefer the network function in a particular AWS Region |
+| Appliance mode | Attachment behavior used to preserve stateful middlebox symmetry |
 
 ---
 
-## 4. How Cloud WAN changes routing
+# 7. CNE (Core Network Edge) — think managed regional router
 
-Assume:
+A CNE (Core Network Edge) is the AWS-managed regional routing node for AWS Cloud WAN.
 
-```text
-Prod VPC A: 10.10.0.0/16, us-east-1
-Prod VPC B: 10.20.0.0/16, us-west-2
-Inspection NFG attachment: us-east-1
-```
-
-Without service insertion the source segment can have direct Cloud WAN reachability to the destination attachment.
-
-Conceptually, `send-via` changes the effective forwarding relationship to:
+Do not picture a firewall. Picture an AWS-operated router:
 
 ```text
-PROD / us-east-1
-10.20.0.0/16 -> InspectionNFG attachment
-
-InspectionNFG
-10.20.0.0/16 -> destination workload attachment
-10.10.0.0/16 -> source workload attachment
+                 CNE (Core Network Edge)
+                 /                    \
+          PROD segment             DEV segment
 ```
 
-The exact route display should always be verified in Network Manager or with `get-network-routes` rather than inferred from the policy alone.
-
-For egress `send-to`, AWS's published example describes a default route in the workload segment redirected to the local NFG attachment while the NFG has return reachability to the workload CIDR.
+You do not log into a CNE (Core Network Edge). AWS creates and operates it.
 
 ---
 
-## 5. `send-via` — attachment-to-attachment inspection
+# 8. Segment — think VRF-like routing domain
 
-Use `send-via` when the destination is another Cloud WAN attachment.
+A segment is conceptually similar to a VRF (Virtual Routing and Forwarding instance).
+
+For example:
+
+```text
+PROD segment
+DEV segment
+SHARED segment
+HYBRID segment
+```
+
+Attachments join a segment:
+
+```text
+PROD segment
+  - App-VPC-A
+  - App-VPC-B
+
+DEV segment
+  - Dev-VPC-A
+
+HYBRID segment
+  - DXGW (Direct Connect Gateway)
+  - VPN (Virtual Private Network)
+```
+
+---
+
+# 9. NFG (Network Function Group) — think service-chain next hop
+
+The name NFG (Network Function Group) sounds like a firewall cluster, but that is the wrong mental model.
+
+Use this instead:
+
+> **NFG (Network Function Group) = a logical next-hop group that tells AWS Cloud WAN where the network/security service lives.**
+
+Example:
+
+```text
+NFG (Network Function Group): Central-Firewall
+
+Inspection VPC attachment in us-east-1
+Inspection VPC attachment in us-west-2
+```
+
+Inside the Inspection VPC (Virtual Private Cloud) you could have:
+
+```text
+GWLBE (Gateway Load Balancer Endpoint)
+      |
+      v
+GWLB (Gateway Load Balancer)
+      |
+      v
+Palo Alto / Fortinet / Check Point NGFW (Next-Generation Firewall)
+```
+
+or AWS Network Firewall.
+
+The NFG (Network Function Group) itself does not inspect packets.
+
+---
+
+# 10. DMZ (demilitarized zone) / policy-routing analogy
+
+Traditional network:
+
+```text
+VRF PROD
+   |
+   | route/policy: DEV prefixes -> firewall
+   v
+Firewall
+   |
+   v
+VRF DEV
+```
+
+AWS Cloud WAN service insertion is the same broad idea expressed declaratively:
+
+```text
+When traffic originates in PROD
+and is sent to DEV,
+send it through Central-Firewall NFG (Network Function Group).
+```
+
+That is a centrally managed service chain.
+
+---
+
+# 11. `send-via` — firewall between two AWS Cloud WAN attachments
+
+Use `send-via` when the source and final destination are both represented by AWS Cloud WAN attachments.
 
 Examples:
 
-- PROD VPC → DEV VPC
-- VPC → VPC in the same segment
-- VPC → VPC across Regions
-- VPC → Direct Connect/on-premises
-- Direct Connect/on-premises → VPC
-- VPN/branch → VPC
-- Connect/SD-WAN → VPC
-
-AWS documents `send-via` as **bidirectional**. If PROD-to-HYBRID is configured through an NFG, an inverse HYBRID-to-PROD service-insertion statement is not required merely to force the return path through the same insertion construct.
-
-### 5.1 Single-hop
-
-Single-hop traverses one intermediate NFG attachment. When multiple candidate inspection Regions exist, Cloud WAN uses deterministic Region-selection behavior; edge overrides can be used to influence which Region is preferred.
-
-Use single-hop when one inspection is enough and minimizing additional processing/latency is important.
-
-### 5.2 Dual-hop
-
-Dual-hop inserts network functions at both the source and destination CNEs for the flow.
-
 ```text
-Source VPC
- -> source CNE
- -> source-Region inspection attachment
- -> AWS backbone
- -> destination-Region inspection attachment
- -> destination CNE
- -> destination VPC
+VPC -> firewall -> VPC
+VPC -> firewall -> Direct Connect
+Direct Connect -> firewall -> VPC
+VPN -> firewall -> VPC
+VPC -> firewall -> VPN
 ```
 
-AWS requires the appropriate inspection attachment in both Regions for this model.
+Conceptually:
 
-**Important limitation:** if an NFG is used for a dual-hop `send-via` action, that NFG cannot also be reused for single-hop or `send-to`.
+```text
+Cloud WAN attachment
+       |
+       v
+NFG (Network Function Group)
+       |
+       v
+Firewall
+       |
+       v
+AWS Cloud WAN again
+       |
+       v
+Destination attachment
+```
 
-### 5.3 Diagram
+AWS documentation describes `send-via` as attachment-to-attachment/east-west service insertion.
 
-![Single-hop versus dual-hop](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_single_vs_dual.svg)
+A Direct Connect-to-VPC path can still be `send-via` because both sides are AWS Cloud WAN attachments.
 
-[Editable draw.io source](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_single_vs_dual.drawio)
+---
+
+# 12. `send-to` — firewall, then leave AWS Cloud WAN
+
+Use `send-to` when the packet should leave the AWS Cloud WAN environment after inspection.
+
+Most obvious case: Internet egress.
+
+```text
+Application VPC
+     |
+     v
+AWS Cloud WAN
+     |
+     v
+NFG (Network Function Group)
+     |
+     v
+Inspection VPC
+     |
+     v
+GWLBE (Gateway Load Balancer Endpoint)
+     |
+     v
+GWLB (Gateway Load Balancer)
+     |
+     v
+NGFW (Next-Generation Firewall)
+     |
+     v
+NAT Gateway
+     |
+     v
+Internet Gateway
+     |
+     v
+Internet
+```
+
+Remember:
+
+```text
+send-via = AWS Cloud WAN -> firewall -> AWS Cloud WAN -> another attachment
+send-to  = AWS Cloud WAN -> firewall -> outside
+```
+
+---
+
+# 13. Centralized GWLBE (Gateway Load Balancer Endpoint) behind AWS Cloud WAN
+
+![Centralized GWLBE behind AWS Cloud WAN](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_centralized_gwlbe_mapping.svg)
+
+[Editable draw.io source](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_centralized_gwlbe_mapping.drawio)
 
 **What this image shows**
 
-Single-hop inserts one NFG attachment; dual-hop adds an inserted attachment on the other Regional edge.
+The CNE (Core Network Edge) performs the managed WAN routing decision. The NFG (Network Function Group) identifies the inspection attachment. The Inspection VPC (Virtual Private Cloud) performs normal GWLBE (Gateway Load Balancer Endpoint), GWLB (Gateway Load Balancer), and NGFW (Next-Generation Firewall) forwarding.
 
 **What matters**
 
-Dual-hop is a Cloud WAN path behavior, not simply “two firewall VMs behind one GWLB.”
-
-**What to verify**
-
-- NFG attachment exists at both intended CNE Regions
-- NFG is not also required for conflicting single-hop/`send-to` actions
-- security policy is consistent between Regional firewall fleets
-
----
-
-## 6. Same-segment service insertion
-
-For VPCs that belong to the same segment, AWS requires **isolated mode** for mandatory service insertion.
-
-Why: without isolation, attachments in the same segment can have direct connectivity and bypass the NFG.
-
-Example intent:
+There are two separate route decisions:
 
 ```text
-PROD-A 10.10.0.0/16
-PROD-B 10.20.0.0/16
-Both in PROD
-All PROD-to-PROD flows must traverse InspectionNFG
+AWS Cloud WAN decision:
+Should this flow visit inspection?
+
+Inspection VPC decision:
+Which GWLBE (Gateway Load Balancer Endpoint) receives it,
+and where should the packet go after inspection?
 ```
 
-The segment must be configured so direct attachment-to-attachment forwarding is not allowed to bypass the inserted function.
-
-**Common mistake:** adding `send-via` for same-segment traffic but not isolating the segment.
+AWS Cloud WAN does not eliminate the second decision.
 
 ---
 
-## 7. Cross-segment packet flow
+# 14. Exact packet walk — VPC A to VPC B
 
 Assume:
 
 ```text
-PROD VPC       10.10.0.0/16
-DEV VPC        10.20.0.0/16
-Inspection VPC 10.255.0.0/16
+Application VPC A 10.10.0.0/16 -> PROD segment
+Application VPC B 10.20.0.0/16 -> DEV segment
+Inspection VPC    10.255.0.0/16
+NFG (Network Function Group) = Central-Firewall
 ```
 
-Forward path:
+Security intent:
 
-1. EC2 `10.10.1.10` sends to `10.20.1.20`.
-2. Workload subnet route points the remote prefix/aggregate toward the Cloud WAN core attachment.
-3. The VPC attachment delivers the packet to the local CNE.
-4. The PROD segment route lookup is affected by the `send-via` action.
-5. CNE selects the local/preferred `InspectionNFG` attachment.
-6. Packet enters the Inspection VPC through the Cloud WAN attachment ENI.
-7. The attachment-subnet route table directs it to ANFW or GWLBE.
-8. Stateful firewall evaluates the packet.
-9. Allowed packet returns to the Cloud WAN side of the Inspection VPC.
-10. NFG routing sends it to the destination segment/attachment.
-11. DEV VPC receives the packet.
-12. Return traffic is steered back through the NFG, preserving the intended stateful path.
+```text
+PROD -> DEV must use Central-Firewall NFG (Network Function Group)
+```
+
+## Step 1 — source workload
+
+```text
+Source:      10.10.1.10
+Destination: 10.20.1.20
+Protocol:    TCP/443
+```
+
+## Step 2 — source VPC (Virtual Private Cloud) route table
+
+Conceptually:
+
+```text
+10.20.0.0/16 -> AWS Cloud WAN attachment
+```
+
+## Step 3 — packet reaches CNE (Core Network Edge)
+
+The CNE (Core Network Edge) performs the PROD segment lookup and applies service-insertion intent.
+
+Instead of forwarding directly to DEV:
+
+```text
+PROD -> DEV -> Central-Firewall NFG (Network Function Group)
+```
+
+## Step 4 — packet enters the NFG (Network Function Group) attachment
+
+The NFG (Network Function Group) selects the appropriate Inspection VPC attachment according to the AWS Cloud WAN policy and Regional placement.
+
+## Step 5 — Inspection VPC (Virtual Private Cloud) routing takes over
+
+Conceptually:
+
+```text
+Core Network attachment subnet route table
+10.20.0.0/16 -> GWLBE (Gateway Load Balancer Endpoint)
+```
+
+## Step 6 — GWLBE (Gateway Load Balancer Endpoint)
+
+The GWLBE (Gateway Load Balancer Endpoint) injects the flow into the GWLB (Gateway Load Balancer) service.
+
+## Step 7 — GWLB (Gateway Load Balancer)
+
+The GWLB (Gateway Load Balancer) selects a healthy NGFW (Next-Generation Firewall). AWS uses GENEVE (Generic Network Virtualization Encapsulation) between the GWLB (Gateway Load Balancer) service and participating appliances.
+
+## Step 8 — NGFW (Next-Generation Firewall)
+
+Example firewall policy:
+
+```text
+Source zone: PROD
+Destination zone: DEV
+Destination: 10.20.0.0/16
+Service/application: HTTPS
+Action: allow
+```
+
+## Step 9 — packet leaves the firewall service chain
+
+The allowed packet returns through the GWLB (Gateway Load Balancer) / GWLBE (Gateway Load Balancer Endpoint) service path.
+
+## Step 10 — Inspection VPC (Virtual Private Cloud) routes toward AWS Cloud WAN
+
+Post-inspection VPC (Virtual Private Cloud) routing points back toward the AWS Cloud WAN attachment.
+
+## Step 11 — AWS Cloud WAN continues to DEV
+
+The NFG (Network Function Group) forwarding context returns the allowed packet to AWS Cloud WAN, and the DEV segment routes it to Application VPC B.
+
+## Step 12 — destination host receives the packet
+
+```text
+10.20.1.20 receives TCP/443
+```
 
 ---
 
-## 8. Multi-Region selection and edge overrides
+# 15. Return path and appliance mode
 
-If a Region does not have a local NFG attachment, Cloud WAN can use an inspection attachment in another Region according to its Region priority behavior.
-
-This can produce a technically working but inefficient path such as:
+A stateful NGFW (Next-Generation Firewall) must see both directions:
 
 ```text
-us-west-2 workload
- -> us-west-2 CNE
- -> us-east-1 inspection
- -> remote/local destination
+10.10.1.10 -> 10.20.1.20
+10.20.1.20 -> 10.10.1.10
 ```
 
-AWS service insertion supports **edge overrides** to specify a preferred inspection edge for defined edge sets.
+AWS Cloud WAN service insertion is designed to preserve the service-insertion relationship in both directions.
 
-AWS's hybrid inspection example uses this to make `us-west-2` traffic prefer an Inspection VPC in `us-west-1` instead of a less desirable remote Region.
+The Inspection VPC (Virtual Private Cloud) still needs correct zonal routes.
 
-Example policy fragment:
+Appliance mode is an attachment behavior for stateful middleboxes. Think:
 
-```json
-{
-  "action": "send-via",
-  "segment": "Production",
-  "mode": "single-hop",
-  "when-sent-to": {
-    "segments": ["Hybrid"]
-  },
-  "via": {
-    "network-function-groups": ["InspectionNFG"],
-    "with-edge-overrides": [
-      {
-        "edge-sets": [["us-west-2"]],
-        "use-edge-location": "us-west-1"
-      }
-    ]
-  }
-}
+> **Keep the flow associated with the stateful service path rather than allowing normal distributed routing to create asymmetric traversal.**
+
+You still want a zonal pattern such as:
+
+```text
+AZ-A (Availability Zone A) flow
+ -> AZ-A GWLBE (Gateway Load Balancer Endpoint)
+ -> firewall path
+ -> AZ-A return path
 ```
 
-Use edge overrides for latency, deterministic firewall placement, Regional licensing strategy, compliance, and predictable return-path behavior.
+AWS Cloud WAN cannot fix a bad Inspection VPC (Virtual Private Cloud) route table that bypasses the firewall on the reverse path.
 
 ---
 
-## 9. Direct Connect service insertion
+# 16. Distributed vs centralized vs AWS Cloud WAN steering
 
-A native hybrid architecture can be:
+| Architecture | Where is steering decided? | Where is the firewall endpoint? |
+|---|---|---|
+| Distributed GWLBE (Gateway Load Balancer Endpoint) | Workload/edge VPC route table | Close to workload |
+| Centralized GWLBE (Gateway Load Balancer Endpoint) + TGW (Transit Gateway) | TGW route tables + Inspection VPC route tables | Shared Inspection VPC |
+| Centralized GWLBE (Gateway Load Balancer Endpoint) + AWS Cloud WAN | AWS Cloud WAN policy + Inspection VPC route tables | Shared Inspection VPC |
+| AWS Network Firewall + AWS Cloud WAN | AWS Cloud WAN policy + Inspection VPC route tables | Shared Inspection VPC |
+
+The firewall can be the same. The difference is primarily **who controls the transit steering**.
+
+---
+
+# 17. VPC (Virtual Private Cloud) route tables still matter
+
+AWS Cloud WAN service insertion simplifies WAN-level routing policy. It does not remove VPC (Virtual Private Cloud) route tables.
+
+A centralized GWLB (Gateway Load Balancer) inspection design can still need:
 
 ```text
-Corporate router
- -> Direct Connect
- -> transit VIF
- -> Direct Connect Gateway (DXGW)
- -> Cloud WAN Direct Connect attachment
- -> HYBRID segment
- -> send-via InspectionNFG
- -> firewall
+Application VPC route table:
+remote prefixes -> AWS Cloud WAN
+0.0.0.0/0       -> AWS Cloud WAN   # if centralized Internet egress is required
+```
+
+```text
+Inspection VPC Cloud WAN attachment subnet route table:
+traffic requiring inspection -> GWLBE (Gateway Load Balancer Endpoint)
+```
+
+```text
+Post-inspection routing:
+application prefixes -> AWS Cloud WAN attachment
+Internet default      -> NAT Gateway
+```
+
+```text
+NAT Gateway subnet route table:
+0.0.0.0/0 -> Internet Gateway
+application return prefixes -> firewall path
+```
+
+Remember:
+
+> **AWS Cloud WAN chooses the Inspection VPC (Virtual Private Cloud). The Inspection VPC (Virtual Private Cloud) route tables choose the firewall endpoint.**
+
+---
+
+# 18. Does AWS Cloud WAN resemble Azure Virtual WAN (vWAN)?
+
+**Yes. Azure Virtual WAN (vWAN) is one of the best analogies.**
+
+The closest Azure design is:
+
+```text
+Azure Virtual WAN (vWAN)
++
+Routing Intent
++
+Secured Virtual Hub
+```
+
+Microsoft documents Routing Intent as a way to steer private and Internet traffic through a security solution associated with an Azure Virtual WAN (vWAN) hub.
+
+AWS Cloud WAN follows the same broad architecture principle:
+
+```text
+AWS Cloud WAN
++
+Core Network Policy
++
+NFG (Network Function Group)
+```
+
+Both allow you to declare security-routing intent rather than manually constructing every transit route.
+
+---
+
+# 19. AWS Cloud WAN vs Azure Virtual WAN (vWAN)
+
+![AWS Cloud WAN compared with Azure Virtual WAN](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_azure_vwan_comparison.svg)
+
+[Editable draw.io source](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_azure_vwan_comparison.drawio)
+
+**What this image shows**
+
+A conceptual mapping between the AWS Cloud WAN and Azure Virtual WAN (vWAN) routing/security models.
+
+**What matters**
+
+This is an analogy. The implementations and resource models are not identical.
+
+| AWS concept | Azure concept | Similar idea |
+|---|---|---|
+| AWS Cloud WAN | Azure Virtual WAN (vWAN) | Managed WAN/transit fabric |
+| CNE (Core Network Edge) | Azure virtual hub router | Managed regional routing function |
+| Segment | Azure virtual hub route-table/routing-domain design | Logical routing separation |
+| Core Network Policy | Azure Virtual WAN routing configuration | Central network intent |
+| NFG (Network Function Group) | Security next-hop used by Routing Intent | Service insertion target |
+| `send-via` | Private Traffic Routing Policy | Force private/transit traffic through security |
+| `send-to` | Internet Traffic Routing Policy | Force Internet-bound traffic through security |
+| Direct Connect attachment | ExpressRoute connection | Private hybrid connectivity |
+| VPN (Virtual Private Network) attachment | Site-to-site VPN connection | Encrypted hybrid connectivity |
+| AWS Network Firewall | Azure Firewall | Cloud-native managed firewall |
+| GWLB (Gateway Load Balancer) + NGFW (Next-Generation Firewall) | Supported third-party NVA (Network Virtual Appliance) patterns | Third-party security service |
+
+---
+
+# 20. Important Azure Virtual WAN (vWAN) difference
+
+Azure Virtual WAN (vWAN) can integrate Azure Firewall or supported NGFW (Next-Generation Firewall) solutions with the virtual-hub security architecture.
+
+AWS Cloud WAN commonly represents the security service through an NFG (Network Function Group) whose attachment leads into an Inspection VPC (Virtual Private Cloud).
+
+Useful mental pictures:
+
+```text
+Azure
+
+VNet (Virtual Network)
+ |
+ v
+Azure Virtual WAN (vWAN) hub
+ |
+ v
+Routing Intent
+ |
+ v
+Azure Firewall / supported security next hop
+```
+
+versus:
+
+```text
+AWS
+
+VPC (Virtual Private Cloud)
+ |
+ v
+CNE (Core Network Edge)
+ |
+ v
+send-via / send-to
+ |
+ v
+NFG (Network Function Group)
+ |
+ v
+Inspection VPC (Virtual Private Cloud)
+ |
+ v
+GWLBE (Gateway Load Balancer Endpoint)
+ |
+ v
+GWLB (Gateway Load Balancer)
+ |
+ v
+NGFW (Next-Generation Firewall)
+```
+
+---
+
+# 21. Internet egress — relate `send-to` to a default route through a firewall
+
+Traditional enterprise:
+
+```text
+User VLAN
+ -> 0.0.0.0/0
+ -> Core
+ -> Firewall
+ -> NAT (Network Address Translation)
+ -> Internet
+```
+
+AWS Cloud WAN:
+
+```text
+Application VPC
+ -> 0.0.0.0/0 toward AWS Cloud WAN
  -> PROD segment
- -> workload VPC
-```
-
-This removes the need to insert Transit Gateway solely as a Direct Connect-to-Cloud-WAN bridge.
-
-AWS notes:
-
-- a DXGW can be associated with only one Cloud WAN segment;
-- multiple DXGWs can be associated with one segment;
-- a DX attachment can be associated with all or selected CNEs;
-- Direct Connect BGP communities apply to DXGW behavior but do not by themselves determine Cloud WAN core routing decisions.
-
-### 9.1 Direct Connect forward path
-
-Assume:
-
-```text
-Corp:       192.168.10.0/24
-Prod VPC:   10.30.0.0/16
-Segments:   HYBRID and PROD
-NFG:        InspectionNFG
-```
-
-1. Corporate router advertises `192.168.10.0/24` over BGP on the transit VIF.
-2. DXGW receives the route.
-3. Cloud WAN DX attachment makes the route available to the HYBRID routing domain according to the association/policy.
-4. A packet toward `10.30.0.0/16` arrives at the CNE.
-5. HYBRID↔PROD `send-via` redirects to `InspectionNFG`.
-6. Firewall inspects the packet.
-7. NFG returns the allowed packet to Cloud WAN.
-8. PROD segment forwards to the Prod VPC attachment.
-9. VPC routing delivers to the workload.
-
-Reverse:
-
-1. Prod workload routes `192.168.10.0/24` toward Cloud WAN.
-2. PROD↔HYBRID service insertion sends it through the same NFG intent.
-3. Firewall sees the reverse direction.
-4. NFG sends back to Cloud WAN.
-5. HYBRID selects DXGW.
-6. DXGW sends the packet over the appropriate transit VIF/BGP path.
-
----
-
-## 10. VPN and Connect/SD-WAN
-
-A Site-to-Site VPN attachment can be associated with a branch/hybrid segment and inspected with the same `send-via` model:
-
-```text
-Branch
- -> IPsec/BGP
- -> Cloud WAN VPN attachment
- -> HYBRID/BRANCH segment
- -> InspectionNFG
- -> PROD/SHARED
- -> VPC
-```
-
-Verify:
-
-- both VPN tunnels/BGP peers
-- `vpn-ecmp-support` policy behavior
-- equal-cost paths and stateful firewall expectations
-- return reachability through the NFG
-
-For Connect/SD-WAN:
-
-```text
-SD-WAN edge
- -> Connect peer/attachment
- -> BRANCH segment
- -> send-via InspectionNFG
- -> workload segment
-```
-
-The SD-WAN overlay control plane and Cloud WAN core policy are separate. Verify both route advertisements and Cloud WAN insertion routes.
-
----
-
-## 11. Internet egress with `send-to`
-
-Use `send-to` when the packet is sent to the network function and then **does not re-enter Cloud WAN** after the external exit.
-
-Typical path:
-
-```text
-Prod workload
- -> Cloud WAN
- -> PROD default route
- -> InspectionNFG
- -> ANFW or GWLB/GWLBE/NGFW
+ -> send-to
+ -> NFG (Network Function Group)
+ -> Inspection VPC (Virtual Private Cloud)
+ -> GWLBE (Gateway Load Balancer Endpoint)
+ -> GWLB (Gateway Load Balancer)
+ -> NGFW (Next-Generation Firewall)
  -> NAT Gateway
  -> Internet Gateway
  -> Internet
 ```
 
-Example:
-
-```json
-{
-  "action": "send-to",
-  "segment": "PROD",
-  "via": {
-    "network-function-groups": ["InspectionNFG"]
-  }
-}
-```
-
-AWS's egress example describes Cloud WAN adding/using `0.0.0.0/0` and `::/0` redirections in the workload segment toward the NFG, and return reachability from the NFG toward the workload attachment.
-
-### 11.1 Workload route table
-
-Conceptually:
-
-```text
-Destination       Target
-10.10.0.0/16      local
-0.0.0.0/0         Cloud WAN core network attachment
-```
-
-### 11.2 Inspection entry subnet
-
-```text
-Destination       Target
-0.0.0.0/0         ANFW endpoint or GWLBE
-workload CIDRs    Cloud WAN return path
-```
-
-### 11.3 Firewall egress subnet
-
-```text
-0.0.0.0/0         NAT Gateway
-```
-
-### 11.4 NAT subnet
-
-```text
-0.0.0.0/0         Internet Gateway
-workload CIDRs    firewall return path
-```
-
-### 11.5 Exact packet path
-
-For `10.10.1.10:52144 -> 8.8.8.8:443`:
-
-1. workload default route sends to Cloud WAN;
-2. PROD CNE default is redirected to NFG;
-3. Inspection VPC Core Network ENI receives the original packet;
-4. VPC route sends it to ANFW/GWLBE;
-5. firewall permits;
-6. egress route sends to NAT Gateway;
-7. NAT Gateway translates the private source to its public mapping;
-8. IGW sends to the Internet;
-9. response returns IGW → NAT Gateway;
-10. NAT reverses translation;
-11. NAT subnet's workload-return route forces the packet through the firewall again;
-12. firewall matches reverse state;
-13. packet returns to NFG/Cloud WAN;
-14. NFG has reachability to the source workload attachment;
-15. workload receives the response.
+So `send-to` is easiest to remember as **managed security-egress/default-route service insertion**.
 
 ---
 
-## 12. Hybrid and egress diagram
+# 22. Direct Connect — relate it to a WAN-edge firewall
 
-![Hybrid and Internet inspection](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_hybrid_egress.svg)
-
-[Editable draw.io source](images/09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive_hybrid_egress.drawio)
-
-**What this image shows**
-
-The upper flow is Direct Connect-to-VPC using `send-via`; the lower flow is Internet egress using `send-to`.
-
-**What matters**
-
-Do not classify DX-to-VPC as `send-to` merely because one endpoint is on-premises. If the final path returns to a Cloud WAN attachment, use the attachment-to-attachment model.
-
-**What to verify**
-
-- DXGW associated with HYBRID
-- on-prem and VPC routes appear in expected CNE tables
-- `send-via` points to the correct NFG attachment
-- Internet default uses `send-to`
-- return path is forced through the firewall before NFG/Cloud WAN
-
----
-
-## 13. AWS Network Firewall inside the Inspection VPC
-
-Cloud WAN and ANFW solve different layers:
-
-- Cloud WAN: global routing/steering
-- ANFW: packet inspection inside a VPC
-
-Recommended zonal pattern:
+Suppose:
 
 ```text
-Cloud WAN attachment subnet AZ-a
- -> ANFW endpoint AZ-a
- -> NAT/egress subnet AZ-a
- -> NAT Gateway AZ-a
- -> IGW
+Data center    192.168.0.0/16
+Production VPC 10.10.0.0/16
 ```
 
-Repeat per AZ where the service is deployed.
-
-For east-west, the firewall's post-inspection route returns toward the Cloud WAN/NFG side rather than NAT/IGW.
-
-Verify:
-
-- firewall endpoint exists in every used AZ
-- route tables select the same-AZ endpoint
-- stateless default actions do not unintentionally bypass/drop expected traffic
-- stateful rules match intended source/destination/application
-- logs show both directions
-
----
-
-## 14. GWLB + third-party NGFW
-
-Typical dataplane:
+AWS path:
 
 ```text
-Cloud WAN Core Network ENI
- -> GWLBE
- -> GWLB
- -> third-party NGFW appliance fleet
- -> GWLB
- -> GWLBE
- -> Cloud WAN or NAT/IGW
+Data center router
+ |
+Direct Connect
+ |
+DXGW (Direct Connect Gateway)
+ |
+AWS Cloud WAN HYBRID segment
+ |
+send-via
+ |
+NFG (Network Function Group)
+ |
+Inspection VPC (Virtual Private Cloud)
+ |
+GWLBE (Gateway Load Balancer Endpoint)
+ |
+GWLB (Gateway Load Balancer)
+ |
+NGFW (Next-Generation Firewall)
+ |
+PROD segment
+ |
+Production VPC (Virtual Private Cloud)
 ```
 
-GWLB contributes:
-
-- transparent bump-in-the-wire service insertion
-- target health management
-- flow stickiness
-- scale-out appliance fleets
-- GENEVE encapsulation between GWLB and appliances
-
-Cloud WAN is not aware of individual GWLB targets. It sees the NFG/VPC attachment.
-
-For each AZ explicitly identify:
-
-1. Core Network attachment subnet;
-2. route to GWLBE;
-3. GWLBE service/GWLB;
-4. NGFW target group;
-5. post-firewall route;
-6. Cloud WAN return or NAT/IGW route;
-7. reverse path.
-
-GENEVE adds transport overhead on the GWLB-to-appliance path. Follow the firewall vendor's AWS GWLB MTU and interface requirements.
+This maps naturally to `send-via` because the Direct Connect side and VPC (Virtual Private Cloud) side are both AWS Cloud WAN attachments.
 
 ---
 
-## 15. Appliance mode and state symmetry
+# 23. VPN (Virtual Private Network) and SD-WAN (Software-Defined Wide Area Network)
 
-AWS documents appliance mode as required for the Inspection VPC service-insertion attachment.
-
-A stateful firewall tracks the 5-tuple:
+The same logic applies to VPN (Virtual Private Network) or Connect/SD-WAN (Software-Defined Wide Area Network) attachments:
 
 ```text
-source IP
-source port
-destination IP
-destination port
-protocol
+Branch
+ |
+VPN (Virtual Private Network) / SD-WAN (Software-Defined Wide Area Network)
+ |
+AWS Cloud WAN BRANCH segment
+ |
+send-via
+ |
+NFG (Network Function Group)
+ |
+Inspection VPC (Virtual Private Cloud)
+ |
+Firewall
+ |
+PROD segment
+ |
+Application VPC (Virtual Private Cloud)
 ```
 
-If forward and return packets traverse unrelated AZ paths or firewall state domains, sessions can fail even though routes appear reachable.
-
-Appliance mode helps keep flows through the VPC attachment consistent for stateful middleboxes. It does **not** correct wrong VPC route tables. You must still design zonal symmetry through ANFW endpoints or GWLBE/GWLB and NAT Gateway where applicable.
+The AWS Cloud WAN policy provides the service chain. VPN (Virtual Private Network), BGP (Border Gateway Protocol), or SD-WAN (Software-Defined Wide Area Network) still provides route reachability.
 
 ---
 
-## 16. Core Network Policy example
+# 24. Single-hop and dual-hop in firewall language
 
-The following is a lab skeleton showing object relationships. Validate against the current Cloud WAN policy schema before deployment.
+## Single-hop
 
-```json
-{
-  "version": "2021.12",
-  "core-network-configuration": {
-    "asn-ranges": ["64520-64529"],
-    "edge-locations": [
-      {"location": "us-east-1"},
-      {"location": "us-west-2"}
-    ],
-    "vpn-ecmp-support": true,
-    "dns-support": true,
-    "security-group-referencing-support": false
-  },
-  "segments": [
-    {
-      "name": "PROD",
-      "description": "Production workloads",
-      "require-attachment-acceptance": false,
-      "isolate-attachments": true
-    },
-    {
-      "name": "DEV",
-      "description": "Development workloads",
-      "require-attachment-acceptance": false
-    },
-    {
-      "name": "HYBRID",
-      "description": "DX, VPN and branch connectivity",
-      "require-attachment-acceptance": false
-    }
-  ],
-  "network-function-groups": [
-    {
-      "name": "InspectionNFG",
-      "description": "Regional inspection attachments",
-      "require-attachment-acceptance": false
-    }
-  ],
-  "segment-actions": [
-    {
-      "action": "send-via",
-      "segment": "PROD",
-      "mode": "single-hop",
-      "when-sent-to": {
-        "segments": ["DEV", "HYBRID"]
-      },
-      "via": {
-        "network-function-groups": ["InspectionNFG"]
-      }
-    },
-    {
-      "action": "send-to",
-      "segment": "PROD",
-      "via": {
-        "network-function-groups": ["InspectionNFG"]
-      }
-    }
-  ]
-}
+```text
+VPC A
+ -> AWS Cloud WAN
+ -> one inspection location
+ -> AWS Cloud WAN
+ -> VPC B
 ```
 
-### Policy version note
+Think: **inspect once**.
 
-AWS currently documents policy versions `2021.12` and `2025.11`. Version `2025.11` is required for Cloud WAN Routing Policy and also enables BGP community propagation behavior through the core. Service insertion itself is a different feature from Routing Policy; select the schema required by the complete design.
+## Dual-hop
+
+```text
+VPC A
+ -> source-Region firewall
+ -> AWS global WAN
+ -> destination-Region firewall
+ -> VPC B
+```
+
+Think: **inspect at both regional service edges**.
+
+This is not two firewalls in HA (High Availability). It is two separate service-insertion points.
 
 ---
 
-## 17. AWS CLI deployment and verification
+# 25. Edge override in normal routing language
 
-### 17.1 Read the core network
+Suppose:
 
-```cli
-aws networkmanager get-core-network \
-  --core-network-id core-network-0123456789abcdef0
+```text
+Workload Region: us-west-2
+Firewall Regions: us-east-1 and us-west-1
 ```
 
-**Expected fields:** Core Network ID, state, edges, owner/account metadata.
+You prefer:
 
-**Success criteria:** expected CNE Regions exist and the core network is operational.
-
-### 17.2 Retrieve LIVE policy
-
-```cli
-aws networkmanager get-core-network-policy \
-  --core-network-id core-network-0123456789abcdef0 \
-  --alias LIVE
+```text
+us-west-2 -> us-west-1 inspection
 ```
 
-**What it tests:** currently deployed policy document and version.
+An edge override tells AWS Cloud WAN which Regional NFG (Network Function Group) attachment should be preferred.
 
-**Next action:** save this before making changes.
+Think: **for this WAN edge, use this service-chain Region**.
 
-### 17.3 Put a new policy version
+---
 
-```cli
-aws networkmanager put-core-network-policy \
-  --core-network-id core-network-0123456789abcdef0 \
-  --policy-document file://cloudwan-service-insertion.json
+# 26. Why AWS Cloud WAN instead of only TGW (Transit Gateway)?
+
+TGW (Transit Gateway) can absolutely build centralized firewall inspection.
+
+A multi-Region TGW (Transit Gateway) architecture can require:
+
+```text
+TGW (Transit Gateway) us-east-1
+TGW (Transit Gateway) us-west-2
+TGW (Transit Gateway) eu-west-1
+TGW peering
+PRE-inspection route tables
+POST-inspection route tables
+Regional firewalls
+Inter-Region steering
+Direct Connect / VPN integration
 ```
 
-### 17.4 Review the change set
+AWS Cloud WAN moves more of the global transit intent into one managed policy.
 
-```cli
-aws networkmanager get-core-network-change-set \
-  --core-network-id core-network-0123456789abcdef0 \
-  --policy-version-id 7
+Use this comparison:
+
+```text
+TGW (Transit Gateway)
+= regional transit router whose route tables you engineer
+
+AWS Cloud WAN
+= managed global WAN where you declare more of the routing intent
 ```
 
-**Success criteria:** intended NFG/service-insertion changes appear and no unrelated segment/attachment changes are present.
+That resembles the difference between manually engineered Azure hub/spoke VNets (Virtual Networks) and Azure Virtual WAN (vWAN).
 
-### 17.5 Execute
+---
+
+# 27. When distributed GWLBE (Gateway Load Balancer Endpoint) makes more sense
+
+Use distributed GWLBE (Gateway Load Balancer Endpoint) when:
+
+- inspection must happen close to the workload
+- each VPC (Virtual Private Cloud) needs independent routing/security ownership
+- traffic should not detour through a central Inspection VPC (Virtual Private Cloud)
+- only selected subnets require inspection
+- very fine-grained per-VPC (Virtual Private Cloud) insertion is required
+
+Distributed GWLBE (Gateway Load Balancer Endpoint) can coexist with AWS Cloud WAN, but decide whether a flow is inspected locally, centrally, or both to avoid accidental double inspection.
+
+---
+
+# 28. When centralized GWLBE (Gateway Load Balancer Endpoint) + AWS Cloud WAN makes sense
+
+This model fits when:
+
+- many VPCs (Virtual Private Clouds) share one NGFW (Next-Generation Firewall) fleet
+- several AWS Regions participate
+- Direct Connect and VPN (Virtual Private Network) traffic need consistent inspection
+- you want one global security-routing policy
+- you want less TGW (Transit Gateway) PRE/POST route-table engineering
+- centralized firewall policy and logging are desirable
+
+---
+
+# 29. Troubleshooting — follow the layers
+
+## Layer 1 — Application VPC (Virtual Private Cloud)
+
+Did the VPC (Virtual Private Cloud) route table send the flow toward AWS Cloud WAN?
 
 ```cli
-aws networkmanager execute-core-network-change-set \
-  --core-network-id core-network-0123456789abcdef0 \
-  --policy-version-id 7
+aws ec2 describe-route-tables
 ```
 
-### 17.6 Create Inspection VPC attachment
+## Layer 2 — AWS Cloud WAN segment
 
-AWS's published egress example uses this pattern:
-
-```cli
-aws networkmanager create-vpc-attachment \
-  --core-network-id "<core-network-id>" \
-  --vpc-arn "<vpc-arn>" \
-  --subnet-arns "<subnet-arn>" \
-  --tags Key=environment,Value=InspectionNFG
-```
-
-Use the production-required AZ/subnet layout and ensure appliance mode is enabled for the inspection attachment.
-
-### 17.7 List attachments
-
-```cli
-aws networkmanager list-attachments \
-  --core-network-id core-network-0123456789abcdef0
-```
-
-Verify attachment type, state, edge location, tags, and association.
-
-### 17.8 Verify workload segment routes
+Did AWS Cloud WAN apply the service-insertion decision?
 
 ```cli
 aws networkmanager get-network-routes \
-  --global-network-id global-network-0123456789abcdef0 \
-  --core-network-id core-network-0123456789abcdef0 \
+  --global-network-id <global-network-id> \
+  --core-network-id <core-network-id> \
   --segment-name PROD \
   --edge-location us-east-1
 ```
 
-For `send-via`, destination workload/hybrid routes should resolve through the intended NFG redirection.
+## Layer 3 — NFG (Network Function Group)
 
-For `send-to`, verify the default destination points toward the intended NFG behavior.
-
-### 17.9 Verify NFG routes
+Does the NFG (Network Function Group) have an available inspection attachment in the expected Region?
 
 ```cli
-aws networkmanager get-network-routes \
-  --global-network-id global-network-0123456789abcdef0 \
-  --core-network-id core-network-0123456789abcdef0 \
-  --network-function-group-name InspectionNFG \
-  --edge-location us-east-1
+aws networkmanager list-attachments \
+  --core-network-id <core-network-id>
 ```
 
-**Success criteria:** source/destination workload or hybrid prefixes have the expected attachment destinations.
+A service-insertion policy can exist even while the required NFG (Network Function Group) attachment is missing; affected traffic can then black-hole.
 
-**Operational caveat:** AWS documents that BGP route updates for NFG route tables may take up to roughly 30 minutes to appear in the console/API in some situations. This display delay does not necessarily mean forwarding is broken.
+## Layer 4 — Inspection VPC (Virtual Private Cloud)
 
----
-
-## 18. Verify the Inspection VPC
-
-### VPC route tables
+Did the Inspection VPC (Virtual Private Cloud) route table point to the GWLBE (Gateway Load Balancer Endpoint)?
 
 ```cli
 aws ec2 describe-route-tables \
-  --filters Name=vpc-id,Values=vpc-0abc123456789def0
+  --filters Name=vpc-id,Values=<inspection-vpc-id>
 ```
 
-Look for:
-
-- Core Network attachment-side routes to ANFW/GWLBE
-- post-inspection routes back to Cloud WAN or NAT
-- NAT subnet return routes through the firewall
-- absence of direct bypass routes
-
-### GWLBE
+## Layer 5 — GWLBE (Gateway Load Balancer Endpoint)
 
 ```cli
 aws ec2 describe-vpc-endpoints \
   --filters Name=vpc-endpoint-type,Values=GatewayLoadBalancer
 ```
 
-Verify endpoint state, subnet/AZ and endpoint service.
+Verify endpoint state, AZ (Availability Zone), and endpoint service.
 
-### GWLB target health
+## Layer 6 — GWLB (Gateway Load Balancer)
 
 ```cli
 aws elbv2 describe-target-health \
   --target-group-arn <target-group-arn>
 ```
 
-Healthy appliances should exist in every intended AZ.
+Expected: healthy firewall targets.
 
-### AWS Network Firewall
+## Layer 7 — NGFW (Next-Generation Firewall)
 
-```cli
-aws network-firewall describe-firewall \
-  --firewall-name central-inspection
-```
+Verify:
 
-Verify endpoint IDs and AZ mappings.
+- session table
+- security-policy match
+- zone mapping
+- source/destination addresses
+- application/service
+- threat-policy drops
+- reverse session
 
-### Direct Connect BGP
+## Layer 8 — return path
 
-```cli
-aws directconnect describe-virtual-interfaces
-```
-
-Verify VIF state, BGP peer state, ASNs, and route advertisement design.
-
----
-
-## 19. Failure behavior
-
-### NFG referenced but no attachment exists
-
-The policy can still apply, while traffic sent to that NFG is black-holed. Therefore **policy deployment success is not dataplane validation**.
-
-### Firewall target failure behind GWLB
-
-GWLB removes unhealthy appliance targets according to GWLB health behavior. Cloud WAN still sends traffic to the NFG/VPC attachment; GWLB target selection is a separate layer.
-
-### Regional inspection attachment failure
-
-Do not assume firewall target health automatically makes Cloud WAN select another Region. NFG attachment selection, Regional steering, GWLB/ANFW health, and firewall HA are separate systems and must be tested together.
-
-### Direct Connect failure
-
-BGP withdrawal removes the failed path. A secondary DX/VPN path must advertise valid reachability. Service insertion cannot create a hybrid path that is no longer present in the routing control plane.
-
-### NAT/AZ failure
-
-Internet egress can fail after successful Cloud WAN/firewall processing if NAT Gateway or zonal routes are broken. Per-AZ firewall and NAT designs reduce cross-AZ dependencies.
-
----
-
-## 20. Limitations and constraints
-
-1. One attachment per NFG per Region.
-2. An attachment belongs to either a segment or an NFG, not both.
-3. Same-segment service insertion requires isolated mode.
-4. Inspection VPC attachment requires appliance mode.
-5. An NFG used for dual-hop cannot also be reused for single-hop or `send-to`.
-6. Static routes defined in normal Cloud WAN segments are not automatically propagated into NFG route tables; the service insertion policy must provide the required reachability behavior.
-7. Multiple NFGs are supported, but AWS notes that multiple NFGs cannot be inserted for the same segment/segment pair.
-8. A Direct Connect Gateway is associated with one Cloud WAN segment.
-9. Missing NFG attachments can create a black hole even though policy execution succeeded.
-10. Cloud WAN does not configure the VPC firewall/NAT/GWLB route tables.
-
----
-
-## 21. Common mistakes
-
-### Treating the NFG as a normal segment
-
-NFG route state is managed as part of service insertion. Do not build it like an ordinary workload segment with arbitrary sharing/static route behavior.
-
-### Using `send-to` for Direct Connect-to-VPC
-
-DXGW attachment → VPC attachment is still attachment-to-attachment. Use `send-via`.
-
-### Assuming service insertion configures GWLB
-
-It does not. Cloud WAN selects the Inspection VPC/NFG attachment; GWLBE/GWLB/NVA routing remains a VPC responsibility.
-
-### Forgetting appliance mode
-
-A stateful firewall can fail due to asymmetric forward/return paths.
-
-### Dual-hop with only one Regional firewall attachment
-
-Dual-hop expects insertion at both CNE sides.
-
-### Reusing a dual-hop NFG for Internet egress
-
-AWS disallows this. Use separate NFGs when the architecture needs dual-hop east-west plus `send-to` Internet egress.
-
-### Checking only Cloud WAN routes
-
-Always validate the whole path:
+Verify:
 
 ```text
-Cloud WAN segment RT
- -> NFG RT
- -> VPC attachment-subnet RT
- -> firewall/GWLBE RT
- -> NAT/IGW RT if applicable
- -> destination
- -> complete reverse path
+Destination
+ -> AWS Cloud WAN
+ -> NFG (Network Function Group)
+ -> Inspection VPC (Virtual Private Cloud)
+ -> GWLBE (Gateway Load Balancer Endpoint)
+ -> GWLB (Gateway Load Balancer)
+ -> NGFW (Next-Generation Firewall)
+ -> AWS Cloud WAN
+ -> Source
 ```
 
 ---
 
-## 22. Troubleshooting by symptom
-
-### VPC-to-VPC traffic bypasses firewall
-
-**Where:** segment action and same-segment isolation.
-
-**Command:**
-
-```cli
-aws networkmanager get-core-network-policy \
-  --core-network-id <id> \
-  --alias LIVE
-```
-
-**What it tests:** correct `send-via`, segment pair and mode.
-
-**Failure meaning:** missing insertion rule or direct same-segment connectivity.
-
-**Next action:** correct policy; use isolated mode for same-segment enforcement.
-
-### Traffic reaches Cloud WAN then disappears
-
-**Where:** NFG association/Regional attachment.
-
-```cli
-aws networkmanager list-attachments \
-  --core-network-id <id>
-```
-
-**Expected:** `InspectionNFG` attachment is available in the selected/preferred Region.
-
-**Failure meaning:** likely NFG black hole.
-
-### Firewall sees forward packet but not return
-
-**Where:** appliance mode, NFG routes, zonal firewall path, destination return route.
-
-```cli
-aws networkmanager get-network-routes ...
-aws ec2 describe-route-tables ...
-```
-
-**Expected:** destination and source prefixes are redirected through NFG and VPC return route crosses the same firewall chain.
-
-### Internet egress reaches firewall but not Internet
-
-**Where:** post-firewall NAT/IGW stack.
-
-```cli
-aws ec2 describe-route-tables
-aws ec2 describe-nat-gateways
-```
-
-**Expected:** firewall egress `0/0 -> NAT GW`; NAT public subnet `0/0 -> IGW`.
-
-### Internet return bypasses firewall
-
-**Where:** NAT subnet route table.
-
-**Expected:** workload prefixes return through ANFW/GWLBE before reaching the Cloud WAN attachment.
-
-### Hybrid traffic is inspected in the wrong Region
-
-**Where:** edge override / Regional selection.
-
-**Expected:** `with-edge-overrides` maps the relevant CNE/edge set to the intended NFG Region.
-
-### DX route is missing in Cloud WAN
-
-**Where:** transit VIF BGP, DXGW association, Cloud WAN DX attachment.
-
-```cli
-aws directconnect describe-virtual-interfaces
-aws networkmanager list-attachments --core-network-id <id>
-aws networkmanager get-network-routes ...
-```
-
-**Expected:** BGP up, DX attachment available, on-prem prefix visible in HYBRID.
-
----
-
-## 23. Recommended deployment patterns
-
-### Local inspection in every Region
-
-Best latency and Regional autonomy, highest firewall footprint.
+# 30. Quick memory model
 
 ```text
-us-east-1 -> East NFG
-us-west-2 -> West NFG
-eu-west-1 -> Europe NFG
+Segment
+= routing/security domain
+
+CNE (Core Network Edge)
+= AWS-managed regional router
+
+NFG (Network Function Group)
+= logical firewall/service next hop
+
+send-via
+= firewall is between two AWS Cloud WAN attachments
+
+send-to
+= firewall is before traffic leaves AWS Cloud WAN
+
+GWLBE (Gateway Load Balancer Endpoint)
+= VPC route-table target entering the GWLB service
+
+GWLB (Gateway Load Balancer)
+= distributes flows to firewall appliances
+
+NGFW (Next-Generation Firewall)
+= firewall that actually permits or denies the flow
 ```
 
-### Regional consolidation
-
-Use edge overrides so groups of Regions use a selected firewall Region.
+Complete hierarchy:
 
 ```text
-us-east-1/us-east-2 -> East inspection
-us-west-1/us-west-2 -> West inspection
+Application VPC route table
+        |
+        v
+CNE (Core Network Edge)
+        |
+        | AWS Cloud WAN service-insertion policy
+        v
+NFG (Network Function Group)
+        |
+        v
+Inspection VPC route table
+        |
+        v
+GWLBE (Gateway Load Balancer Endpoint)
+        |
+        v
+GWLB (Gateway Load Balancer)
+        |
+        v
+NGFW (Next-Generation Firewall)
+        |
+        v
+Inspection VPC route table
+        |
+        v
+AWS Cloud WAN or Internet
 ```
 
-### Single global inspection Region
+---
 
-Simple operationally but may add inter-Region latency and data-processing cost. Validate compliance and failure requirements carefully.
+# 31. One-sentence Azure Virtual WAN (vWAN) comparison
 
-### Separate NFGs for dual-hop and egress
-
-When dual-hop is required for east-west and Internet egress also needs `send-to`, create distinct NFGs:
-
-```text
-EastWestDualHopNFG
-InternetEgressNFG
-```
+> **AWS Cloud WAN `send-via` / `send-to` through an NFG (Network Function Group) is conceptually similar to Azure Virtual WAN (vWAN) Routing Intent steering Private Traffic or Internet Traffic through a secured virtual-hub security resource, while AWS commonly places the actual GWLB (Gateway Load Balancer) / NGFW (Next-Generation Firewall) service inside an attached Inspection VPC (Virtual Private Cloud).**
 
 ---
 
-## 24. Final validation checklist
-
-- [ ] Required CNE Regions exist.
-- [ ] Workload attachments are in the correct segments.
-- [ ] Inspection attachments are associated to the correct NFG.
-- [ ] One-attachment-per-NFG-per-Region rule is satisfied.
-- [ ] Inspection VPC appliance mode is enabled.
-- [ ] Same-segment inspection uses isolation.
-- [ ] `send-via` is used for attachment-to-attachment flows.
-- [ ] `send-to` is used only where traffic exits after inspection.
-- [ ] Dual-hop NFG is not reused for single-hop/`send-to`.
-- [ ] Edge overrides are intentional and documented.
-- [ ] ANFW/GWLBE exists in every required AZ.
-- [ ] Route tables maintain zonal symmetry.
-- [ ] NAT and IGW routing is correct.
-- [ ] DX/VPN/Connect routes are visible.
-- [ ] Segment and NFG route tables show the expected next hops.
-- [ ] Firewall logs show both forward and reverse sessions.
-- [ ] Failure testing covers appliance, AZ, Region, DX and VPN failures.
-
----
-
-## 25. Source information, explanation, inference
-
-### Source information
-
-AWS explicitly documents NFGs, supported attachment classes, one NFG attachment per Region, `send-via`, `send-to`, single-hop, dual-hop, edge overrides, same-segment isolation, appliance mode, missing-NFG black-hole behavior, and Direct Connect hybrid inspection examples.
-
-### Additional explanation
-
-This guide expands the vendor material into explicit CNE/NFG route-table mental models, VPC firewall handoffs, complete forward/return packet walks, multi-AZ routing, and layered troubleshooting.
-
-### Reasonable inference
-
-Do not assume a specific cross-Region failover path solely from topology. Cloud WAN Regional selection, NFG attachment state, GWLB/ANFW health, firewall HA, NAT and BGP are separate systems. Validate the actual LIVE policy and route state.
-
----
-
-## Sources
+# Sources
 
 - https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-service-insertion.html
 - https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-network-function-groups.html
-- https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-network-actions-routes.html
 - https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policies-json.html
-- https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-examples.html
 - https://aws.amazon.com/blogs/networking-and-content-delivery/simplify-global-security-inspection-with-aws-cloud-wan-service-insertion/
-- https://aws.amazon.com/blogs/networking-and-content-delivery/simplifying-egress-inspection-with-aws-cloud-wan-service-insertion-for-greenfield-deployments/
-- https://aws.amazon.com/blogs/networking-and-content-delivery/simplify-hybrid-inspection-using-aws-cloud-wan-service-insertion/
-- https://aws.amazon.com/blogs/networking-and-content-delivery/migration-to-aws-cloud-wan-multi-region-inspection-using-service-insertion/
-- https://aws.amazon.com/cloud-wan/faqs/
-- https://aws.amazon.com/cloud-wan/pricing/
+- https://aws.amazon.com/blogs/networking-and-content-delivery/centralized-ingress-inspection-architecture-in-aws-cloud-wan/
+- https://aws.amazon.com/blogs/networking-and-content-delivery/centralized-outbound-inspection-architecture-in-aws-cloud-wan/
+- https://learn.microsoft.com/en-us/azure/virtual-wan/about-virtual-hub-routing
+- https://learn.microsoft.com/en-us/azure/firewall-manager/secured-virtual-hub
+- https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
