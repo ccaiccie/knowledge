@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS Cloud WAN Service Insertion — Deep Dive](09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive.md)
+Deep dive into AWS Cloud WAN Network Function Groups and policy-based firewall insertion. Covers `send-via` versus `send-to`, single-hop and dual-hop modes, same-segment isolation, appliance mode, regional edge overrides, Direct Connect/VPN/Connect hybrid inspection, Internet egress, AWS Network Firewall and GWLB/GWLBE third-party NGFW integration, exact forward/return packet flows, CLI deployment and verification, failure behavior, limitations, common mistakes, and three matching SVG/editable draw.io diagrams.
+
 ### [AWS ALB/NLB + Inline Firewall Endpoint — GWLB/GWLBE Deep Dive](09-06-26-16-42_AWS_ALB_NLB_Inline_Firewall_Endpoint_GWLBE_Deep_Dive.md)
 Deep dive into pre-load-balancer and post-load-balancer firewall insertion with ALB/NLB, Gateway Load Balancer, and GWLBE. Covers IGW gateway-route-table steering, VPC more-specific subnet routes, exact ALB backend packet flow, NLB IP-target requirements, client-IP preservation limitations, GENEVE/UDP 6081, per-AZ route symmetry, provider/consumer deployment CLI, TLS placement, verification, common mistakes, and troubleshooting, with three matching SVG/editable draw.io diagrams.
 
