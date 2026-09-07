@@ -1,7 +1,7 @@
 # Azure Route Server + Third-Party NVA for Dynamic Service Insertion — Comprehensive Study Guide
 
 **Generated:** 2026-09-05  
-**Updated:** 2026-09-05 — expanded with NVA placement, route injection, hub/spoke peering, ExpressRoute, and VPN Gateway integration  
+**Updated:** 2026-09-07 — added section-by-section Azure CLI configuration, verification, expected state, and hybrid-route checks  
 **Scope:** Azure Route Server (ARS), Border Gateway Protocol (BGP), third-party Network Virtual Appliances (NVAs), dynamic service insertion, route tables, effective routes, hub-and-spoke peering, internet/hybrid/East-West flow paths, high availability, symmetry, verification, and troubleshooting.
 
 ## Table of contents
@@ -29,6 +29,7 @@
 - [21. Exactly how the spoke is tied to the hub: the peering contract](#21-exactly-how-the-spoke-is-tied-to-the-hub-the-peering-contract)
 - [22. ExpressRoute + Route Server + NVA in detail](#22-expressroute--route-server--nva-in-detail)
 - [23. VPN Gateway + Route Server + NVA in detail](#23-vpn-gateway--route-server--nva-in-detail)
+- [24. Section-by-section Azure CLI configuration map](#24-section-by-section-azure-cli-configuration-map)
 - [Sources](#sources)
 
 ## Supplied / supporting URLs
@@ -1512,6 +1513,871 @@ The most important hybrid-routing takeaway is:
 
 ---
 
+## 24. Section-by-section Azure CLI configuration map
+
+This section maps configuration and verification directly back to Sections 1 through 23. The examples use placeholders so they can be adapted without inventing resource IDs.
+
+### Common variables used by the examples
+
+```cli
+RG='rg-network'
+LOCATION='eastus'
+HUB_VNET='vnet-hub'
+SPOKE_A_VNET='vnet-spoke-a'
+SPOKE_B_VNET='vnet-spoke-b'
+ARS_NAME='ars-hub'
+ARS_PIP='pip-ars-hub'
+NVA1_PEER='nva01'
+NVA1_IP='10.0.2.4'
+NVA1_ASN='65001'
+NVA2_PEER='nva02'
+NVA2_IP='10.0.2.5'
+NVA2_ASN='65002'
+```
+
+### 24.1 Configuration corresponding to Section 1 — control plane versus data plane
+
+Create the required Route Server subnet, Standard public IP, and Route Server. The `RouteServerSubnet` must be dedicated to Route Server.
+
+```cli
+az network vnet subnet create \
+  --resource-group "$RG" \
+  --vnet-name "$HUB_VNET" \
+  --name RouteServerSubnet \
+  --address-prefixes 10.0.1.0/26
+
+ARS_SUBNET_ID=$(az network vnet subnet show \
+  --resource-group "$RG" \
+  --vnet-name "$HUB_VNET" \
+  --name RouteServerSubnet \
+  --query id \
+  --output tsv)
+
+az network public-ip create \
+  --resource-group "$RG" \
+  --name "$ARS_PIP" \
+  --location "$LOCATION" \
+  --sku Standard \
+  --allocation-method Static
+
+az network routeserver create \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --hosted-subnet "$ARS_SUBNET_ID" \
+  --public-ip-address "$ARS_PIP"
+```
+
+Verify the control-plane identity:
+
+```cli
+az network routeserver show \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --query '{provisioningState:provisioningState,ASN:virtualRouterAsn,BgpIPs:virtualRouterIps}' \
+  --output yaml
+```
+
+**Expected state:** `provisioningState` is `Succeeded`, `virtualRouterAsn` is `65515`, and two Route Server BGP IP addresses are returned.
+
+**Failure indicators:** deployment not `Succeeded`, missing BGP IPs, or Route Server placed in the wrong subnet.
+
+### 24.2 Configuration corresponding to Section 2 — prove the three routing views
+
+Inspect the user-created route-table resource separately from the NIC effective routing view.
+
+```cli
+az network route-table list \
+  --resource-group "$RG" \
+  --output table
+
+az network route-table route list \
+  --resource-group "$RG" \
+  --route-table-name '<SPOKE_ROUTE_TABLE>' \
+  --output table
+
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output table
+```
+
+**Success criterion:** an NVA-learned BGP route can appear in the NIC effective routes even when no equivalent UDR exists in the Azure Route Table resource.
+
+### 24.3 Configuration corresponding to Section 3 — same-VNet versus peered-VNet NVA placement
+
+Create Azure-side BGP peering to the NVA private IP:
+
+```cli
+az network routeserver peering create \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --peer-ip "$NVA1_IP" \
+  --peer-asn "$NVA1_ASN"
+```
+
+Retrieve the two Route Server BGP endpoints that must be configured on the NVA:
+
+```cli
+az network routeserver show \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --query '{ASN:virtualRouterAsn,BgpIPs:virtualRouterIps}' \
+  --output yaml
+```
+
+For a peered-VNet NVA design, verify the VNet peering that provides IP reachability:
+
+```cli
+az network vnet peering list \
+  --resource-group "$RG" \
+  --vnet-name '<ARS_VNET>' \
+  --output table
+```
+
+**Success criterion:** the NVA can reach both Route Server BGP IPs and the workload has an actual Azure data-plane path to the NVA IP. BGP reachability alone does not prove workload transit.
+
+### 24.4 Configuration corresponding to Section 4 — hub/spoke Route Server peering
+
+Create the directional hub-to-spoke peering:
+
+```cli
+az network vnet peering create \
+  --resource-group "$RG" \
+  --vnet-name "$HUB_VNET" \
+  --name hub-to-spoke-a \
+  --remote-vnet "$SPOKE_A_VNET" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic \
+  --allow-gateway-transit
+```
+
+Create the spoke-to-hub direction and opt the spoke into the remote Route Server:
+
+```cli
+az network vnet peering create \
+  --resource-group "$RG" \
+  --vnet-name "$SPOKE_A_VNET" \
+  --name spoke-a-to-hub \
+  --remote-vnet "$HUB_VNET" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic \
+  --use-remote-gateways
+```
+
+Verify both directions:
+
+```cli
+az network vnet peering show \
+  --resource-group "$RG" \
+  --vnet-name "$HUB_VNET" \
+  --name hub-to-spoke-a \
+  --output yaml
+
+az network vnet peering show \
+  --resource-group "$RG" \
+  --vnet-name "$SPOKE_A_VNET" \
+  --name spoke-a-to-hub \
+  --output yaml
+```
+
+**Success criteria:** peering state is connected; hub side exposes gateway/Route Server transit; spoke side uses the remote gateway/Route Server; forwarded traffic is enabled where the NVA transit path requires it.
+
+### 24.5 Configuration corresponding to Section 5 — NVA route injection pipeline
+
+Create the Azure-side NVA peer if it does not already exist:
+
+```cli
+az network routeserver peering create \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --peer-ip "$NVA1_IP" \
+  --peer-asn "$NVA1_ASN"
+```
+
+After the NVA advertises a route, prove that Route Server learned it:
+
+```cli
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+```
+
+Then prove that Azure programmed the workload forwarding view:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output table
+```
+
+**Success criterion:** the intended prefix appears as a BGP/effective route with the NVA path. Exact table columns vary with Azure CLI version, so validate prefix, route source/state, next-hop type, and next-hop address rather than relying on one fixed rendering.
+
+### 24.6 Configuration corresponding to Section 6 — before/after route injection
+
+Capture the effective route table before the NVA advertisement:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output json > before-effective-routes.json
+```
+
+After the NVA advertises the desired prefix, capture it again:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output json > after-effective-routes.json
+```
+
+Confirm Route Server learned the route at the same time:
+
+```cli
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+```
+
+### 24.7 Configuration corresponding to Section 7 — UDR versus BGP route precedence
+
+Create an explicit UDR exception when that is the intended design:
+
+```cli
+az network route-table create \
+  --resource-group "$RG" \
+  --name rt-spoke-a \
+  --location "$LOCATION"
+
+az network route-table route create \
+  --resource-group "$RG" \
+  --route-table-name rt-spoke-a \
+  --name to-special-prefix-via-nva2 \
+  --address-prefix 10.100.10.0/24 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address "$NVA2_IP"
+```
+
+Associate the route table with the intended subnet:
+
+```cli
+az network vnet subnet update \
+  --resource-group "$RG" \
+  --vnet-name "$SPOKE_A_VNET" \
+  --name '<WORKLOAD_SUBNET>' \
+  --route-table rt-spoke-a
+```
+
+Verify the resulting forwarding decision:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output table
+```
+
+### 24.8 Configuration corresponding to Section 8 — same-VNet forced inspection still needs UDRs
+
+For two subnets in the same VNet, create an explicit UDR toward the NVA:
+
+```cli
+az network route-table create \
+  --resource-group "$RG" \
+  --name rt-subnet-a-inspection \
+  --location "$LOCATION"
+
+az network route-table route create \
+  --resource-group "$RG" \
+  --route-table-name rt-subnet-a-inspection \
+  --name subnet-b-via-nva \
+  --address-prefix 10.30.2.0/24 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address "$NVA1_IP"
+
+az network vnet subnet update \
+  --resource-group "$RG" \
+  --vnet-name '<SAME_VNET>' \
+  --name '<SUBNET_A>' \
+  --route-table rt-subnet-a-inspection
+```
+
+Build a corresponding return route on the opposite subnet if the firewall is stateful and both directions must traverse the same inspection state.
+
+### 24.9 Configuration corresponding to Section 9 — inter-spoke East-West inspection
+
+The Route Server route-injection model can use an NVA-advertised **supernet** to attract traffic between separate spoke VNets. The NVA-side BGP command is vendor-specific, so do not invent a PAN-OS/FortiOS/other-vendor command here. On Azure, prove the result from both spokes:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_A_VM_NIC>' \
+  --output table
+
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_B_VM_NIC>' \
+  --output table
+```
+
+Use Network Watcher to prove the exact next hop in each direction:
+
+```cli
+az network watcher show-next-hop \
+  --resource-group "$RG" \
+  --vm '<SPOKE_A_VM>' \
+  --nic '<SPOKE_A_VM_NIC>' \
+  --source-ip '<SPOKE_A_VM_IP>' \
+  --dest-ip '<SPOKE_B_VM_IP>' \
+  --output table
+
+az network watcher show-next-hop \
+  --resource-group "$RG" \
+  --vm '<SPOKE_B_VM>' \
+  --nic '<SPOKE_B_VM_NIC>' \
+  --source-ip '<SPOKE_B_VM_IP>' \
+  --dest-ip '<SPOKE_A_VM_IP>' \
+  --output table
+```
+
+**Success criterion:** both directions resolve through the intended NVA/state domain rather than directly through an unintended path.
+
+### 24.10 Configuration corresponding to Section 10 — Internet egress through an NVA default
+
+After the NVA advertises `0.0.0.0/0`, verify that Route Server learned it:
+
+```cli
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+```
+
+Verify the workload default route and exact next hop:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output table
+
+az network watcher show-next-hop \
+  --resource-group "$RG" \
+  --vm '<SPOKE_VM>' \
+  --nic '<SPOKE_VM_NIC>' \
+  --source-ip '<SPOKE_VM_IP>' \
+  --dest-ip 8.8.8.8 \
+  --output table
+```
+
+Also inspect the NVA NIC effective routes so the firewall does not accidentally consume its own learned default in a way that breaks management or egress:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<NVA_NIC>' \
+  --output table
+```
+
+If the vendor architecture requires an NVA-subnet UDR to preserve its own egress, build that UDR according to the vendor/Microsoft design; do not guess the next hop without knowing whether that interface exits through Internet, NAT Gateway, load balancer, or another device.
+
+### 24.11 Configuration corresponding to Section 11 — dynamic withdrawal and failover
+
+Monitor the NVA peer and learned routes during a controlled failure:
+
+```cli
+az network routeserver peering show \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output yaml
+
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+```
+
+After failure/withdrawal, verify the workload's new forwarding state:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group "$RG" \
+  --name '<SPOKE_VM_NIC>' \
+  --output table
+```
+
+**Success criterion:** the failed path disappears and the expected backup path becomes active. Existing stateful sessions may still reset unless the NVA design synchronizes state.
+
+### 24.12 Configuration corresponding to Section 12 — active/active and active/standby NVA peers
+
+Create both Azure-side Route Server peer objects:
+
+```cli
+az network routeserver peering create \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --peer-ip "$NVA1_IP" \
+  --peer-asn "$NVA1_ASN"
+
+az network routeserver peering create \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA2_PEER" \
+  --peer-ip "$NVA2_IP" \
+  --peer-asn "$NVA2_ASN"
+```
+
+Compare what Route Server learns from each appliance:
+
+```cli
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA2_PEER" \
+  --output table
+```
+
+**Active/active:** expect equivalent prefixes/attributes when ECMP is intended.  
+**Active/standby:** the vendor NVA must advertise the preferred and backup path attributes; Azure-side peer creation alone does not create AS-path prepending.
+
+### 24.13 Configuration corresponding to Section 13 — ExpressRoute/VPN branch-to-branch route exchange
+
+Enable gateway↔NVA route exchange:
+
+```cli
+az network routeserver update \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --allow-b2b-traffic true
+```
+
+Set route-source preference only when required by the design:
+
+```cli
+az network routeserver update \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --hub-routing-preference ASPath
+```
+
+Verify the settings:
+
+```cli
+az network routeserver show \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --query '{allowBranchToBranchTraffic:allowBranchToBranchTraffic,hubRoutingPreference:hubRoutingPreference}' \
+  --output yaml
+```
+
+**Important:** this enables route exchange. It does **not** prove the NVA is inline. Verify the effective route and Network Watcher next hop for the actual hybrid destination.
+
+### 24.14 Configuration corresponding to Section 14 — route maps and BGP policy
+
+Route maps for Azure Route Server are currently documented as **Preview**. Microsoft documents portal configuration and route-map behavior; because the exact Azure CLI route-map command surface is not established in the source set used here, this guide deliberately does **not** invent an `az network routeserver routemap ...` command.
+
+Use Azure CLI to inspect the Route Server and peer state around any route-map change:
+
+```cli
+az network routeserver show \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --output yaml
+
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+
+az network routeserver peering list-advertised-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --output table
+```
+
+Then compare the route set/attributes before and after the route-map policy is applied.
+
+### 24.15 Configuration corresponding to Section 15 — prerequisites and build validation
+
+Verify the required dedicated subnet:
+
+```cli
+az network vnet subnet show \
+  --resource-group "$RG" \
+  --vnet-name "$HUB_VNET" \
+  --name RouteServerSubnet \
+  --query '{name:name,prefix:addressPrefix,routeTable:routeTable,networkSecurityGroup:networkSecurityGroup}' \
+  --output yaml
+```
+
+Verify Route Server identity and BGP endpoints:
+
+```cli
+az network routeserver show \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --query '{state:provisioningState,ASN:virtualRouterAsn,BgpIPs:virtualRouterIps}' \
+  --output yaml
+```
+
+Verify all NVA peer objects:
+
+```cli
+az network routeserver peering list \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --output table
+```
+
+**Success criteria:** dedicated `/26` or larger `RouteServerSubnet`, no UDR/NSG associated with that subnet, Route Server succeeded, and every intended NVA has an Azure-side peer object.
+
+### 24.16 Configuration corresponding to Section 16 — scale inventory
+
+Count configured Route Server peers:
+
+```cli
+az network routeserver peering list \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --query 'length(@)'
+```
+
+Count learned routes from a specific peer:
+
+```cli
+az network routeserver peering list-learned-routes \
+  --resource-group "$RG" \
+  --routeserver "$ARS_NAME" \
+  --name "$NVA1_PEER" \
+  --query 'length(@)'
+```
+
+Use these as operational inventory checks, but always compare them with the current Microsoft Route Server limits documentation because quotas can change.
+
+### 24.17 Configuration corresponding to Section 17 — complete verification chain
+
+Use this repeatable sequence:
+
+```cli
+# 1. Route Server identity and BGP endpoints
+az network routeserver show \
+  -g "$RG" -n "$ARS_NAME" \
+  --query '{state:provisioningState,ASN:virtualRouterAsn,BgpIPs:virtualRouterIps}' \
+  -o yaml
+
+# 2. Azure-side NVA peer object
+az network routeserver peering show \
+  -g "$RG" --routeserver "$ARS_NAME" -n "$NVA1_PEER" \
+  -o yaml
+
+# 3. Routes learned from NVA
+az network routeserver peering list-learned-routes \
+  -g "$RG" --routeserver "$ARS_NAME" -n "$NVA1_PEER" \
+  -o table
+
+# 4. Routes advertised toward NVA
+az network routeserver peering list-advertised-routes \
+  -g "$RG" --routeserver "$ARS_NAME" -n "$NVA1_PEER" \
+  -o table
+
+# 5. Workload effective routes
+az network nic show-effective-route-table \
+  -g "$RG" -n '<SPOKE_VM_NIC>' \
+  -o table
+
+# 6. Exact forwarding decision
+az network watcher show-next-hop \
+  -g "$RG" \
+  --vm '<SPOKE_VM>' \
+  --nic '<SPOKE_VM_NIC>' \
+  --source-ip '<SPOKE_VM_IP>' \
+  --dest-ip '<DESTINATION_IP>' \
+  -o table
+```
+
+### 24.18 Configuration corresponding to Section 18 — symptom-driven CLI checks
+
+**BGP/route exists on ARS but not on spoke:**
+
+```cli
+az network routeserver peering list-learned-routes \
+  -g "$RG" --routeserver "$ARS_NAME" -n "$NVA1_PEER" -o table
+
+az network vnet peering show \
+  -g "$RG" --vnet-name "$SPOKE_A_VNET" --name spoke-a-to-hub -o yaml
+
+az network nic show-effective-route-table \
+  -g "$RG" -n '<SPOKE_VM_NIC>' -o table
+```
+
+**Route looks correct but packet still bypasses the NVA:**
+
+```cli
+az network watcher show-next-hop \
+  -g "$RG" \
+  --vm '<SPOKE_VM>' \
+  --nic '<SPOKE_VM_NIC>' \
+  --source-ip '<SPOKE_VM_IP>' \
+  --dest-ip '<DESTINATION_IP>' \
+  -o table
+```
+
+**ExpressRoute/VPN unexpectedly preferred:**
+
+```cli
+az network routeserver show \
+  -g "$RG" -n "$ARS_NAME" \
+  --query hubRoutingPreference -o tsv
+```
+
+### 24.19 Configuration corresponding to Section 19 — static UDR versus ARS/BGP
+
+Static UDR example:
+
+```cli
+az network route-table create \
+  -g "$RG" -n rt-static-nva -l "$LOCATION"
+
+az network route-table route create \
+  -g "$RG" \
+  --route-table-name rt-static-nva \
+  -n default-via-nva \
+  --address-prefix 0.0.0.0/0 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address "$NVA1_IP"
+```
+
+Dynamic ARS/BGP insertion on Azure requires the Route Server peer object; the actual route advertisement comes from the NVA:
+
+```cli
+az network routeserver peering create \
+  -g "$RG" \
+  --routeserver "$ARS_NAME" \
+  -n "$NVA1_PEER" \
+  --peer-ip "$NVA1_IP" \
+  --peer-asn "$NVA1_ASN"
+```
+
+Compare the result at the workload NIC rather than only looking at the ARM route-table resource.
+
+### 24.20 Configuration corresponding to Section 20 — reproducible lab sequence
+
+The following Azure-side sequence supports the recommended lab:
+
+```cli
+# Route Server infrastructure
+az network vnet subnet create \
+  -g "$RG" --vnet-name "$HUB_VNET" \
+  -n RouteServerSubnet --address-prefixes 10.0.1.0/26
+
+ARS_SUBNET_ID=$(az network vnet subnet show \
+  -g "$RG" --vnet-name "$HUB_VNET" \
+  -n RouteServerSubnet --query id -o tsv)
+
+az network public-ip create \
+  -g "$RG" -n "$ARS_PIP" -l "$LOCATION" \
+  --sku Standard --allocation-method Static
+
+az network routeserver create \
+  -g "$RG" -n "$ARS_NAME" \
+  --hosted-subnet "$ARS_SUBNET_ID" \
+  --public-ip-address "$ARS_PIP"
+
+# NVA peer
+az network routeserver peering create \
+  -g "$RG" --routeserver "$ARS_NAME" \
+  -n "$NVA1_PEER" --peer-ip "$NVA1_IP" --peer-asn "$NVA1_ASN"
+
+# Hub -> Spoke
+az network vnet peering create \
+  -g "$RG" --vnet-name "$HUB_VNET" \
+  -n hub-to-spoke-a --remote-vnet "$SPOKE_A_VNET" \
+  --allow-vnet-access --allow-forwarded-traffic --allow-gateway-transit
+
+# Spoke -> Hub
+az network vnet peering create \
+  -g "$RG" --vnet-name "$SPOKE_A_VNET" \
+  -n spoke-a-to-hub --remote-vnet "$HUB_VNET" \
+  --allow-vnet-access --allow-forwarded-traffic --use-remote-gateways
+```
+
+Then configure the NVA itself to peer with **both** Route Server BGP IPs and advertise the lab prefix/default using the vendor-supported syntax. Verify with Sections 24.5, 24.6, and 24.17.
+
+### 24.21 Configuration corresponding to Section 21 — peering contract
+
+For existing peerings, update the hub direction to expose gateway/Route Server transit:
+
+```cli
+az network vnet peering update \
+  --resource-group "$RG" \
+  --vnet-name "$HUB_VNET" \
+  --name hub-to-spoke-a \
+  --set allowGatewayTransit=true allowForwardedTraffic=true
+```
+
+Update the spoke direction to consume the remote Route Server:
+
+```cli
+az network vnet peering update \
+  --resource-group "$RG" \
+  --vnet-name "$SPOKE_A_VNET" \
+  --name spoke-a-to-hub \
+  --set useRemoteGateways=true allowForwardedTraffic=true
+```
+
+Verify the exact directional settings:
+
+```cli
+az network vnet peering show \
+  -g "$RG" --vnet-name "$HUB_VNET" -n hub-to-spoke-a \
+  --query '{state:peeringState,allowGatewayTransit:allowGatewayTransit,useRemoteGateways:useRemoteGateways,allowForwardedTraffic:allowForwardedTraffic}' \
+  -o yaml
+
+az network vnet peering show \
+  -g "$RG" --vnet-name "$SPOKE_A_VNET" -n spoke-a-to-hub \
+  --query '{state:peeringState,allowGatewayTransit:allowGatewayTransit,useRemoteGateways:useRemoteGateways,allowForwardedTraffic:allowForwardedTraffic}' \
+  -o yaml
+```
+
+### 24.22 Configuration corresponding to Section 22 — ExpressRoute + Route Server + NVA
+
+Verify the ExpressRoute gateway exists in the same hub VNet as Route Server:
+
+```cli
+az network vnet-gateway list \
+  --resource-group "$RG" \
+  --query "[?gatewayType=='ExpressRoute'].{name:name,gatewayType:gatewayType,provisioningState:provisioningState}" \
+  --output table
+```
+
+Enable NVA↔ExpressRoute-gateway route exchange:
+
+```cli
+az network routeserver update \
+  -g "$RG" -n "$ARS_NAME" \
+  --allow-b2b-traffic true
+```
+
+Select hub route preference if the design requires something other than the default ExpressRoute preference:
+
+```cli
+az network routeserver update \
+  -g "$RG" -n "$ARS_NAME" \
+  --hub-routing-preference ASPath
+```
+
+Verify the Route Server setting and NVA route view:
+
+```cli
+az network routeserver show \
+  -g "$RG" -n "$ARS_NAME" \
+  --query '{b2b:allowBranchToBranchTraffic,preference:hubRoutingPreference}' \
+  -o yaml
+
+az network routeserver peering list-advertised-routes \
+  -g "$RG" --routeserver "$ARS_NAME" -n "$NVA1_PEER" \
+  -o table
+```
+
+Prove whether an on-premises prefix is actually forced through the NVA from a spoke:
+
+```cli
+az network watcher show-next-hop \
+  -g "$RG" \
+  --vm '<SPOKE_VM>' \
+  --nic '<SPOKE_VM_NIC>' \
+  --source-ip '<SPOKE_VM_IP>' \
+  --dest-ip '<ON_PREM_IP>' \
+  -o table
+```
+
+**Success criterion for inspection:** the winning next hop/path is the intended NVA service path in the forward direction, and the reverse path is engineered through compatible firewall state. Branch-to-branch being `true` by itself is not sufficient proof of inspection.
+
+### 24.23 Configuration corresponding to Section 23 — VPN Gateway + Route Server + NVA
+
+For a new Route Server-integrated VPN Gateway, build the gateway as active-active and use the required ASN `65515` for the integration. The exact gateway creation parameters can vary by SKU and generation, so validate the selected SKU first.
+
+Create the two Standard public IPs needed for active-active mode:
+
+```cli
+az network public-ip create \
+  -g "$RG" -n pip-vpngw-1 -l "$LOCATION" \
+  --allocation-method Static --sku Standard --version IPv4
+
+az network public-ip create \
+  -g "$RG" -n pip-vpngw-2 -l "$LOCATION" \
+  --allocation-method Static --sku Standard --version IPv4
+```
+
+Create the route-based active-active VPN Gateway. Microsoft examples use two public IPs for active-active mode:
+
+```cli
+az network vnet-gateway create \
+  -g "$RG" \
+  -n vpngw-hub \
+  --vnet "$HUB_VNET" \
+  --public-ip-addresses pip-vpngw-1 pip-vpngw-2 \
+  --gateway-type Vpn \
+  --vpn-type RouteBased \
+  --sku VpnGw2AZ \
+  --vpn-gateway-generation Generation2
+```
+
+Verify active-active state and ASN rather than assuming defaults:
+
+```cli
+az network vnet-gateway show \
+  -g "$RG" -n vpngw-hub \
+  --query '{activeActive:activeActive,asn:bgpSettings.asn,enableBgp:enableBgp,provisioningState:provisioningState}' \
+  -o yaml
+```
+
+**Required Route Server integration state:** `activeActive: true` and `asn: 65515`. BGP on the S2S VPN itself is optional for Route Server↔VPN Gateway communication, though BGP is useful when you want dynamic on-premises prefix learning.
+
+Enable gateway↔NVA route exchange:
+
+```cli
+az network routeserver update \
+  -g "$RG" -n "$ARS_NAME" \
+  --allow-b2b-traffic true
+```
+
+Verify the actual spoke→VPN/on-prem forwarding decision:
+
+```cli
+az network watcher show-next-hop \
+  -g "$RG" \
+  --vm '<SPOKE_VM>' \
+  --nic '<SPOKE_VM_NIC>' \
+  --source-ip '<SPOKE_VM_IP>' \
+  --dest-ip '<VPN_CONNECTED_ON_PREM_IP>' \
+  -o table
+```
+
+If the VPN gateway advertises a more-specific on-premises prefix than the NVA's default/supernet, longest-prefix routing can bypass the NVA. If inspection is mandatory, correct propagation/UDR/service-insertion policy and verify both directions.
+
+---
+
 ## Sources
 
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
@@ -1536,6 +2402,6 @@ The most important hybrid-routing takeaway is:
 
 **Source information:** Microsoft Learn / Azure Architecture Center statements about Route Server, route injection, peering, gateway/Route Server transit, BGP behavior, route maps, limits, effective routes, and documented NVA architectures.
 
-**Additional explanation:** The route propagation walkthroughs, placement comparisons, peering-contract model, packet-flow explanations, and troubleshooting sequences connect those documented behaviors into an operational network-engineering model.
+**Additional explanation:** The route propagation walkthroughs, placement comparisons, peering-contract model, packet-flow explanations, section-by-section Azure CLI configuration map, and troubleshooting sequences connect those documented behaviors into an operational network-engineering model.
 
-**Reasonable inference:** Recommendations such as beginning with the same-VNet hub architecture and treating the peering settings as an offer/accept contract are explanatory architecture guidance rather than claims of undocumented Azure implementation behavior.
+**Reasonable inference:** Recommendations such as beginning with the same-VNet hub architecture, treating the peering settings as an offer/accept contract, and validating both directions with effective-route/next-hop checks are explanatory architecture guidance rather than claims of undocumented Azure implementation behavior.
