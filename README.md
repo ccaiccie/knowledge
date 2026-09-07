@@ -61,6 +61,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS VPC Route Server + NVA — Dynamic Service Insertion Deep Dive](09-06-26-17-01_AWS_VPC_Route_Server_NVA_Dynamic_Service_Insertion_Deep_Dive.md)
+Deep dive into Amazon VPC Route Server as a managed BGP control plane for direct third-party NVA/NGFW service insertion. Covers Route Server RIB/FIB/endpoints/peers/propagation, active/standby AS-path and BFD failover, single-VPC IGW ingress and egress steering, Transit Gateway centralized east-west and north-south inspection, Direct Connect/VPN insertion boundaries, dual-Route-Server AZ affinity, ENI next-hop convergence, AWS CLI deployment/verification, quotas, NAT/symmetry, common mistakes, and symptom-based troubleshooting, with three matching SVG/editable draw.io diagrams.
+
 ### [AWS Cloud WAN Service Insertion — Deep Dive](09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive.md)
 Deep dive into AWS Cloud WAN Network Function Groups and policy-based firewall insertion. Covers `send-via` versus `send-to`, single-hop and dual-hop modes, same-segment isolation, appliance mode, regional edge overrides, Direct Connect/VPN/Connect hybrid inspection, Internet egress, AWS Network Firewall and GWLB/GWLBE third-party NGFW integration, exact forward/return packet flows, CLI deployment and verification, failure behavior, limitations, common mistakes, and three matching SVG/editable draw.io diagrams.
 
