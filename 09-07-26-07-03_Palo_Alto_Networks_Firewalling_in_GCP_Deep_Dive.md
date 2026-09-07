@@ -28,6 +28,23 @@ This guide separates three concepts that are easy to conflate:
   - [4.1 Enable APIs](#41-enable-apis)
   - [4.2 Create producer VPC](#42-create-producer-vpc)
   - [4.3 Build the producer internal passthrough Network Load Balancer](#43-build-the-producer-internal-passthrough-network-load-balancer)
+    - [4.3.1 Create the regional health check](#431-create-the-regional-health-check)
+    - [4.3.2 Create the regional UDP backend service](#432-create-the-regional-udp-backend-service)
+    - [4.3.3 Launch the VM-Series appliances and put them in an instance group](#433-launch-the-vm-series-appliances-and-put-them-in-an-instance-group)
+      - [4.3.3.1 Understand the required order](#4331-understand-the-required-order)
+      - [4.3.3.2 Discover the official VM-Series image](#4332-discover-the-official-vm-series-image)
+      - [4.3.3.3 Create a management VPC and subnet](#4333-create-a-management-vpc-and-subnet)
+      - [4.3.3.4 Launch the first VM-Series instance](#4334-launch-the-first-vm-series-instance)
+      - [4.3.3.5 Verify GCE NIC order before touching PAN-OS](#4335-verify-gce-nic-order-before-touching-pan-os)
+      - [4.3.3.6 Swap the PAN-OS management interface for standard NSI behind the ILB](#4336-swap-the-pan-os-management-interface-for-standard-nsi-behind-the-ilb)
+      - [4.3.3.7 Enable GENEVE inspection and verify PAN-OS](#4337-enable-geneve-inspection-and-verify-pan-os)
+      - [4.3.3.8 Create the unmanaged instance group and add the firewall](#4338-create-the-unmanaged-instance-group-and-add-the-firewall)
+      - [4.3.3.9 Add a second firewall and verify membership](#4339-add-a-second-firewall-and-verify-membership)
+      - [4.3.3.10 Standard NSI versus NSI Overlay NIC model](#43310-standard-nsi-versus-nsi-overlay-nic-model)
+    - [4.3.4 Attach the instance group to the backend service](#434-attach-the-instance-group-to-the-backend-service)
+    - [4.3.5 Create the actual internal passthrough ILB frontend](#435-create-the-actual-internal-passthrough-ilb-frontend)
+    - [4.3.6 Allow GENEVE and health-check traffic to the VM-Series backends](#436-allow-geneve-and-health-check-traffic-to-the-vm-series-backends)
+    - [4.3.7 Verify the complete ILB, not only the backend service](#437-verify-the-complete-ilb-not-only-the-backend-service)
   - [4.4 Create the producer intercept deployment group — the global service umbrella](#44-create-the-producer-intercept-deployment-group--the-global-service-umbrella)
   - [4.5 Create the zonal intercept deployment — map one zone to one producer ILB frontend](#45-create-the-zonal-intercept-deployment--map-one-zone-to-one-producer-ilb-frontend)
   - [4.6 Create the consumer intercept endpoint group — consumer-side pointer to the producer service](#46-create-the-consumer-intercept-endpoint-group--consumer-side-pointer-to-the-producer-service)
@@ -86,6 +103,9 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configure-gcp-nsi-overlay-support
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deployment-models-for-vm-series-on-gcp/active-passive-model
 - https://docs.paloaltonetworks.com/vm-series/getting-started/vm-series-on-google-performance-and-capacity/vm-series-on-google-cloud-platform-supported-gcp-instance-types
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/use-custom-templates-or-the-gcloud-cli-to-deploy-the-vm-series-firewall
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/management-interface-mapping-for-google-internal-load-balancing
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/use-the-vm-series-firewall-cli-to-swap-the-management-interface-on-google
 
 ### Google Cloud
 - https://cloud.google.com/security/products/firewall
@@ -259,7 +279,7 @@ gcloud compute networks subnets create pan-inspection-uscentral1 \
   --range=10.250.10.0/24
 ```
 
-Deploy supported VM-Series instances, license them, and configure the needed PAN-OS interfaces, zones, virtual router, Security policy, and management before putting them behind the producer ILB.
+The next section now shows the previously missing step: actually launching the VM-Series appliances before creating the instance group that contains them.
 
 ## 4.3 Build the producer internal passthrough Network Load Balancer
 
@@ -310,26 +330,377 @@ gcloud compute backend-services create pan-nsi-ilb-bs \
   --load-balancing-scheme=INTERNAL
 ```
 
-This corrects the earlier `UNSPECIFIED` example. The backend service is the regional load-balancing object that owns backend membership and health state; it is **not** the ILB frontend/VIP by itself.
+The backend service is the regional load-balancing object that owns backend membership and health state; it is **not** the ILB frontend/VIP by itself.
 
-### 4.3.3 Put the VM-Series appliances in an instance group
+### 4.3.3 Launch the VM-Series appliances and put them in an instance group
 
-NSI's internal passthrough load balancer uses instance-group backends. If the VM-Series instances are already in a supported managed or unmanaged zonal instance group, reuse that group. For an unmanaged group, a simplified example is:
+The earlier version of this guide jumped directly to `gcloud compute instance-groups unmanaged add-instances ... --instances=pan-fw-a1` without showing where `pan-fw-a1` came from. That sequence was incomplete.
+
+For an unmanaged instance-group design, the correct order is:
+
+```text
+1. Select an official VM-Series image and licensing model
+2. Create the required GCP networks/subnets
+3. Create each VM-Series Compute Engine instance
+4. Verify GCE NIC order and IP forwarding
+5. Initialize/license PAN-OS
+6. For standard NSI behind the producer ILB, make the primary GCE NIC a PAN-OS dataplane interface
+7. Enable GENEVE inspection
+8. Create the unmanaged zonal instance group
+9. Add the already-created VM-Series instance(s) to the group
+10. Attach that group to pan-nsi-ilb-bs
+```
+
+#### 4.3.3.1 Understand the required order
+
+An **unmanaged instance group does not launch the firewalls for you**. It is a container for Compute Engine VM instances that already exist.
+
+That means this is invalid as an end-to-end mental model:
+
+```text
+Create group
+   -> add pan-fw-a1
+```
+
+unless `pan-fw-a1` was created earlier.
+
+The complete relationship is:
+
+```text
+Official Palo Alto VM-Series Marketplace image
+                 |
+                 v
+Compute Engine VM pan-fw-a1
+  +-- GCE nic0: producer inspection subnet
+  +-- GCE nic1: management subnet
+  +-- canIpForward = true
+                 |
+                 v
+PAN-OS initialization / licensing
+                 |
+                 v
+management-interface swap for this standard-NSI ILB model
+                 |
+                 v
+PAN-OS dataplane on primary GCE NIC
+                 |
+                 v
+GENEVE inspection enabled
+                 |
+                 v
+unmanaged instance group pan-nsi-fw-ig-a
+                 |
+                 v
+backend service pan-nsi-ilb-bs
+                 |
+                 v
+internal forwarding rule UDP/6081
+                 |
+                 v
+NSI intercept deployment
+```
+
+#### 4.3.3.2 Discover the official VM-Series image
+
+Palo Alto Networks publishes official VM-Series Marketplace images from the Google Cloud project:
+
+```text
+paloaltonetworksgcp-public
+```
+
+Palo Alto documents these naming patterns:
+
+```text
+BYOL:          vmseries-byol-<version>
+PAYG Bundle 1: vmseries-bundle1-<version>
+PAYG Bundle 2: vmseries-bundle2-<version>
+```
+
+Do not hard-code an old PAN-OS image name. List the images that are currently available:
+
+```cli
+gcloud compute images list \
+  --project=paloaltonetworksgcp-public \
+  --no-standard-images
+```
+
+To see the full image URIs:
+
+```cli
+gcloud compute images list \
+  --project=paloaltonetworksgcp-public \
+  --no-standard-images \
+  --uri
+```
+
+Choose the PAN-OS release and licensing model that your Palo Alto entitlement and supported GCP machine type allow. For the remainder of this example:
+
+```cli
+export PAN_IMAGE_PROJECT="paloaltonetworksgcp-public"
+export PAN_IMAGE="vmseries-byol-REPLACE_WITH_SUPPORTED_VERSION"
+export PAN_MACHINE_TYPE="REPLACE_WITH_PALO_ALTO_SUPPORTED_MACHINE_TYPE"
+```
+
+**Why placeholders are deliberate:** VM-Series-supported machine types and PAN-OS image versions change. Validate the current Palo Alto supported-instance table instead of copying a stale machine type from an example.
+
+#### 4.3.3.3 Create a management VPC and subnet
+
+The producer inspection VPC created in section 4.2 carries the internal-load-balancer/GENEVE dataplane. Use a separate management network when your design requires isolated PAN-OS administrative access.
+
+```cli
+gcloud compute networks create pan-mgmt-vpc \
+  --project=pan-sec-prod \
+  --subnet-mode=custom
+
+gcloud compute networks subnets create pan-mgmt-uscentral1 \
+  --project=pan-sec-prod \
+  --network=pan-mgmt-vpc \
+  --region=us-central1 \
+  --range=10.250.20.0/24
+```
+
+If administrators reach the management interface privately through VPN, Interconnect, IAP-compatible access, a bastion, or another approved management path, the interface does not need a public IP simply for this example.
+
+If you create management firewall rules, restrict them to your actual administrative source prefixes rather than `0.0.0.0/0`. Conceptually:
+
+```cli
+export ADMIN_CIDR="REPLACE_WITH_ADMIN_SOURCE_CIDR"
+
+gcloud compute firewall-rules create pan-mgmt-admin \
+  --project=pan-sec-prod \
+  --network=pan-mgmt-vpc \
+  --direction=INGRESS \
+  --allow=tcp:22,tcp:443 \
+  --source-ranges="$ADMIN_CIDR"
+```
+
+#### 4.3.3.4 Launch the first VM-Series instance
+
+For the **standard NSI producer ILB example in this section**, place the inspection/load-balancer-facing interface first so that it becomes GCE `nic0`. Palo Alto documents that GCP internal load balancing sends traffic to the primary interface of the backend VM; the later management-interface swap makes that primary interface usable by PAN-OS as dataplane.
+
+Create the firewall:
+
+```cli
+gcloud compute instances create pan-fw-a1 \
+  --project=pan-sec-prod \
+  --zone=us-central1-a \
+  --machine-type="$PAN_MACHINE_TYPE" \
+  --image="$PAN_IMAGE" \
+  --image-project="$PAN_IMAGE_PROJECT" \
+  --can-ip-forward \
+  --network-interface=network=pan-inspection-vpc,subnet=pan-inspection-uscentral1,no-address \
+  --network-interface=network=pan-mgmt-vpc,subnet=pan-mgmt-uscentral1,no-address
+```
+
+Important fields:
+
+| Setting | Why it matters |
+|---|---|
+| First `--network-interface` | Becomes GCE `nic0`, the primary interface that the internal passthrough load balancer uses for this standard NSI design. |
+| Second `--network-interface` | Provides the separate management-side GCE NIC before PAN-OS interface mapping is swapped. |
+| `--can-ip-forward` | Enables the Compute Engine instance to operate as a network appliance rather than only as an endpoint host. |
+| `--image-project` | Points to Palo Alto Networks' official public VM-Series image project. |
+| `--image` | Selects the supported BYOL/PAYG PAN-OS image you deliberately chose. |
+
+This example intentionally uses `no-address` on both interfaces and assumes private management reachability. If your approved deployment requires a public management address or additional bootstrap metadata, add it using the current Palo Alto deployment procedure rather than assuming the example's private-management model.
+
+**License/onboarding:** after the VM boots, complete the appropriate Palo Alto BYOL/PAYG activation, bootstrap, Panorama, or Strata management onboarding workflow for your environment. The GCP instance group does not license or initialize PAN-OS.
+
+#### 4.3.3.5 Verify GCE NIC order before touching PAN-OS
+
+Confirm the VM exists and that the GCP interfaces are in the intended order:
+
+```cli
+gcloud compute instances describe pan-fw-a1 \
+  --project=pan-sec-prod \
+  --zone=us-central1-a \
+  --format='yaml(name,canIpForward,networkInterfaces.name,networkInterfaces.network,networkInterfaces.subnetwork,networkInterfaces.networkIP)'
+```
+
+**Expected state, not verbatim output:**
+
+```text
+name: pan-fw-a1
+canIpForward: true
+networkInterfaces:
+  - name: nic0
+    network: pan-inspection-vpc
+    subnetwork: pan-inspection-uscentral1
+  - name: nic1
+    network: pan-mgmt-vpc
+    subnetwork: pan-mgmt-uscentral1
+```
+
+The actual assigned IP addresses are runtime values unless you reserved them explicitly.
+
+**Failure indicators:**
+
+- `canIpForward` is false;
+- `nic0` is on the wrong VPC/subnet;
+- the management network was accidentally created as `nic0` for this standard-NSI ILB model;
+- only one NIC exists, which would make the management-interface swap unsafe.
+
+#### 4.3.3.6 Swap the PAN-OS management interface for standard NSI behind the ILB
+
+This subsection is specifically for the **standard NSI producer internal-load-balancer design in section 4**.
+
+Palo Alto states that when VM-Series is behind a GCP internal load balancer, the firewall must be able to receive dataplane traffic on GCE `eth0`/`nic0`, because the load balancer sends traffic to the backend's primary interface. Palo Alto therefore supports swapping the PAN-OS management interface and the first dataplane interface.
+
+Before changing anything, check the current mapping from PAN-OS:
+
+```cli
+debug show vm-series interfaces all
+```
+
+Conceptually, before the swap:
+
+```text
+PAN-OS MGT        -> GCE eth0 / nic0
+PAN-OS ethernet1/1-> GCE eth1 / nic1
+```
+
+Enable the swap:
+
+```cli
+set system setting mgmt-interface-swap enable yes
+```
+
+Confirm the prompt and reboot the firewall:
+
+```cli
+request restart system
+```
+
+After the reboot:
+
+```cli
+debug show vm-series interfaces all
+```
+
+Expected conceptual mapping:
+
+```text
+PAN-OS ethernet1/1 -> GCE eth0 / nic0 -> pan-inspection-vpc
+PAN-OS MGT         -> GCE eth1 / nic1 -> pan-mgmt-vpc
+```
+
+**Critical caution:** Palo Alto explicitly warns that the VM must have at least two interfaces before you perform this swap. A one-interface VM can boot into maintenance mode after the swap command.
+
+This is why the GCE interfaces were created in the deliberate order shown in section 4.3.3.4.
+
+#### 4.3.3.7 Enable GENEVE inspection and verify PAN-OS
+
+Now enable the VM-Series GENEVE inspection capability used by standard NSI:
+
+```cli
+request plugins vm_series geneve-inspect enable yes
+```
+
+Palo Alto documents a reboot requirement when enabling this capability. After the required restart, verify the interface mapping again:
+
+```cli
+debug show vm-series interfaces all
+```
+
+Also confirm that the PAN-OS configuration required by your inspection design exists, including:
+
+- the correct dataplane interface/zone assignment;
+- Security policy permitting the intended inspected traffic;
+- threat/content profiles as required;
+- management reachability through the management VPC;
+- license and content status;
+- GENEVE inspection enabled.
+
+At this stage `pan-fw-a1` is an actual VM-Series appliance. Only now does it make sense to place it into the GCP backend instance group.
+
+#### 4.3.3.8 Create the unmanaged instance group and add the firewall
+
+Create the zonal unmanaged instance group:
 
 ```cli
 gcloud compute instance-groups unmanaged create pan-nsi-fw-ig-a \
   --project=pan-sec-prod \
   --zone=us-central1-a
+```
 
+Then add the **already-created** firewall:
+
+```cli
 gcloud compute instance-groups unmanaged add-instances pan-nsi-fw-ig-a \
   --project=pan-sec-prod \
   --zone=us-central1-a \
   --instances=pan-fw-a1
 ```
 
-For production, add only interfaces/instances appropriate for the Palo Alto NSI architecture and use the vendor-supported HA or scaling model rather than treating the preceding single-instance example as an HA design.
+The important relationship is now explicit:
+
+```text
+pan-fw-a1 Compute Engine VM
+        |
+        | added as member
+        v
+pan-nsi-fw-ig-a unmanaged instance group
+        |
+        | later attached as backend
+        v
+pan-nsi-ilb-bs
+```
+
+#### 4.3.3.9 Add a second firewall and verify membership
+
+For another firewall in the same zone, create a second VM using the same supported image/machine type and the same GCE NIC ordering. Its primary `nic0` must be on the appropriate producer inspection subnet used by this load-balancer backend design.
+
+Example skeleton:
+
+```cli
+gcloud compute instances create pan-fw-a2 \
+  --project=pan-sec-prod \
+  --zone=us-central1-a \
+  --machine-type="$PAN_MACHINE_TYPE" \
+  --image="$PAN_IMAGE" \
+  --image-project="$PAN_IMAGE_PROJECT" \
+  --can-ip-forward \
+  --network-interface=network=pan-inspection-vpc,subnet=pan-inspection-uscentral1,no-address \
+  --network-interface=network=pan-mgmt-vpc,subnet=pan-mgmt-uscentral1,no-address
+```
+
+Perform the same PAN-OS initialization, management-interface swap, and GENEVE enablement on `pan-fw-a2`, then add it:
+
+```cli
+gcloud compute instance-groups unmanaged add-instances pan-nsi-fw-ig-a \
+  --project=pan-sec-prod \
+  --zone=us-central1-a \
+  --instances=pan-fw-a2
+```
+
+Verify membership:
+
+```cli
+gcloud compute instance-groups unmanaged list-instances pan-nsi-fw-ig-a \
+  --project=pan-sec-prod \
+  --zone=us-central1-a
+```
+
+**Expected state, not verbatim output:** both `pan-fw-a1` and `pan-fw-a2` appear as group members.
+
+Do not confuse **group membership** with **load-balancer health**. A VM can be in the instance group and still be unhealthy in `pan-nsi-ilb-bs` because PAN-OS, the health-check service, interface mapping, or GCP firewall rules are incorrect.
+
+For inspection capacity in another zone, use a separate zonal instance group for the VM-Series instances in that zone, then add that group to the regional backend service where the supported architecture calls for it.
+
+#### 4.3.3.10 Standard NSI versus NSI Overlay NIC model
+
+Do not mix the NIC procedure in this section with the **NSI Overlay/direct Internet egress** procedure in section 6.2.
+
+| Design | Relevant Palo Alto NIC model |
+|---|---|
+| Standard NSI producer ILB in section 4 | The producer internal load balancer delivers to the primary GCE NIC; Palo Alto's management-interface swap is used so that primary NIC can map to a dataplane interface. |
+| NSI Overlay / direct Internet egress in section 6.2 | Palo Alto currently documents `nic0 = Management`, `nic1 = Trust`, `nic2 = Untrust`; the NSI Overlay feature performs the documented inner-routing/direct-egress behavior. |
+
+Those are different deployment variants. Follow the Palo Alto documentation for the specific NSI mode you are implementing rather than applying the standard-ILB interface-swap recipe to the Overlay topology.
 
 ### 4.3.4 Attach the instance group to the backend service
+
+Now that `pan-nsi-fw-ig-a` contains real VM-Series instances, attach it to the producer backend service:
 
 ```cli
 gcloud compute backend-services add-backend pan-nsi-ilb-bs \
@@ -2381,6 +2752,8 @@ A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** norm
 14. Assuming an Interconnect-region-scoped PBR also means the same thing for HA VPN tunnels.
 15. Assuming Cloud Router's dynamic route automatically exists inside the PAN-OS virtual router.
 16. Ignoring GCP primary-interface/load-balancer constraints for Internet ingress.
+17. Creating an unmanaged instance group and trying to add `pan-fw-a1` before actually creating the VM-Series Compute Engine instance.
+18. Using the standard-NSI management-interface-swap NIC model and the NSI Overlay `nic0=Management, nic1=Trust, nic2=Untrust` model as though they were the same topology.
 
 ---
 
@@ -2412,6 +2785,9 @@ A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** norm
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/google-cloud-network-security-integration-nsi-with-vm-series-firewall
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configure-gcp-nsi-overlay-support
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configuring-gcp-load-balancer
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/use-custom-templates-or-the-gcloud-cli-to-deploy-the-vm-series-firewall
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/management-interface-mapping-for-google-internal-load-balancing
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/use-the-vm-series-firewall-cli-to-swap-the-management-interface-on-google
 - https://cloud.google.com/security/products/firewall
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
