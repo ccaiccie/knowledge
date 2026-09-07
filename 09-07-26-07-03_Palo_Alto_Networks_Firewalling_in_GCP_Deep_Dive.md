@@ -21,6 +21,7 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deployment-models-for-vm-series-on-gcp
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configuring-gcp-load-balancer
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/google-cloud-network-security-integration-nsi-with-vm-series-firewall
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configure-gcp-nsi-overlay-support
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deployment-models-for-vm-series-on-gcp/active-passive-model
 - https://docs.paloaltonetworks.com/vm-series/getting-started/vm-series-on-google-performance-and-capacity/vm-series-on-google-cloud-platform-supported-gcp-instance-types
 
@@ -30,6 +31,7 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-tutorial
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-intercept-deployments
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-intercept-endpoint-groups
@@ -38,6 +40,13 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-security-profile-groups
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-firewall-rules
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-consumer-service
+- https://docs.cloud.google.com/network-security-integration/docs/release-notes
+- https://docs.cloud.google.com/vpc/docs/policy-based-routes
+- https://docs.cloud.google.com/vpc/docs/use-policy-based-routes
+- https://docs.cloud.google.com/sdk/gcloud/reference/network-connectivity/policy-based-routes/create
+- https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
+- https://docs.cloud.google.com/load-balancing/docs/internal/setting-up-ilb-next-hop
+- https://cloud.google.com/blog/products/networking/policy-based-routing-network-patterns-for-virtual-appliances
 
 ---
 
@@ -92,9 +101,9 @@ The consumer side contains application workloads, an intercept endpoint group, e
 
 ## 2.2 Traditional model — internal passthrough LB + PBR/custom routes
 
-Palo Alto's classic multi-interface architecture attaches VM-Series dataplane NICs to workload VPCs. Internal passthrough load balancers front the firewall interfaces, while custom routes or Policy-Based Routes (PBRs) steer traffic to the corresponding load balancer.
+Palo Alto's classic multi-interface architecture attaches VM-Series dataplane NICs to workload/trust/untrust networks. Internal passthrough Network Load Balancers front firewall interfaces, while custom static routes or **Policy-Based Routes (PBRs)** steer traffic to the load balancer.
 
-This is a true route-based service chain, so forward and return symmetry is your responsibility.
+Unlike NSI, this is a true **routed service chain**. Google sends the packet to a VM-Series dataplane interface as the next hop, PAN-OS makes a routing/security/NAT decision, and the packet re-enters the Google VPC data plane after the firewall forwards it.
 
 ---
 
@@ -259,8 +268,6 @@ For production, add only interfaces/instances appropriate for the Palo Alto NSI 
 
 ### 4.3.4 Attach the instance group to the backend service
 
-This is the step the earlier version omitted.
-
 ```cli
 gcloud compute backend-services add-backend pan-nsi-ilb-bs \
   --project=pan-sec-prod \
@@ -300,7 +307,7 @@ ILB_IP=$(gcloud compute forwarding-rules describe pan-nsi-ilb-fr \
 echo "$ILB_IP"
 ```
 
-Also obtain the producer subnet gateway address. NSI's GENEVE transport originates from this path, and Google's tutorial uses the gateway address when defining the producer-side UDP/6081 allow rule.
+Also obtain the producer subnet gateway address:
 
 ```cli
 GW_IP=$(gcloud compute networks subnets describe pan-inspection-uscentral1 \
@@ -312,13 +319,6 @@ echo "$GW_IP"
 ```
 
 ### 4.3.6 Allow GENEVE and health-check traffic to the VM-Series backends
-
-The producer network must permit the traffic required for the appliance service. Google's NSI tutorial allows:
-
-- UDP `6081` from the producer subnet gateway IP to the producer appliance path.
-- The health-check port from Google Cloud health-check source ranges.
-
-A global network firewall-policy example is:
 
 ```cli
 gcloud compute network-firewall-policies create pan-producer-fw-policy \
@@ -351,11 +351,9 @@ gcloud compute network-firewall-policies rules create 101 \
   --src-ip-ranges=35.191.0.0/16,130.211.0.0/22
 ```
 
-These GCP firewall-policy rules only permit the transport to reach the producer appliances. PAN-OS still needs the correct interface mapping, GENEVE inspection state, Security policy, and any vendor-required service configuration.
+These GCP firewall-policy rules only permit the transport to reach the producer appliances. PAN-OS still needs the correct interface mapping, GENEVE inspection state, Security policy, and vendor-required service configuration.
 
 ### 4.3.7 Verify the complete ILB, not only the backend service
-
-First inspect the backend service and its health:
 
 ```cli
 gcloud compute backend-services describe pan-nsi-ilb-bs \
@@ -365,57 +363,22 @@ gcloud compute backend-services describe pan-nsi-ilb-bs \
 gcloud compute backend-services get-health pan-nsi-ilb-bs \
   --project=pan-sec-prod \
   --region=us-central1
-```
 
-**Success criteria:** the intended instance group is present and the VM-Series backend members report healthy according to the configured health check.
-
-Then verify the forwarding rule:
-
-```cli
 gcloud compute forwarding-rules describe pan-nsi-ilb-fr \
   --project=pan-sec-prod \
   --region=us-central1 \
   --format='yaml(name,IPAddress,IPProtocol,ports,backendService,loadBalancingScheme,network,subnetwork)'
 ```
 
-**Success criteria:** verify all of the following rather than looking only for object existence:
+**Success criteria:**
 
-- `IPProtocol` is UDP.
-- Port `6081` is present.
-- `loadBalancingScheme` is `INTERNAL`.
-- `backendService` resolves to `pan-nsi-ilb-bs`.
-- The forwarding rule is in `us-central1` and uses `pan-inspection-vpc` / `pan-inspection-uscentral1`.
-- The forwarding rule has an internal `IPAddress`.
-
-**Failure indicators and next actions:**
-
-| Symptom | Likely issue | Next action |
-|---|---|---|
-| Backend service exists but no frontend IP | Forwarding rule was never created | Create `pan-nsi-ilb-fr` |
-| Forwarding rule exists but backends are unhealthy | Health-check reachability or appliance health problem | Validate TCP/80 response and health-check firewall policy |
-| Backends healthy but no GENEVE reaches VM-Series | UDP/6081 blocked, wrong forwarding rule, or NSI deployment references another rule | Check producer firewall policy and Step 4.5 |
-| GENEVE arrives but PAN-OS creates no inspected inner session | VM-Series GENEVE inspection/plugin/interface configuration issue | Verify `geneve-inspect`, reboot state, and interface mapping |
-
-The resulting object relationship is therefore:
-
-```text
-pan-nsi-ilb-fr  (regional internal VIP, UDP/6081)
-        |
-        v
-pan-nsi-ilb-bs  (regional INTERNAL backend service, UDP)
-        |
-        v
-pan-nsi-fw-ig-a (zonal VM-Series instance group)
-        |
-        v
-pan-fw-a1       (healthy VM-Series inspection node)
-```
-
-Step 4.5 then binds NSI to the load balancer by referencing `pan-nsi-ilb-fr`; that reference is what makes this producer ILB part of the interception data path.
+- intended instance group is attached and healthy;
+- `IPProtocol` is UDP;
+- port `6081` is present;
+- `loadBalancingScheme` is `INTERNAL`;
+- the forwarding rule points to `pan-nsi-ilb-bs` and has an internal IP.
 
 ## 4.4–4.7 Tie the producer service to the consumer VPC
-
-The next four objects are easier to understand as **one chain** instead of four unrelated commands.
 
 ![NSI producer-consumer object chain](images/09-07-26-07-03_nsi_producer_consumer_object_chain.svg)
 
@@ -425,7 +388,7 @@ The next four objects are easier to understand as **one chain** instead of four 
 
 **What matters:** The consumer never points directly to `pan-nsi-ilb-fr`. The stable cross-project contract is the **intercept deployment group**. The consumer creates its own **intercept endpoint group** as a pointer to that producer service, and an **endpoint-group association** binds that pointer to the actual consumer VPC.
 
-**What to verify:** Read the diagram from right-to-left for resource ownership and left-to-right for packet selection. A complete path is:
+**What to verify:**
 
 ```text
 Consumer firewall rule
@@ -441,18 +404,7 @@ Consumer firewall rule
 
 ### 4.4 Create the producer intercept deployment group — the global service umbrella
 
-**Source information:** An intercept deployment group is the producer's global logical representation of an in-band packet-inspection service. It is associated with the producer VPC and provides the stable object that consumer endpoint groups reference.
-
-**Additional explanation:** `pan-idg` does not have an IP address and it does not load-balance packets. It is the **service-level namespace/umbrella** above the zonal intercept deployments. Think of it as saying: “`pan-inspection-vpc` publishes one NSI inspection service called `pan-idg`; the actual service entry points are supplied by its zonal deployments.”
-
-Why Google needs this extra layer:
-
-- A producer service can have multiple zonal deployments.
-- Consumers should not need to know or reference each regional ILB forwarding rule.
-- A stable global producer object lets the producer change or add zonal capacity without changing the consumer's logical service reference.
-- Cross-project access can be granted to this producer offering rather than exposing arbitrary producer compute resources directly.
-
-Create it:
+The **intercept deployment group** is the producer's global logical representation of the inspection service. It has no data-plane IP of its own. It groups zonal deployments and gives consumers one stable producer object to reference.
 
 ```cli
 gcloud network-security intercept-deployment-groups create pan-idg \
@@ -462,22 +414,14 @@ gcloud network-security intercept-deployment-groups create pan-idg \
   --no-async
 ```
 
-Object created:
-
-```text
-projects/pan-sec-prod/locations/global/interceptDeploymentGroups/pan-idg
-```
-
-It means:
+Conceptually:
 
 ```text
 Producer project: pan-sec-prod
 Producer VPC:     pan-inspection-vpc
 Global NSI offer: pan-idg
-Actual packet entry point: NOT DEFINED YET
+Actual packet entry point: supplied by zonal intercept deployments
 ```
-
-That last line is important. The deployment group alone does not tell NSI which ILB frontend receives packets. Step 4.5 supplies that missing zonal mapping.
 
 Verify:
 
@@ -487,29 +431,7 @@ gcloud network-security intercept-deployment-groups describe pan-idg \
   --location=global
 ```
 
-**Success criteria:** the object exists at `global`, references `pan-inspection-vpc`, and is in the expected operational state.
-
-**Failure indicator:** if the wrong producer VPC is referenced here, all downstream consumer objects can be syntactically valid while still pointing at the wrong producer service boundary.
-
 ### 4.5 Create the zonal intercept deployment — map one zone to one producer ILB frontend
-
-The **intercept deployment** is where the logical producer service becomes a real data-plane destination.
-
-`pan-id-uscentral1a` says, in effect:
-
-> For the `pan-idg` service in `us-central1-a`, send intercepted traffic to the regional forwarding rule `pan-nsi-ilb-fr`.
-
-This creates the critical relationship:
-
-```text
-pan-idg
-  -> pan-id-uscentral1a
-       -> pan-nsi-ilb-fr
-            -> pan-nsi-ilb-bs
-                 -> VM-Series backends
-```
-
-Create it:
 
 ```cli
 gcloud network-security intercept-deployments create pan-id-uscentral1a \
@@ -521,21 +443,15 @@ gcloud network-security intercept-deployments create pan-id-uscentral1a \
   --no-async
 ```
 
-Why both a **zone** and a **regional forwarding rule** appear:
-
-- The intercept deployment is **zonal** because NSI uses zonal producer service placements.
-- The internal passthrough NLB forwarding rule is **regional**.
-- The zonal deployment tells NSI which regional producer frontend represents the inspection service for that zone.
-
-For another supported zone, you create another intercept deployment under the same `pan-idg`, for example conceptually:
+This creates:
 
 ```text
 pan-idg
-  +-- pan-id-uscentral1a -> forwarding rule for the zone-A service path
-  +-- pan-id-uscentral1b -> forwarding rule for the zone-B service path
+  -> pan-id-uscentral1a
+       -> pan-nsi-ilb-fr
+            -> pan-nsi-ilb-bs
+                 -> VM-Series backends
 ```
-
-Do not infer that the deployment group itself performs load balancing between VM-Series appliances. Appliance selection still occurs through the referenced internal passthrough load balancer/backend service.
 
 Verify:
 
@@ -545,31 +461,7 @@ gcloud network-security intercept-deployments describe pan-id-uscentral1a \
   --location=us-central1-a
 ```
 
-**Important fields to verify:**
-
-- intercept deployment group = `pan-idg`
-- forwarding rule = `pan-nsi-ilb-fr`
-- forwarding rule location = `us-central1`
-- deployment location = `us-central1-a`
-- state = expected ready/active state
-
-**Failure indicator:** a healthy ILB does not help if this deployment references the wrong forwarding rule. Conversely, a correct NSI control-plane object cannot pass traffic if the referenced ILB has no healthy backend.
-
-### 4.6 Create the consumer intercept endpoint group — the consumer-side pointer to the producer service
-
-Now cross from the **producer** to the **consumer** side.
-
-The consumer does not reference `pan-nsi-ilb-fr` and does not reference a VM-Series IP. Instead it creates `pan-ieg`, whose job is to point to the producer's global service offering `pan-idg`.
-
-Conceptually:
-
-```text
-CONSUMER                                   PRODUCER
-pan-ieg  --------------------------------> pan-idg
-(endpoint group)                           (deployment group)
-```
-
-Create it:
+### 4.6 Create the consumer intercept endpoint group — consumer-side pointer to the producer service
 
 ```cli
 gcloud network-security intercept-endpoint-groups create pan-ieg \
@@ -579,43 +471,15 @@ gcloud network-security intercept-endpoint-groups create pan-ieg \
   --no-async
 ```
 
-This means:
+Conceptually:
 
 ```text
-Consumer-owned object: pan-ieg
-References producer:    pan-idg
-Does not yet select:    any consumer VPC
+CONSUMER                                   PRODUCER
+pan-ieg  --------------------------------> pan-idg
+(endpoint group)                           (deployment group)
 ```
 
-That final point is why Step 4.7 exists. Creating `pan-ieg` establishes **which producer offering** the consumer wants, but not **which consumer network** is allowed to use it.
-
-The consumer identity must also have the required permission to use the producer intercept deployment group. In a cross-project design, treat IAM on the producer service as part of the service contract, not as an afterthought.
-
-Verify:
-
-```cli
-gcloud network-security intercept-endpoint-groups describe pan-ieg \
-  --project=app-prod-1 \
-  --location=global
-```
-
-**Success criteria:** `pan-ieg` resolves to the intended fully-qualified producer deployment group `pan-idg`.
-
-### 4.7 Associate the endpoint group with the consumer VPC — choose which VPC can use the service
-
-`pan-ieg` still is not attached to a VPC. The **intercept endpoint group association** performs that binding.
-
-The association means:
-
-```text
-app-vpc
-   |
-   +-- uses pan-ieg
-            |
-            +-- points to producer pan-idg
-```
-
-Create it:
+### 4.7 Associate the endpoint group with the consumer VPC
 
 ```cli
 gcloud network-security intercept-endpoint-group-associations create pan-ieg-app-vpc \
@@ -626,37 +490,12 @@ gcloud network-security intercept-endpoint-group-associations create pan-ieg-app
   --no-async
 ```
 
-The distinction between the two consumer objects is important:
-
 | Object | Question it answers |
 |---|---|
-| `pan-ieg` intercept endpoint group | **Which producer inspection service do I want to consume?** |
-| `pan-ieg-app-vpc` association | **Which consumer VPC is allowed to consume it?** |
+| `pan-ieg` | Which producer inspection service do I want to consume? |
+| `pan-ieg-app-vpc` | Which consumer VPC is bound to that service? |
 
-Without the association, the endpoint group can exist but `app-vpc` is not bound to it. Google documents that the consumer VPC and its endpoint-group association must be in the same project; the endpoint group itself can be managed separately subject to the documented organization/project constraints.
-
-Verify both the endpoint group and association:
-
-```cli
-gcloud network-security intercept-endpoint-groups describe pan-ieg \
-  --project=app-prod-1 \
-  --location=global
-
-gcloud network-security intercept-endpoint-group-associations describe pan-ieg-app-vpc \
-  --project=app-prod-1 \
-  --location=global
-```
-
-**Success criteria:**
-
-- endpoint group `pan-ieg` points to producer `pan-idg`
-- association `pan-ieg-app-vpc` points to `pan-ieg`
-- association network is `app-vpc`
-- resources reach the expected operational state
-
-### 4.7.1 What exists after Step 4.7 — and what still does not
-
-At this moment, you have built the cross-project service plumbing:
+After Step 4.7:
 
 ```text
 app-vpc
@@ -669,47 +508,7 @@ app-vpc
   -> VM-Series
 ```
 
-But **no workload flow is intercepted merely because these objects exist**.
-
-Steps 4.8–4.12 add the policy selection layer:
-
-```text
-Firewall policy rule
-  -> security profile group
-  -> custom-intercept profile
-  -> pan-ieg
-```
-
-Only when a packet matches a firewall rule using `APPLY_SECURITY_PROFILE_GROUP` does NSI use this service chain for that traffic.
-
-### 4.7.2 Control-plane reference chain versus data-plane packet path
-
-These are related but not identical.
-
-**Control-plane/reference chain:**
-
-```text
-Rule -> Security Profile Group -> Custom Intercept Profile
-     -> Intercept Endpoint Group -> Intercept Deployment Group
-     -> Zonal Intercept Deployment -> Forwarding Rule
-```
-
-This answers: **which service should a matching flow use?**
-
-**Producer data plane:**
-
-```text
-Forwarding rule UDP/6081
-  -> backend service
-  -> healthy instance-group member
-  -> VM-Series GENEVE inspection
-  -> allow/drop verdict
-  -> NSI reinjection for allowed traffic
-```
-
-This answers: **where does the intercepted packet physically get inspected?**
-
-Keeping these two views separate makes the large NSI object model much easier to troubleshoot.
+But **no workload flow is intercepted merely because these objects exist**. Steps 4.8–4.12 add the policy-selection layer.
 
 ## 4.8 Create custom-intercept security profile
 
@@ -742,8 +541,6 @@ gcloud compute network-firewall-policies create pan-nsi-policy \
 
 ## 4.11 Create interception rule
 
-Example ingress inspection of TCP/443 sourced from `10.10.1.0/24`:
-
 ```cli
 gcloud compute network-firewall-policies rules create 1000 \
   --project=app-prod-1 \
@@ -759,11 +556,7 @@ gcloud compute network-firewall-policies rules create 1000 \
 
 For egress rules, use destination matching instead of ingress source matching.
 
-`apply_security_profile_group` is terminal for the matching rule. The selected inspection service decides whether the packet is reinjected or dropped.
-
 ## 4.12 Associate firewall policy with VPC
-
-Associate the global network firewall policy with `app-vpc`, then verify:
 
 ```cli
 gcloud compute network-firewall-policies associations list \
@@ -773,7 +566,7 @@ gcloud compute network-firewall-policies associations list \
 
 ---
 
-# 5. East-west packet flow
+# 5. East-west packet flow with NSI
 
 Example:
 
@@ -793,49 +586,780 @@ Server: 10.10.2.20:443
 9. The ILB chooses a healthy VM-Series backend.
 10. GENEVE carries the original packet and metadata to VM-Series.
 11. PAN-OS evaluates zones, Security policy, App-ID/content inspection, and enabled security subscriptions.
-12. A deny verdict drops the packet; an allow verdict reinjects it.
-13. Google resumes the original consumer-network delivery toward `10.10.2.20`.
+12. A deny verdict drops the packet; an allow verdict causes the appliance to re-encapsulate the unmodified original packet.
+13. The appliance sends that GENEVE packet back by **Direct Server Return (DSR)**, bypassing the producer ILB on reinjection.
+14. Google resumes the original consumer-network delivery toward `10.10.2.20`.
 
-The return direction follows the NSI inspection/state model; do not add a consumer route to a firewall IP merely to force symmetry.
-
----
-
-# 6. Internet egress packet flow
-
-Example VM `10.10.1.10` to `198.51.100.25:443`:
-
-1. The VM emits the connection.
-2. Consumer firewall policy selects the flow for NSI.
-3. NSI carries the original packet to VM-Series.
-4. PAN-OS allows or drops it.
-5. Allowed traffic is reinjected.
-6. The consumer VPC's original Internet route remains authoritative.
-7. If Cloud NAT is configured, SNAT occurs in the Cloud NAT path rather than because NSI itself turned VM-Series into a two-arm routed gateway.
-
-**Design point:** inspection and Internet NAT are separate decisions in this model.
+The return packet is independently subject to the relevant consumer ingress/egress firewall-policy direction and, when selected for inspection, follows the same logical service chain. You do **not** add a route to the VM-Series IP merely to force NSI symmetry.
 
 ---
 
-# 7. Traditional ILB + PBR architecture
+# 6. NSI Internet egress — complete forward and return path
 
-![Traditional ILB/PBR](images/09-07-26-07-03_pan_gcp_traditional_ilb_pbr.svg)
+![NSI Internet egress forward and return paths](images/09-07-26-07-03_nsi_internet_egress_return_paths.svg)
 
-[Editable draw.io](images/09-07-26-07-03_pan_gcp_traditional_ilb_pbr.drawio)
+[Editable draw.io](images/09-07-26-07-03_nsi_internet_egress_return_paths.drawio)
 
-**What this image shows:** Workload VPCs explicitly steer traffic to internal passthrough load balancers backed by multi-NIC VM-Series firewalls.
+**What this image shows:** NSI now has two materially different Internet-egress models: **standard in-band reinjection**, in which the consumer VPC still owns Internet routing/NAT, and **direct Internet egress**, in which the producer VM-Series sends allowed packets directly to the Internet and returns responses to the consumer over GENEVE.
 
-**What matters:** Unlike NSI, this design depends on PBR/custom routes. The firewall is an actual L3 forwarding hop, so forward and return symmetry are your responsibility.
+**What matters:** The return path is not “Internet → VM” with no inspection. In the standard model the response returns through the consumer Internet/NAT path and is intercepted again for inbound inspection. In direct Internet egress the response terminates at the VM-Series Internet-facing path, is inspected there, and is GENEVE-reinjected directly to the consumer VM.
 
-**What to verify:** PBR/custom-route matching, ILB health, firewall virtual-router routes, PAN-OS zones/NAT policy, return steering, and load-balancer session stickiness.
+**What to verify:** identify which model your VM-Series deployment is actually configured for before troubleshooting routes or NAT. They have different ownership of the Internet edge.
 
-For VPC A to VPC B, conceptually:
+## 6.1 Model A — standard in-band reinjection with Cloud NAT or a workload external IP
+
+Example original flow:
 
 ```text
-10.10.1.10 -> ILB-A -> VM-Series -> 10.20.1.20
-10.20.1.20 -> ILB-B -> same logical firewall path -> 10.10.1.10
+Consumer VM:       10.10.1.10:51514
+Internet server:   198.51.100.25:443
 ```
 
-If VPC B returns directly and bypasses the state owner, the session can fail.
+### 6.1.1 Forward path
+
+1. `10.10.1.10` creates the TCP connection toward `198.51.100.25:443`.
+2. The consumer VPC's **egress** firewall policy matches the flow and invokes `APPLY_SECURITY_PROFILE_GROUP`.
+3. NSI resolves the security profile group → custom-intercept profile → `pan-ieg` → `pan-idg` → the zonal intercept deployment.
+4. Google GENEVE-encapsulates the original packet and sends it to the producer internal passthrough ILB on UDP/6081.
+5. The ILB selects a healthy VM-Series backend.
+6. VM-Series decapsulates the packet and PAN-OS inspects the original tuple:
+
+```text
+10.10.1.10:51514 -> 198.51.100.25:443
+```
+
+7. If PAN-OS denies it, the connection stops there.
+8. If PAN-OS allows it, the appliance re-encapsulates the **original packet** using the GENEVE metadata and sends it back using DSR. The producer ILB is not traversed on this reinjection leg.
+9. Google restores the packet to the consumer VPC's normal forwarding path.
+10. The consumer VPC then follows its ordinary Internet route.
+11. If **Cloud NAT** is the Internet egress mechanism, Cloud NAT performs SNAT. Conceptually:
+
+```text
+Before Cloud NAT:
+10.10.1.10:51514 -> 198.51.100.25:443
+
+After Cloud NAT:
+NAT_PUBLIC_IP:translated-source-port -> 198.51.100.25:443
+```
+
+The exact translated source port is implementation/runtime state and should not be fabricated in a design document.
+12. The packet reaches the Internet server.
+
+### 6.1.2 Return path — the part that was missing
+
+The Internet response does **not** bypass inspection.
+
+1. The server replies:
+
+```text
+198.51.100.25:443 -> NAT_PUBLIC_IP:translated-source-port
+```
+
+2. The response reaches the consumer's Internet edge.
+3. If Cloud NAT was used, Cloud NAT performs reverse translation and restores the destination to the consumer VM's private tuple:
+
+```text
+198.51.100.25:443 -> 10.10.1.10:51514
+```
+
+4. As Google delivers the response toward the consumer VM, the applicable consumer **ingress** firewall policy is evaluated.
+5. If that direction is configured for NSI inspection, the response again matches `APPLY_SECURITY_PROFILE_GROUP`.
+6. NSI GENEVE-encapsulates the response and sends it across the consumer/producer boundary to the producer VM-Series service.
+7. VM-Series decapsulates and evaluates the response against PAN-OS session/security state.
+8. If the response is allowed, VM-Series re-encapsulates the original response packet and reinjects it using DSR.
+9. Google delivers the restored response to `10.10.1.10`.
+10. The client TCP stack receives the response and the session continues.
+
+Google describes the standard model as **four cross-VPC boundary hops**:
+
+```text
+Hop 1  consumer -> producer   outbound inspection
+Hop 2  producer -> consumer   outbound reinjection
+Hop 3  consumer -> producer   inbound response inspection
+Hop 4  producer -> consumer   inbound response reinjection
+```
+
+### 6.1.3 Who owns state?
+
+There are two different state systems here:
+
+- **PAN-OS session state** — App-ID, Security policy, threat inspection, and any PAN-OS state for the inspected connection.
+- **Cloud NAT state** — the private-to-public source translation and reverse mapping, if Cloud NAT is used.
+
+Do not treat those as one shared state table. PAN-OS is not performing Cloud NAT's translation merely because it inspected the packet first.
+
+### 6.1.4 Why the consumer default route still matters
+
+In this standard NSI model, the appliance is an inspection service, not the final Internet next hop. After an allow verdict and GENEVE reinjection, the consumer VPC still needs a valid Internet path such as:
+
+```text
+consumer default route -> default internet gateway -> Cloud NAT / external IP -> Internet
+```
+
+If the consumer has no usable Internet path, NSI can inspect and reinject successfully and the flow can still fail after reinjection.
+
+## 6.2 Model B — direct Internet egress through VM-Series
+
+Google added NSI **direct Internet egress** in August 2026. Palo Alto documents corresponding NSI overlay support in which inspected traffic can egress from VM-Series instead of being hairpinned back to the consumer VPC first.
+
+In this model, the producer firewall is both:
+
+- the NSI inspection engine; and
+- the Internet egress/return point for the inspected flow.
+
+### 6.2.1 Forward path
+
+1. `10.10.1.10` sends traffic toward `198.51.100.25:443`.
+2. The consumer firewall policy selects it for NSI.
+3. NSI GENEVE-encapsulates the original packet and sends it to the producer VM-Series service.
+4. VM-Series decapsulates the packet.
+5. PAN-OS inspects it.
+6. PAN-OS performs the producer-side routing/NAT required by the Palo Alto direct-egress design.
+7. Instead of GENEVE-reinjecting the allowed outbound packet to the consumer VPC, VM-Series sends it directly out its Internet-facing/untrust path.
+8. The Internet server receives the connection from the Internet-facing source identity produced by that design.
+
+The consumer VPC does **not** need Cloud NAT or a consumer default Internet route merely to support this inspected Internet flow.
+
+### 6.2.2 Return path
+
+1. The Internet server replies to the Internet-facing address used by VM-Series.
+2. The response arrives on the VM-Series untrust/Internet-facing interface.
+3. PAN-OS uses its connection/NAT state to associate the response with the original outbound session.
+4. PAN-OS performs reverse NAT as required and inspects the response.
+5. VM-Series then creates the **return GENEVE packet** for the consumer.
+6. Google documents that direct-egress response reinjection uses metadata from the original outbound GENEVE packet and flips the GENEVE **Direction bit** from egress to ingress.
+7. VM-Series sends that encapsulated response directly back toward the consumer by DSR.
+8. Google decapsulates/reinjects it to the original consumer endpoint.
+9. `10.10.1.10` receives the response.
+
+This model has only **two cross-VPC boundary hops**:
+
+```text
+Hop 1  consumer -> producer   outbound inspection + direct Internet egress
+Hop 2  producer -> consumer   Internet response inspection + direct GENEVE reinjection
+```
+
+## 6.3 Standard versus direct Internet egress
+
+| Characteristic | Standard NSI | Direct Internet egress |
+|---|---|---|
+| Allowed outbound packet returns to consumer before Internet | Yes | No |
+| Consumer needs its own Internet route | Yes | Not for the inspected direct-egress flow |
+| Consumer Cloud NAT required | If private workloads need it | No |
+| VM-Series sends packet directly to Internet | No | Yes |
+| Internet response first lands in consumer Internet path | Yes | No |
+| Internet response first lands on producer firewall | No | Yes |
+| Response inspected | Yes, by a second consumer→producer interception | Yes, directly on VM-Series |
+| Cross-VPC boundary crossings per bidirectional Internet exchange | Four logical hops | Two logical hops |
+
+## 6.4 Verification for Internet egress
+
+### Standard model
+
+**Where:** consumer VPC, Cloud NAT, NSI, PAN-OS.
+
+**Check:**
+
+```cli
+gcloud compute routes list --project=app-prod-1 \
+  --filter='network:app-vpc'
+
+gcloud compute routers nats list \
+  --router=ROUTER_NAME \
+  --region=us-central1 \
+  --project=app-prod-1
+```
+
+Also verify PAN-OS sees both directions of the private inner flow.
+
+**Success criteria:**
+
+- outbound packet is inspected and reinjected;
+- consumer route/NAT sends it to the Internet;
+- response reverse-NATs back to the private VM;
+- response is intercepted for inbound inspection;
+- PAN-OS allows it and NSI reinjects it to the VM.
+
+### Direct Internet egress
+
+**Where:** producer VM-Series untrust/trust path and NSI.
+
+Verify:
+
+```cli
+show session all filter source 10.10.1.10 destination 198.51.100.25
+show routing route
+show counter global filter severity drop delta yes
+```
+
+**Success criteria:** PAN-OS sees the outbound inner flow, routes/NATs it to untrust, receives the Internet response, associates it with the same logical session, and sends a GENEVE return packet to the consumer.
+
+---
+
+# 7. Traditional internal passthrough ILB + PBR/static-route architecture — full deep dive
+
+![Traditional ILB/PBR east-west and Internet flows](images/09-07-26-07-03_traditional_ilb_pbr_east_west_internet.svg)
+
+[Editable draw.io](images/09-07-26-07-03_traditional_ilb_pbr_east_west_internet.drawio)
+
+![Traditional ILB/PBR hybrid Interconnect and HA VPN inspection](images/09-07-26-07-03_traditional_ilb_pbr_hybrid_interconnect_havpn.svg)
+
+[Editable draw.io](images/09-07-26-07-03_traditional_ilb_pbr_hybrid_interconnect_havpn.drawio)
+
+**What these images show:** The first diagram separates east-west service insertion from Internet north-south routing. The second shows how on-premises traffic arriving through **Cloud Interconnect** or **HA VPN** can be steered through a trust-side internal passthrough ILB and VM-Series fleet before reaching workloads, with the reverse direction also inspected.
+
+**What matters:** In the traditional model, the firewall is a **real L3 forwarding hop**. Google PBR/static-route logic gets the packet to an ILB-backed firewall interface; PAN-OS then performs its own route lookup and forwards the packet out another dataplane interface. The packet re-enters Google VPC routing after leaving VM-Series.
+
+**What to verify:** both forward and return steering, ILB health, symmetric hashing, PAN-OS route/NAT/security state, Cloud Router dynamic routes for on-prem prefixes, and PBR recursion exclusions.
+
+## 7.1 Traditional model building blocks
+
+A typical multi-interface VM-Series design contains:
+
+| Component | Typical purpose |
+|---|---|
+| Untrust VPC/interface | Internet-facing path; external LB/external IP/Cloud NAT design depending architecture |
+| Management VPC/interface | GUI/API/Panorama/Strata management |
+| Trust VPC/interface | Workload/hub-facing routed inspection path |
+| Internal passthrough ILB | Highly available next hop in front of firewall dataplane NICs |
+| Backend service | Health and backend membership for VM-Series instances |
+| PBR | Selective service insertion based on source, destination, protocol, and endpoint scope |
+| Custom static route | Destination-prefix steering to a next-hop ILB |
+| Cloud Router | BGP route exchange for Cloud Interconnect or HA VPN |
+| PAN-OS virtual router | Routing decision after the firewall receives the packet |
+| PAN-OS Security/NAT policies | Stateful inspection and optional translation |
+
+Palo Alto recommends the trust interface as a backend of an internal passthrough Network Load Balancer for egress from trust/workload networks. Palo Alto also explicitly identifies custom routes as appropriate for **inter-VPC, VPC-to-on-premises, and VPC-to-Internet** steering and PBRs for **intra-VPC** inspection.
+
+## 7.2 How an ILB next hop differs from a normal load-balanced application
+
+When an internal passthrough Network Load Balancer is used as a **route next hop**, it is acting as a gateway-selection mechanism rather than as the final application VIP.
+
+Important behavior:
+
+- Google forwards the original packet to a selected backend VM without rewriting the packet's source/destination tuple merely because the ILB is the next hop.
+- The backend VM is expected to route/forward the packet.
+- All VPC-supported protocol traffic can be sent through a next-hop ILB; it is not limited to the forwarding rule's nominal TCP/UDP service ports in the way a normal application listener would be.
+- The firewall VM therefore needs IP forwarding/routing behavior appropriate to the Palo Alto deployment.
+- After VM-Series forwards the packet, Google performs a **new VPC route lookup** on the egressing dataplane interface.
+
+That last point is the essence of **multi-stage routing**:
+
+```text
+Stage 1: source endpoint / hybrid attachment
+         -> PBR or static route
+         -> internal passthrough ILB
+         -> selected VM-Series backend
+
+Stage 2: VM-Series PAN-OS route/security/NAT decision
+         -> firewall egress interface
+         -> packet re-enters Google VPC routing
+         -> final workload / hybrid path / Internet
+```
+
+## 7.3 PBR versus custom static route
+
+### Use a PBR when
+
+You need to match more than the destination prefix, for example:
+
+- only source `10.10.1.0/24`;
+- only TCP/443;
+- only VMs with a particular network tag;
+- traffic entering through Cloud Interconnect VLAN attachments in a particular region;
+- subnet-to-subnet traffic where ordinary subnet routing would otherwise be preferred.
+
+### Use a custom static route when
+
+A destination prefix alone is enough to select the firewall service, such as:
+
+```text
+0.0.0.0/0      -> trust ILB for Internet egress
+10.100.0.0/16  -> trust ILB for on-premises destinations
+10.20.0.0/16   -> trust ILB for a remote workload network
+```
+
+For next-hop ILBs, the route and load balancer must satisfy Google's same-network/global-access requirements.
+
+## 7.4 East-west inspection — subnet/VPC A to subnet/VPC B
+
+Example:
+
+```text
+Workload A: 10.10.1.10
+Workload B: 10.20.1.20
+Firewall service: VM-Series fleet behind ILB-A / ILB-B
+```
+
+### Forward path
+
+1. `10.10.1.10` emits traffic toward `10.20.1.20`.
+2. A PBR or custom route associated with the source side selects the appropriate internal passthrough ILB as the next hop.
+3. The ILB hashes the flow and selects a healthy VM-Series backend.
+4. The packet arrives at the firewall-facing NIC **with the original source/destination tuple preserved**.
+5. PAN-OS performs:
+   - ingress zone determination;
+   - session lookup/creation;
+   - Security policy evaluation;
+   - App-ID/threat inspection;
+   - NAT policy if the design requires translation;
+   - virtual-router route lookup.
+6. PAN-OS forwards the packet out the interface toward the destination side.
+7. The packet re-enters the Google VPC fabric.
+8. The destination-side route lookup delivers it toward `10.20.1.20`.
+
+### Return path
+
+1. `10.20.1.20` replies to `10.10.1.10`.
+2. The destination-side PBR/static-route design must steer that reverse packet to the firewall service rather than allowing a direct bypass.
+3. A corresponding ILB selects an eligible VM-Series backend.
+4. **Symmetric hashing** on modern internal passthrough ILB next-hop designs helps the reverse five-tuple select the same eligible backend because the hash is direction-independent.
+5. PAN-OS finds the existing session, performs reverse NAT if any, and applies stateful inspection.
+6. PAN-OS routes the packet toward side A.
+7. Google delivers it to `10.10.1.10`.
+
+### Critical symmetry point
+
+Symmetric hashing helps only when the architecture is built correctly. Google documents additional requirements when two internal passthrough ILBs use the same multi-NIC backend firewall VMs:
+
+- the load balancers need the same eligible backend set;
+- health state must be consistent across the paired load balancers;
+- failover configuration must align if used.
+
+If the reverse PBR is missing entirely, symmetric hashing cannot save the session because the return packet never reaches the ILB/firewall service.
+
+## 7.5 Intra-VPC east-west inspection
+
+Palo Alto specifically identifies PBR as the mechanism for intra-VPC subnet-to-subnet inspection.
+
+Example source-tagged PBR:
+
+```cli
+gcloud services enable networkconnectivity.googleapis.com \
+  --project=SEC_PROJECT
+
+gcloud network-connectivity policy-based-routes create pbr-app-to-db \
+  --project=SEC_PROJECT \
+  --network="projects/SEC_PROJECT/global/networks/trust-vpc" \
+  --source-range=10.10.1.0/24 \
+  --destination-range=10.10.2.0/24 \
+  --ip-protocol=ALL \
+  --protocol-version=IPv4 \
+  --next-hop-ilb-ip=10.10.10.25 \
+  --priority=500 \
+  --tags=inspect-eastwest \
+  --description="Inspect app to database traffic through VM-Series"
+```
+
+Create the opposite-direction steering as required for stateful inspection:
+
+```cli
+gcloud network-connectivity policy-based-routes create pbr-db-to-app \
+  --project=SEC_PROJECT \
+  --network="projects/SEC_PROJECT/global/networks/trust-vpc" \
+  --source-range=10.10.2.0/24 \
+  --destination-range=10.10.1.0/24 \
+  --ip-protocol=ALL \
+  --protocol-version=IPv4 \
+  --next-hop-ilb-ip=10.10.10.25 \
+  --priority=500 \
+  --tags=inspect-eastwest \
+  --description="Return-path inspection database to app"
+```
+
+**Important:** tags apply to VMs that emit the packet. Ensure the intended source VMs actually carry the tag and do not accidentally tag the firewall backends into the same steering rule.
+
+## 7.6 Inter-VPC / hub-and-spoke east-west inspection
+
+Palo Alto supports a trust/hub model where workload networks direct traffic toward an internal load balancer in the firewall/trust path.
+
+Google supports exporting/importing certain custom static routes with next-hop internal passthrough ILBs over VPC Network Peering. In a peering-based hub design:
+
+```text
+Spoke A
+  -> imported/custom route toward ILB/firewall service
+  -> VM-Series
+  -> hub/trust routing
+  -> Spoke B
+```
+
+Return:
+
+```text
+Spoke B
+  -> imported/custom route toward firewall service
+  -> VM-Series existing session
+  -> Spoke A
+```
+
+Do not assume generic VPC peering itself creates transit between arbitrary spokes. The inspection design must use supported exported/imported routes and topology constructs deliberately.
+
+## 7.7 Internet egress — workload to Internet
+
+Example:
+
+```text
+10.10.1.10 -> 198.51.100.25:443
+```
+
+### Forward path
+
+1. Workload sends Internet-bound traffic.
+2. A default static route (`0.0.0.0/0`) or a suitable PBR sends it to the **trust-side internal passthrough ILB**.
+3. The ILB selects a healthy VM-Series backend.
+4. VM-Series receives the original private source packet on trust.
+5. PAN-OS Security/App-ID/Threat policy is evaluated.
+6. PAN-OS virtual routing selects the untrust/Internet-facing path.
+7. If PAN-OS is the Internet NAT device in this architecture, a source NAT rule translates the private source.
+8. The packet leaves the untrust dataplane path and reaches the Internet by the configured GCP Internet-edge mechanism.
+
+Palo Alto documents that for outbound Internet traffic the untrust side can use an external IP or a Cloud NAT design depending deployment model. For active/passive architectures, Palo Alto specifically calls for an **external passthrough load balancer** for both Internet inbound and outbound because of connection-tracking requirements.
+
+### Return path
+
+1. Internet server replies to the public source identity used by the firewall design.
+2. The Google Internet-facing construct delivers the response to the VM-Series untrust path.
+3. The response must return to the appropriate PAN-OS state owner.
+4. PAN-OS performs reverse NAT, session lookup, and response inspection.
+5. PAN-OS routes the restored private response out trust.
+6. The packet re-enters the trust/workload VPC.
+7. Google routing delivers it to `10.10.1.10`.
+
+In this traditional design, **PAN-OS can own the Internet NAT state**, unlike standard NSI where consumer Cloud NAT may be the translator.
+
+## 7.8 Internet ingress — Internet to published workload
+
+The untrust side is different from the trust-side ILB next-hop mechanism.
+
+Palo Alto notes that Google Cloud external load balancers deliver traffic to the VM's primary interface. VM-Series designs therefore require correct NIC ordering and often management-interface swap so the intended untrust dataplane interface is primary.
+
+A conceptual inbound flow is:
+
+```text
+Internet client
+ -> external passthrough / supported external LB
+ -> VM-Series untrust
+ -> PAN-OS DNAT/security inspection if used
+ -> trust-side route
+ -> application workload
+```
+
+Return:
+
+```text
+application workload
+ -> trust-side route/PBR/ILB as required
+ -> same logical VM-Series state owner
+ -> reverse DNAT/SNAT
+ -> external Internet path
+ -> client
+```
+
+If the workload's return route points directly to another Internet gateway and bypasses the firewall that owns the NAT/session state, the connection can fail even though the inbound SYN reached the application.
+
+## 7.9 On-premises inspection through Cloud Interconnect
+
+Yes — **Cloud Interconnect is a supported and important traditional PBR service-insertion use case**.
+
+Google PBRs can be installed specifically on **Cloud Interconnect VLAN attachments by region**. This lets you intercept packets as they enter the VPC from on-premises before the normal dynamic/subnet route sends them directly to a workload.
+
+Example:
+
+```text
+On-prem source: 10.100.0.0/16
+GCP workload:   10.10.0.0/16
+Trust ILB VIP:  10.250.10.25
+Interconnect attachment region: us-central1
+```
+
+### Inbound on-prem → GCP path
+
+1. On-prem router sends the packet across Dedicated/Partner Cross-Cloud Interconnect connectivity toward Google.
+2. The packet enters through a VLAN attachment associated with Cloud Router.
+3. Normally, a learned/dynamic route or subnet route could deliver it directly to the workload.
+4. The PBR is evaluated at the Interconnect attachment ingress context.
+5. If the source/destination/protocol matches, the PBR chooses the trust-side internal passthrough ILB instead.
+6. The ILB selects VM-Series.
+7. PAN-OS inspects the packet and routes it toward the workload prefix.
+8. The packet re-enters the VPC data plane from the firewall interface.
+9. Normal VPC routing then delivers the packet to the workload.
+
+Example PBR scoped to Interconnect attachments in `us-central1`:
+
+```cli
+gcloud network-connectivity policy-based-routes create pbr-interconnect-to-apps \
+  --project=SEC_PROJECT \
+  --network="projects/SEC_PROJECT/global/networks/trust-vpc" \
+  --source-range=10.100.0.0/16 \
+  --destination-range=10.10.0.0/16 \
+  --ip-protocol=ALL \
+  --protocol-version=IPv4 \
+  --next-hop-ilb-ip=10.250.10.25 \
+  --priority=400 \
+  --interconnect-attachment-region=us-central1 \
+  --description="Inspect on-prem traffic arriving through us-central1 Interconnect attachments"
+```
+
+You cannot scope this PBR to one individual VLAN attachment; the documented scope is the region's attachments or `all` attachment regions.
+
+### Return GCP → on-prem path
+
+1. Workload sends traffic to `10.100.0.0/16`.
+2. Workload-side PBR/static route sends the packet to the trust ILB.
+3. The ILB selects the same logical firewall service; symmetric hashing helps backend symmetry under the documented conditions.
+4. PAN-OS finds/creates the session, inspects, and routes the packet toward the on-prem prefix.
+5. The packet leaves the VM-Series interface and re-enters Google routing.
+6. Cloud Router dynamic routing selects the appropriate Interconnect VLAN attachment based on learned route/BGP policy.
+7. The packet crosses Interconnect to the on-prem router.
+
+This separation is important:
+
+```text
+PBR decides:       Should this packet visit VM-Series first?
+PAN-OS decides:    Is it allowed and which firewall interface/route is used?
+Cloud Router/BGP:  Which hybrid attachment/path reaches the on-prem prefix?
+```
+
+## 7.10 On-premises inspection through HA VPN
+
+Yes — **HA VPN traffic can also be inspected using traditional PBR + ILB insertion**.
+
+However, the scoping model differs from Cloud Interconnect.
+
+Google documents that if a PBR has neither `--tags` nor `--interconnect-attachment-region`, the route is installed for **all applicable network endpoints**, including:
+
+- VM instances;
+- Cloud VPN tunnels;
+- Cloud Interconnect attachments.
+
+Therefore a network-wide PBR can match packets arriving through HA VPN and steer them to the ILB.
+
+Conceptual inbound path:
+
+```text
+On-prem router
+ -> IPsec / HA VPN tunnel
+ -> Cloud Router
+ -> packet enters VPC
+ -> network-wide PBR matches on-prem source + workload destination
+ -> trust ILB
+ -> VM-Series
+ -> workload
+```
+
+Return:
+
+```text
+workload
+ -> workload PBR/static route
+ -> trust ILB
+ -> VM-Series
+ -> VPC route lookup
+ -> Cloud Router-selected HA VPN tunnel
+ -> on-prem
+```
+
+### HA VPN PBR example
+
+A route that deliberately applies network-wide might look like:
+
+```cli
+gcloud network-connectivity policy-based-routes create pbr-hybrid-to-apps \
+  --project=SEC_PROJECT \
+  --network="projects/SEC_PROJECT/global/networks/trust-vpc" \
+  --source-range=10.100.0.0/16 \
+  --destination-range=10.10.0.0/16 \
+  --ip-protocol=ALL \
+  --protocol-version=IPv4 \
+  --next-hop-ilb-ip=10.250.10.25 \
+  --priority=500 \
+  --description="Inspect matching packets from VPN/Interconnect/network endpoints"
+```
+
+Because no VM tag or Interconnect-specific scope is supplied, understand the broad installation scope before deploying this in production.
+
+## 7.11 Avoid PBR recursion through the firewall backends
+
+This is one of the most important traditional-service-insertion design details.
+
+If a network-wide PBR also applies to packets emitted by the VM-Series backend after inspection, the firewall can send a packet back into Google and have Google immediately steer it **back to the ILB/firewall again**, creating a loop.
+
+Typical techniques include:
+
+1. Apply interception PBRs only to tagged workload VMs where possible.
+2. Do not give firewall backend VMs the workload interception tag.
+3. Create a higher-priority PBR for firewall VMs that uses `--next-hop-other-routes=DEFAULT_ROUTING` so their post-inspection packets bypass lower-priority interception PBRs.
+4. Make source/destination match ranges precise enough that the firewall's egress stage does not re-match the same policy.
+
+Example bypass for firewall VMs tagged `pan-fw`:
+
+```cli
+gcloud network-connectivity policy-based-routes create pbr-pan-fw-bypass \
+  --project=SEC_PROJECT \
+  --network="projects/SEC_PROJECT/global/networks/trust-vpc" \
+  --source-range=0.0.0.0/0 \
+  --destination-range=0.0.0.0/0 \
+  --ip-protocol=ALL \
+  --protocol-version=IPv4 \
+  --next-hop-other-routes=DEFAULT_ROUTING \
+  --priority=100 \
+  --tags=pan-fw \
+  --description="Prevent VM-Series post-inspection traffic from re-entering interception PBRs"
+```
+
+The lower numeric priority wins among matching PBRs.
+
+## 7.12 Cloud Interconnect versus HA VPN for this inspection design
+
+| Item | Cloud Interconnect | HA VPN |
+|---|---|---|
+| On-prem routing | BGP through Cloud Router | BGP through Cloud Router |
+| Traffic can be inserted through PBR/ILB | Yes | Yes |
+| PBR can be scoped specifically by hybrid attachment region | Yes, `--interconnect-attachment-region` | No equivalent tunnel-specific PBR scope |
+| Network-wide PBR can affect it | Yes | Yes |
+| Return path after firewall uses dynamic hybrid route | Yes | Yes |
+| Need firewall-backend recursion protection | Yes | Yes |
+| HA/failover controlled partly by | Interconnect redundancy + BGP | HA VPN tunnel redundancy + BGP |
+
+## 7.13 Symmetric hashing and PAN-OS state
+
+Google's internal passthrough Network Load Balancer provides **symmetric hashing** for modern next-hop designs. It calculates a direction-independent hash for a flow, helping both directions select the same eligible backend.
+
+This is extremely useful for stateful NGFWs, but it is not a substitute for correct routing.
+
+Success requires:
+
+- forward traffic actually reaching an ILB next hop;
+- return traffic also reaching the paired ILB/service path;
+- compatible backend sets and health state;
+- appropriate session-affinity configuration;
+- PAN-OS state on the selected firewall.
+
+SNAT is therefore **not inherently required merely to force path symmetry** in a correctly built modern ILB-next-hop design. Use NAT only when the addressing/Internet/security architecture requires it.
+
+## 7.14 HA and failure behavior
+
+### Active/active or scale-out fleet
+
+Internal passthrough ILB health checks can remove unhealthy backends for new flow selection. Symmetric hashing helps maintain bidirectional backend affinity while the eligible set is stable.
+
+If backend eligibility changes during a live session, a later packet can end up on a different firewall that does not own the session unless state is synchronized by the selected Palo Alto architecture.
+
+### Active/passive VM-Series
+
+Palo Alto's active/passive GCP model uses load-balancer health and firewall HA so production traffic is directed to the active peer. Palo Alto specifically requires an **external passthrough load balancer** for active/passive Internet inbound/outbound because that load balancer supports the needed connection tracking.
+
+For hybrid/east-west trust paths, verify:
+
+- active peer is healthy in the internal backend service;
+- passive peer is not unintentionally selected for production traffic;
+- HA state synchronization is healthy;
+- both firewalls have consistent routing/security/NAT configuration.
+
+## 7.15 Traditional design verification
+
+### Verify PBR objects
+
+```cli
+gcloud network-connectivity policy-based-routes list \
+  --project=SEC_PROJECT
+
+gcloud network-connectivity policy-based-routes describe pbr-interconnect-to-apps \
+  --project=SEC_PROJECT
+```
+
+**Verify:** source range, destination range, protocol, priority, endpoint scope, next-hop ILB IP.
+
+### Verify ILB health
+
+```cli
+gcloud compute backend-services get-health TRUST_BACKEND_SERVICE \
+  --region=us-central1 \
+  --project=SEC_PROJECT
+```
+
+**Success:** intended VM-Series backends are healthy.
+
+### Verify forwarding rule/global access
+
+```cli
+gcloud compute forwarding-rules describe TRUST_ILB_FORWARDING_RULE \
+  --region=us-central1 \
+  --project=SEC_PROJECT
+```
+
+For PBR use across regions, Google recommends enabling global access on the next-hop internal passthrough ILB.
+
+### Verify Cloud Router routes
+
+```cli
+gcloud compute routers get-status HYBRID_ROUTER \
+  --region=us-central1 \
+  --project=SEC_PROJECT
+```
+
+**Verify:** on-prem prefixes are learned and expected advertisements are being sent.
+
+### Verify PAN-OS
+
+```cli
+show session all filter source 10.100.1.10 destination 10.10.1.20
+show routing route
+show counter global filter severity drop delta yes
+show interface all
+```
+
+Also inspect **Monitor > Traffic** and **Monitor > Threat**.
+
+## 7.16 Troubleshooting traditional ILB/PBR by symptom
+
+### Workload sends traffic directly and bypasses firewall
+
+**Where:** PBR/static route selection.
+
+**Check:** PBR scope/tag, source/destination match, route priority, next-hop ILB validity.
+
+**Likely cause:** workload is not in PBR scope or a different routing path is winning.
+
+### Forward path works but return traffic bypasses firewall
+
+**Where:** destination-side/workload return steering.
+
+**Check:** reverse PBR/static route and ILB backend symmetry.
+
+**Failure meaning:** the state owner never sees the return packet.
+
+### Packet loops repeatedly through VM-Series
+
+**Where:** PBR scope on firewall backend VMs.
+
+**Check:** whether post-inspection firewall egress traffic matches the same network-wide PBR.
+
+**Next action:** apply a firewall-tag bypass PBR or refine interception match/scope.
+
+### Interconnect traffic bypasses inspection
+
+**Where:** PBR attachment scope.
+
+**Check:** `--interconnect-attachment-region`, source/destination ranges, and next-hop ILB global access.
+
+### HA VPN traffic bypasses inspection
+
+**Where:** PBR installation scope.
+
+**Check:** whether the PBR is network-wide. A VM-tag-scoped PBR does not mean “apply to VPN tunnels.”
+
+### Cloud Router knows on-prem prefix but firewall cannot forward to it
+
+**Where:** PAN-OS virtual router and firewall interface topology.
+
+**Check:** firewall route table and next-hop path after the packet leaves VM-Series. Google Cloud's VPC/Cloud Router route knowledge does not automatically populate PAN-OS with an equivalent route unless your design/configuration provides it.
+
+### ILB has healthy backends but stateful sessions still fail intermittently
+
+**Where:** eligible backend symmetry/session affinity/HA state.
+
+**Check:** paired ILBs use the same eligible backend set, health is consistent, session affinity isn't incompatible with symmetric hashing, and PAN-OS HA/session synchronization is functioning if required.
 
 ---
 
@@ -876,18 +1400,24 @@ Autoscaling VM-Series is appropriate when inspection throughput changes material
 
 An intercept deployment is **zonal**. Build the producer service in every required zone and confirm the backing ILB has healthy inspection capacity in those zones.
 
+Palo Alto's NSI overlay documentation currently notes that autoscaling is not supported for that overlay mode; verify current vendor release notes before designing elastic direct-egress NSI capacity.
+
 ---
 
 # 10. NAT behavior
 
-## NSI
+## NSI standard reinjection
 
-NSI is primarily an interception/reinjection framework:
+- PAN-OS SNAT is not automatically required.
+- Consumer Cloud NAT can remain the Internet translation point.
+- Outbound inspected traffic is reinjected to the consumer before Internet routing.
+- Return traffic is reverse-NATed in the consumer path and can be intercepted again for inbound inspection.
 
-- PAN-OS SNAT is not automatically required for Internet egress.
-- Cloud NAT can remain the translation point.
-- Avoid source translation unless the chosen Palo Alto/NSI design explicitly requires it.
-- Preserve the original tuple when policy/logging depends on it.
+## NSI direct Internet egress
+
+- VM-Series becomes the Internet-facing routed inspection point for selected flows.
+- PAN-OS can own the routing/NAT needed by the direct-egress appliance architecture.
+- Consumer Cloud NAT/default Internet routing is not required for those direct-egress inspected flows.
 
 ## Traditional routed VM-Series
 
@@ -913,8 +1443,6 @@ gcloud network-security intercept-endpoint-groups list \
   --location=global
 ```
 
-**Success criteria:** all required objects exist and are active/ready.
-
 ## Producer ILB health
 
 ```cli
@@ -922,10 +1450,6 @@ gcloud compute backend-services get-health pan-nsi-ilb-bs \
   --project=pan-sec-prod \
   --region=us-central1
 ```
-
-**Success criteria:** intended VM-Series backends are healthy.
-
-**Failure means:** NSI can resolve the deployment while the producer data plane still has no valid inspection backend.
 
 ## Consumer firewall policy
 
@@ -936,11 +1460,7 @@ gcloud compute network-firewall-policies rules list \
   --global-firewall-policy
 ```
 
-Verify priority, direction, source/destination match, Layer-4 match, action, profile-group reference, and enabled state.
-
 ## VM-Series
-
-Useful PAN-OS checks include:
 
 ```cli
 show session all filter source 10.10.1.10 destination 10.10.2.20
@@ -951,7 +1471,7 @@ show interface all
 
 Also inspect **Monitor > Traffic**, **Monitor > Threat**, plugin state, and HA state.
 
-Exact output varies by PAN-OS/plugin release, so success should be judged by the expected inner source/destination/application and the intended policy verdict rather than by fabricated sample output.
+Exact output varies by PAN-OS/plugin release, so success should be judged by the expected inner source/destination/application and intended policy verdict rather than by fabricated sample output.
 
 ---
 
@@ -963,13 +1483,7 @@ Exact output varies by PAN-OS/plugin release, so success should be judged by the
 
 **Check:** rule → security profile group → custom-intercept profile → endpoint group → deployment group → zonal deployment.
 
-**Failure means:** a reference, permission, association, or zonal deployment is missing.
-
 ## Deployment is active but packets do not pass
-
-**Where:** producer ILB and VM-Series.
-
-**Command:**
 
 ```cli
 gcloud compute backend-services get-health pan-nsi-ilb-bs \
@@ -977,25 +1491,34 @@ gcloud compute backend-services get-health pan-nsi-ilb-bs \
   --project=pan-sec-prod
 ```
 
-**Failure means:** health check, VM-Series interface mapping, HA state, or backend registration is incorrect.
+Check health check, VM-Series interface mapping, HA state, backend registration, and producer UDP/6081 reachability.
 
 ## VM-Series sees GENEVE but not inner sessions
-
-**Where:** VM-Series plugin/inspection mode.
-
-**Check:** GENEVE inspection is enabled and the required reboot occurred.
 
 ```cli
 request plugins vm_series geneve-inspect enable yes
 ```
 
+Verify required reboot and interface/plugin state.
+
+## Standard NSI Internet outbound works but responses do not reach the VM
+
+**Check in order:**
+
+1. consumer Cloud NAT/external-IP return path;
+2. reverse NAT back to the private consumer VM;
+3. consumer ingress firewall policy selection;
+4. second NSI interception to VM-Series;
+5. PAN-OS response session state;
+6. GENEVE DSR reinjection.
+
+## Direct Internet egress sends outbound traffic but receives no usable response
+
+**Check:** PAN-OS untrust return route/NAT state, Security policy, response session lookup, and GENEVE response reinjection metadata.
+
 ## Traditional ILB/PBR design has one-way sessions
 
-**Where:** PBR/custom routes, PAN-OS routing, reverse path.
-
-**Failure means:** reverse traffic bypasses the firewall or a different state owner receives it.
-
-**Next action:** fix reverse steering and validate load-balancer stickiness/health.
+**Check:** reverse PBR/custom route, paired ILB eligible backends, symmetric hashing requirements, and PAN-OS state owner.
 
 ---
 
@@ -1003,14 +1526,19 @@ request plugins vm_series geneve-inspect enable yes
 
 1. Calling Google Cloud NGFW Enterprise a Palo Alto-managed firewall.
 2. Assuming a standalone product named “Palo Alto Cloud NGFW for Google Cloud” exists because Palo Alto has Cloud NGFW for AWS/Azure.
-3. Adding a route next hop to VM-Series in an NSI consumer VPC; NSI is firewall-policy driven.
+3. Adding a route next hop to VM-Series in an NSI consumer VPC; standard NSI selection is firewall-policy driven.
 4. Forgetting GENEVE inspection enablement on VM-Series.
 5. Associating the producer VPC itself as the consumer endpoint-group network.
 6. Ignoring zonal intercept-deployment coverage.
 7. Treating an unhealthy ILB backend as a firewall-policy problem.
-8. Assuming PAN-OS NAT is mandatory in NSI.
-9. Ignoring GCP primary-interface/load-balancer constraints.
-10. Expecting route symmetry to be automatic in traditional ILB/PBR designs.
+8. Assuming standard NSI Internet responses bypass inspection.
+9. Confusing standard NSI Cloud NAT state with PAN-OS NAT state.
+10. Assuming direct Internet egress still requires consumer Cloud NAT.
+11. Expecting a forward-only PBR to provide stateful symmetry in the traditional model.
+12. Applying a broad PBR to VM-Series backend traffic and creating recursive service insertion.
+13. Assuming an Interconnect-region-scoped PBR also means the same thing for HA VPN tunnels.
+14. Assuming Cloud Router's dynamic route automatically exists inside the PAN-OS virtual router.
+15. Ignoring GCP primary-interface/load-balancer constraints for Internet ingress.
 
 ---
 
@@ -1022,12 +1550,15 @@ request plugins vm_series geneve-inspect enable yes
 | PAN-OS policy | No | Yes | Yes |
 | App-ID / PAN-OS subscriptions | No PAN-OS control plane | Yes | Yes |
 | No route changes for service insertion | Yes | Yes | No |
-| Explicit firewall L3 hop | No | No; intercept/reinject | Yes |
+| Explicit firewall L3 hop | No | Standard: no; direct egress: firewall routes Internet leg | Yes |
 | Google firewall policy selects inspection | Yes | Yes | Optional/No |
-| GENEVE inspection | Google-managed internal path | Yes, NSI to VM-Series | Not required |
+| GENEVE inspection | Google-managed internal path | Yes | Not required |
 | Customer controls firewall VMs | No | Yes | Yes |
-| Traditional NAT on firewall | Not PAN-OS NAT | Only if architecture explicitly requires it | Yes |
-| Best fit | Native GCP security | PAN-OS with transparent insertion | Explicit routed service chain |
+| Consumer Cloud NAT can remain Internet NAT | N/A/design-specific | Yes in standard model | Not normally if PAN-OS owns routed Internet NAT |
+| Direct appliance Internet egress | No PAN-OS appliance | Yes, supported direct-egress model | Yes |
+| PBR/static route required | No | No for standard NSI selection | Yes |
+| Cloud Interconnect/HA VPN route-based insertion | Not this model | Firewall-policy interception | Yes |
+| Best fit | Native GCP security | PAN-OS with transparent insertion | Explicit routed service chain and traditional PAN-OS topology |
 
 ---
 
@@ -1037,11 +1568,19 @@ request plugins vm_series geneve-inspect enable yes
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/securing-vpc-with-vm-on-gcp
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deployment-models-for-vm-series-on-gcp
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/google-cloud-network-security-integration-nsi-with-vm-series-firewall
+- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configure-gcp-nsi-overlay-support
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/configuring-gcp-load-balancer
 - https://cloud.google.com/security/products/firewall
-- https://cloud.google.com/blog/products/identity-security/announcing-next-gen-firewall-enterprise-now-in-ga-next24
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-tutorial
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-consumer-service
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-firewall-rules
+- https://docs.cloud.google.com/network-security-integration/docs/release-notes
+- https://docs.cloud.google.com/vpc/docs/policy-based-routes
+- https://docs.cloud.google.com/vpc/docs/use-policy-based-routes
+- https://docs.cloud.google.com/sdk/gcloud/reference/network-connectivity/policy-based-routes/create
+- https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
+- https://docs.cloud.google.com/load-balancing/docs/internal/setting-up-ilb-next-hop
+- https://cloud.google.com/blog/products/networking/policy-based-routing-network-patterns-for-virtual-appliances
