@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1000" viewBox="0 0 1800 1000">
+<defs>
+ <marker id="blue" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1a73e8"/></marker>
+ <marker id="green" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#188038"/></marker>
+ <marker id="orange" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f29900"/></marker>
+ <style>text{font-family:Arial,sans-serif}.t{font-size:30px;font-weight:700}.h{font-size:20px;font-weight:700}.b{font-size:16px}.l{font-size:15px;font-weight:700}</style>
+</defs>
+<text x="55" y="58" class="t">Google Cloud NSI — one rule selects the new session; reverse traffic stays intercepted by state</text>
+<rect x="60" y="150" width="290" height="175" rx="14" fill="#e6f4ea" stroke="#188038" stroke-width="3"/>
+<text x="85" y="188" class="h">Client VM</text><text x="85" y="225" class="b">10.10.1.10:51514</text><text x="85" y="258" class="b">Initiates TCP session</text>
+<rect x="450" y="120" width="360" height="235" rx="14" fill="#fef7e0" stroke="#f29900" stroke-width="3"/>
+<text x="475" y="158" class="h">EGRESS intercept rule</text><text x="475" y="198" class="b">Matches first packet of NEW session</text><text x="475" y="232" class="b">action = APPLY_SECURITY_PROFILE_GROUP</text><text x="475" y="266" class="b">Creates tracked NSI connection state</text><text x="475" y="300" class="b">No duplicate ingress rule needed</text>
+<rect x="900" y="120" width="330" height="235" rx="14" fill="#e8f0fe" stroke="#1a73e8" stroke-width="3"/>
+<text x="925" y="158" class="h">NSI / Packet Intercept</text><text x="925" y="198" class="b">Stateful connection tracking</text><text x="925" y="232" class="b">GENEVE encapsulation</text><text x="925" y="266" class="b">Forward + reverse packets</text><text x="925" y="300" class="b">carry security-profile context</text>
+<rect x="1360" y="120" width="330" height="235" rx="14" fill="#fce8e6" stroke="#d93025" stroke-width="3"/>
+<text x="1385" y="158" class="h">VM-Series</text><text x="1385" y="198" class="b">PAN-OS session created</text><text x="1385" y="232" class="b">Inspects both directions</text><text x="1385" y="266" class="b">Allow → reinject</text><text x="1385" y="300" class="b">Deny → drop + log</text>
+<rect x="1360" y="650" width="330" height="175" rx="14" fill="#f3e8fd" stroke="#9334e6" stroke-width="3"/>
+<text x="1385" y="688" class="h">Server VM</text><text x="1385" y="725" class="b">10.10.2.20:443</text><text x="1385" y="758" class="b">Returns SYN-ACK / response</text>
+<rect x="450" y="615" width="780" height="240" rx="14" fill="#f8f9fa" stroke="#5f6368" stroke-width="3"/>
+<text x="475" y="655" class="h">Existing NSI session state — reverse path</text>
+<text x="475" y="695" class="b">Google recognizes 10.10.2.20:443 → 10.10.1.10:51514 as the reverse direction</text>
+<text x="475" y="730" class="b">of the already tracked connection and intercepts it automatically.</text>
+<text x="475" y="780" class="b">A separate INGRESS APPLY_SECURITY_PROFILE_GROUP rule is only needed to select a brand-new</text>
+<text x="475" y="815" class="b">connection initiated from the opposite direction—not the return leg of this established session.</text>
+<path d="M350 235 L450 235" stroke="#1a73e8" stroke-width="4" fill="none" marker-end="url(#blue)"/><text x="385" y="205" class="l">1</text>
+<path d="M810 235 L900 235" stroke="#f29900" stroke-width="4" fill="none" marker-end="url(#orange)"/><text x="848" y="205" class="l">2</text>
+<path d="M1230 235 L1360 235" stroke="#1a73e8" stroke-width="4" fill="none" marker-end="url(#blue)"/><text x="1288" y="205" class="l">3</text>
+<path d="M1525 355 L1525 650" stroke="#188038" stroke-width="4" fill="none" marker-end="url(#green)"/><text x="1545" y="510" class="l">4</text>
+<path d="M1360 738 L1230 738" stroke="#188038" stroke-width="4" fill="none" marker-end="url(#green)"/><text x="1280" y="715" class="l">5</text>
+<path d="M900 738 L810 738" stroke="#188038" stroke-width="4" fill="none" marker-end="url(#green)"/><text x="850" y="715" class="l">6</text>
+<path d="M840 615 L840 500 L1525 500 L1525 355" stroke="#188038" stroke-width="4" fill="none" marker-end="url(#green)"/><text x="1150" y="480" class="l">7</text>
+<path d="M1360 320 L1315 420 L400 420 L350 275" stroke="#1a73e8" stroke-width="4" stroke-dasharray="10 8" fill="none" marker-end="url(#blue)"/><text x="790" y="398" class="l">8</text>
+<text x="60" y="920" class="b">1 SYN  •  2 new session selected  •  3 GENEVE to VM-Series  •  4 reinject/deliver  •  5 return packet  •  6 existing NSI state  •  7 automatic reverse interception  •  8 inspected response reinjected</text>
+</svg>
