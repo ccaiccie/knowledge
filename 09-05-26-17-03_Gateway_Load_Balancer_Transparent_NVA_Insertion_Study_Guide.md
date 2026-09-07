@@ -22,6 +22,34 @@
 - **Additional explanation** — networking explanation added to make the documented behavior easier to understand.
 - **Reasonable inference** — design conclusions that follow from the documented mechanics but are not stated by Microsoft as a product guarantee. These are clearly identified.
 
+## Table of contents
+
+- [1. What Gateway Load Balancer actually solves](#1-what-gateway-load-balancer-actually-solves)
+- [2. Architecture at a glance](#2-architecture-at-a-glance)
+- [3. Core components](#3-core-components)
+- [4. Why VXLAN is used](#4-why-vxlan-is-used)
+- [5. Inbound packet flow in exact order](#5-inbound-packet-flow-in-exact-order)
+- [6. Outbound inspection](#6-outbound-inspection)
+- [7. Consumer/provider separation](#7-consumerprovider-separation)
+- [8. Why this avoids traditional UDR problems](#8-why-this-avoids-traditional-udr-problems)
+- [9. HA and stateful-firewall behavior](#9-ha-and-stateful-firewall-behavior)
+- [10. Tunnel-interface design](#10-tunnel-interface-design)
+- [11. Portal deployment sequence](#11-portal-deployment-sequence)
+- [12. Azure CLI configuration pattern](#12-azure-cli-configuration-pattern)
+- [13. Control plane vs data plane](#13-control-plane-vs-data-plane)
+- [14. Layer 2 / Layer 3 view](#14-layer-2--layer-3-view)
+- [15. NAT behavior](#15-nat-behavior)
+- [16. What Gateway Load Balancer does not replace](#16-what-gateway-load-balancer-does-not-replace)
+- [17. Important limitations and restrictions](#17-important-limitations-and-restrictions)
+- [18. Common design mistakes](#18-common-design-mistakes)
+- [19. Verification workflow](#19-verification-workflow)
+- [20. Troubleshooting by symptom](#20-troubleshooting-by-symptom)
+- [21. Decision guidance: when GWLB is the right insertion method](#21-decision-guidance-when-gwlb-is-the-right-insertion-method)
+- [22. Fast mental model](#22-fast-mental-model)
+- [23. Exam/interview-quality distinctions](#23-examinterview-quality-distinctions)
+- [24. Sources](#24-sources)
+- [25. Final validation checklist](#25-final-validation-checklist)
+
 ---
 
 # 1. What Gateway Load Balancer actually solves
@@ -85,7 +113,6 @@ Microsoft's own high-level architecture figure is useful for comparison:
 **Additional explanation:** The internal/external tunnel labels are not physical NICs. They are logical directions encoded by VXLAN tunnel metadata/identifiers. The appliance vendor determines how those tunnel identifiers map into virtual wire, zones, interfaces, or service-chain constructs inside the NVA.
 
 ---
-
 
 ## Configuration-level view: what “chaining” actually means
 
@@ -323,7 +350,6 @@ Then:
 10. The Standard Public Load Balancer sends the translated packet to the Internet.
 11. Return traffic for that connection follows the corresponding chained service path so the stateful NVA sees the response direction.
 
-
 #### What exactly does “GWLB returns the flow to the Standard Load Balancer” mean?
 
 This is an **Azure service-chain handoff**, not an IP route from the GWLB frontend to the Standard Load Balancer frontend.
@@ -374,7 +400,6 @@ Internet
 
 **What this means operationally:** GWLB is the transparent inspection service. The Standard Public Load Balancer remains the egress/SNAT service.
 
-
 #### Example outbound-rule configuration
 
 ```cli
@@ -424,8 +449,8 @@ A design may still use GWLB for inbound traffic while NAT Gateway separately pro
 
 > **Important nuance:** NAT Gateway precedence is about Azure outbound-connectivity methods. A traditional UDR that sends `0.0.0.0/0` to a routable NVA is a different architecture and can override NAT Gateway routing behavior, but that is **not Gateway Load Balancer chaining**.
 
-
 ---
+
 # 4. Why VXLAN is used
 
 Gateway Load Balancer uses **VXLAN** between the Azure service and the NVA backend. VXLAN allows Azure to steer traffic to an appliance while preserving the original packet as the payload.
@@ -533,7 +558,6 @@ See:
 - https://learn.microsoft.com/en-us/azure/load-balancer/gateway-overview
 - https://learn.microsoft.com/en-us/azure/load-balancer/tutorial-gateway-outbound-connectivity
 - https://learn.microsoft.com/en-us/azure/load-balancer/outbound-rules
-
 
 ---
 
