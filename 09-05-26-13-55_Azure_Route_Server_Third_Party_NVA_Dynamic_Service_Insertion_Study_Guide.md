@@ -925,6 +925,41 @@ az network routeserver show \
 
 **Important:** branch-to-branch enables route exchange. It does **not** prove the NVA is inline. Verify the workload effective route and Network Watcher next hop for the actual hybrid destination.
 
+The accepted values for `--hub-routing-preference` are:
+
+| Value | Meaning | Practical mental model |
+|---|---|---|
+| `ExpressRoute` | Prefer the ExpressRoute-learned path when Route Server learns the **same prefix** from ExpressRoute and another eligible source. This is the default. | **ER wins** |
+| `VpnGateway` | Prefer VPN Gateway/NVA-side paths over ExpressRoute. When the same prefix is learned from both VPN Gateway and an NVA, AS-path length is used to choose between those non-ExpressRoute paths. | **VPN/NVA side wins over ER** |
+| `ASPath` | Compare AS-path length across the competing eligible route sources and prefer the shorter AS path. | **Let BGP path length decide** |
+
+Examples:
+
+```cli
+# Default: prefer ExpressRoute when the same prefix exists from multiple sources
+az network routeserver update \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --hub-routing-preference ExpressRoute
+
+# Prefer VPN Gateway/NVA paths over ExpressRoute
+az network routeserver update \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --hub-routing-preference VpnGateway
+
+# Prefer the competing path with the shorter BGP AS path
+az network routeserver update \
+  --resource-group "$RG" \
+  --name "$ARS_NAME" \
+  --hub-routing-preference ASPath
+```
+
+**Two important caveats:**
+
+1. `--hub-routing-preference` is relevant when Route Server has competing paths for the **same prefix**. It does not override longest-prefix match. For example, a `/24` route is selected before a competing `/16` regardless of this setting.
+2. `VpnGateway` does **not** mean "VPN Gateway always beats the NVA." It places VPN Gateway/NVA-side paths ahead of ExpressRoute; when VPN Gateway and an NVA advertise the same prefix, their BGP attributes such as AS-path length are then relevant to the choice between those paths.
+
 ---
 
 ## 14. Route maps and BGP policy
