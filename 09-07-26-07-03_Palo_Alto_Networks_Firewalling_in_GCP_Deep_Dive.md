@@ -188,24 +188,229 @@ gcloud compute networks subnets create pan-inspection-uscentral1 \
 
 Deploy supported VM-Series instances, license them, and configure the needed PAN-OS interfaces, zones, virtual router, Security policy, and management before putting them behind the producer ILB.
 
-## 4.3 Producer ILB skeleton
+## 4.3 Build the producer internal passthrough Network Load Balancer
+
+The producer-side load balancer is not just a backend service. For NSI in-band inspection, the complete chain is:
+
+```text
+NSI intercept deployment
+        |
+        v
+regional internal forwarding rule
+UDP/6081 on pan-inspection-vpc
+        |
+        v
+regional INTERNAL backend service
+protocol UDP
+        |
+        v
+zonal VM-Series instance group(s)
+        |
+        v
+VM-Series GENEVE inspection
+```
+
+The forwarding rule is especially important because **the zonal NSI intercept deployment references this forwarding rule directly**. Google sends intercepted traffic to the forwarding rule as GENEVE over UDP port `6081`.
+
+### 4.3.1 Create the regional health check
+
+The load balancer needs a health check that proves a VM-Series backend is available before Google selects it. This example uses TCP port `80`, matching Google's NSI in-band tutorial. The appliance must actually answer the configured health-check port; change the port if your VM-Series deployment uses a different supported health-monitoring method.
 
 ```cli
 gcloud compute health-checks create tcp pan-nsi-hc \
   --project=pan-sec-prod \
   --region=us-central1 \
   --port=80
+```
 
+### 4.3.2 Create the regional UDP backend service
+
+For NSI in-band GENEVE delivery, Google's documented producer backend service uses protocol `UDP` and load-balancing scheme `INTERNAL`.
+
+```cli
 gcloud compute backend-services create pan-nsi-ilb-bs \
   --project=pan-sec-prod \
   --region=us-central1 \
-  --load-balancing-scheme=INTERNAL \
-  --protocol=UNSPECIFIED \
+  --protocol=UDP \
   --health-checks=pan-nsi-hc \
-  --health-checks-region=us-central1
+  --health-checks-region=us-central1 \
+  --load-balancing-scheme=INTERNAL
 ```
 
-Add the VM-Series instance groups to the backend service and create the internal passthrough forwarding rule according to the current NSI producer-service requirements.
+This corrects the earlier `UNSPECIFIED` example. The backend service is the regional load-balancing object that owns backend membership and health state; it is **not** the ILB frontend/VIP by itself.
+
+### 4.3.3 Put the VM-Series appliances in an instance group
+
+NSI's internal passthrough load balancer uses instance-group backends. If the VM-Series instances are already in a supported managed or unmanaged zonal instance group, reuse that group. For an unmanaged group, a simplified example is:
+
+```cli
+gcloud compute instance-groups unmanaged create pan-nsi-fw-ig-a \
+  --project=pan-sec-prod \
+  --zone=us-central1-a
+
+gcloud compute instance-groups unmanaged add-instances pan-nsi-fw-ig-a \
+  --project=pan-sec-prod \
+  --zone=us-central1-a \
+  --instances=pan-fw-a1
+```
+
+For production, add only interfaces/instances appropriate for the Palo Alto NSI architecture and use the vendor-supported HA or scaling model rather than treating the preceding single-instance example as an HA design.
+
+### 4.3.4 Attach the instance group to the backend service
+
+This is the step the earlier version omitted.
+
+```cli
+gcloud compute backend-services add-backend pan-nsi-ilb-bs \
+  --project=pan-sec-prod \
+  --region=us-central1 \
+  --instance-group=pan-nsi-fw-ig-a \
+  --instance-group-zone=us-central1-a
+```
+
+If you deploy inspection capacity in more than one zone, add the corresponding zonal instance groups as additional backends where the documented NSI/load-balancer design supports them.
+
+### 4.3.5 Create the actual internal passthrough ILB frontend
+
+Now create the **regional internal forwarding rule**. This creates the ILB frontend IP and maps UDP/6081 to `pan-nsi-ilb-bs`.
+
+```cli
+gcloud compute forwarding-rules create pan-nsi-ilb-fr \
+  --project=pan-sec-prod \
+  --backend-service=pan-nsi-ilb-bs \
+  --region=us-central1 \
+  --network=pan-inspection-vpc \
+  --subnet=pan-inspection-uscentral1 \
+  --ip-protocol=UDP \
+  --load-balancing-scheme=INTERNAL \
+  --ports=6081
+```
+
+At this point the forwarding rule is the actual ILB frontend used by NSI. Unless you explicitly reserve and specify an internal address, Google assigns an available frontend address from the selected subnet.
+
+Retrieve it:
+
+```cli
+ILB_IP=$(gcloud compute forwarding-rules describe pan-nsi-ilb-fr \
+  --project=pan-sec-prod \
+  --region=us-central1 \
+  --format='get(IPAddress)')
+
+echo "$ILB_IP"
+```
+
+Also obtain the producer subnet gateway address. NSI's GENEVE transport originates from this path, and Google's tutorial uses the gateway address when defining the producer-side UDP/6081 allow rule.
+
+```cli
+GW_IP=$(gcloud compute networks subnets describe pan-inspection-uscentral1 \
+  --project=pan-sec-prod \
+  --region=us-central1 \
+  --format='get(gatewayAddress)')
+
+echo "$GW_IP"
+```
+
+### 4.3.6 Allow GENEVE and health-check traffic to the VM-Series backends
+
+The producer network must permit the traffic required for the appliance service. Google's NSI tutorial allows:
+
+- UDP `6081` from the producer subnet gateway IP to the producer appliance path.
+- The health-check port from Google Cloud health-check source ranges.
+
+A global network firewall-policy example is:
+
+```cli
+gcloud compute network-firewall-policies create pan-producer-fw-policy \
+  --project=pan-sec-prod \
+  --global
+
+gcloud compute network-firewall-policies associations create \
+  --project=pan-sec-prod \
+  --name=pan-producer-fw-policy-assoc \
+  --firewall-policy=pan-producer-fw-policy \
+  --global-firewall-policy \
+  --network=pan-inspection-vpc
+
+gcloud compute network-firewall-policies rules create 100 \
+  --project=pan-sec-prod \
+  --firewall-policy=pan-producer-fw-policy \
+  --global-firewall-policy \
+  --action=allow \
+  --direction=INGRESS \
+  --layer4-configs=udp:6081 \
+  --src-ip-ranges=${GW_IP}/32
+
+gcloud compute network-firewall-policies rules create 101 \
+  --project=pan-sec-prod \
+  --firewall-policy=pan-producer-fw-policy \
+  --global-firewall-policy \
+  --action=allow \
+  --direction=INGRESS \
+  --layer4-configs=tcp:80 \
+  --src-ip-ranges=35.191.0.0/16,130.211.0.0/22
+```
+
+These GCP firewall-policy rules only permit the transport to reach the producer appliances. PAN-OS still needs the correct interface mapping, GENEVE inspection state, Security policy, and any vendor-required service configuration.
+
+### 4.3.7 Verify the complete ILB, not only the backend service
+
+First inspect the backend service and its health:
+
+```cli
+gcloud compute backend-services describe pan-nsi-ilb-bs \
+  --project=pan-sec-prod \
+  --region=us-central1
+
+gcloud compute backend-services get-health pan-nsi-ilb-bs \
+  --project=pan-sec-prod \
+  --region=us-central1
+```
+
+**Success criteria:** the intended instance group is present and the VM-Series backend members report healthy according to the configured health check.
+
+Then verify the forwarding rule:
+
+```cli
+gcloud compute forwarding-rules describe pan-nsi-ilb-fr \
+  --project=pan-sec-prod \
+  --region=us-central1 \
+  --format='yaml(name,IPAddress,IPProtocol,ports,backendService,loadBalancingScheme,network,subnetwork)'
+```
+
+**Success criteria:** verify all of the following rather than looking only for object existence:
+
+- `IPProtocol` is UDP.
+- Port `6081` is present.
+- `loadBalancingScheme` is `INTERNAL`.
+- `backendService` resolves to `pan-nsi-ilb-bs`.
+- The forwarding rule is in `us-central1` and uses `pan-inspection-vpc` / `pan-inspection-uscentral1`.
+- The forwarding rule has an internal `IPAddress`.
+
+**Failure indicators and next actions:**
+
+| Symptom | Likely issue | Next action |
+|---|---|---|
+| Backend service exists but no frontend IP | Forwarding rule was never created | Create `pan-nsi-ilb-fr` |
+| Forwarding rule exists but backends are unhealthy | Health-check reachability or appliance health problem | Validate TCP/80 response and health-check firewall policy |
+| Backends healthy but no GENEVE reaches VM-Series | UDP/6081 blocked, wrong forwarding rule, or NSI deployment references another rule | Check producer firewall policy and Step 4.5 |
+| GENEVE arrives but PAN-OS creates no inspected inner session | VM-Series GENEVE inspection/plugin/interface configuration issue | Verify `geneve-inspect`, reboot state, and interface mapping |
+
+The resulting object relationship is therefore:
+
+```text
+pan-nsi-ilb-fr  (regional internal VIP, UDP/6081)
+        |
+        v
+pan-nsi-ilb-bs  (regional INTERNAL backend service, UDP)
+        |
+        v
+pan-nsi-fw-ig-a (zonal VM-Series instance group)
+        |
+        v
+pan-fw-a1       (healthy VM-Series inspection node)
+```
+
+Step 4.5 then binds NSI to the load balancer by referencing `pan-nsi-ilb-fr`; that reference is what makes this producer ILB part of the interception data path.
 
 ## 4.4 Create intercept deployment group
 
