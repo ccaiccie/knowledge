@@ -15,11 +15,50 @@
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 - https://learn.microsoft.com/en-us/azure/architecture/networking/architecture/hub-spoke-virtual-wan-architecture
 - https://learn.microsoft.com/en-us/rest/api/virtualwan/supported-security-providers/supported-security-providers?view=rest-virtualwan-2025-05-01
+- https://learn.microsoft.com/en-us/cli/azure/network/security-partner-provider?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vwan?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub/connection?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vpn-gateway?view=azure-cli-latest
 
 ### Provider documentation
 
 - https://help.zscaler.com/zia/integrating-microsoft-azure-virtual-wan
 - https://help.zscaler.com/zia/about-partner-integrations
+
+## Table of contents
+
+- [1. Executive summary](#1-executive-summary)
+  - [1.1 Current supported Security Partner Providers](#11-current-supported-security-partner-providers)
+- [2. Architecture: what is actually inserted](#2-architecture-what-is-actually-inserted)
+- [3. Do not confuse three Virtual WAN third-party integration models](#3-do-not-confuse-three-virtual-wan-third-party-integration-models)
+- [4. Prerequisites and dependencies](#4-prerequisites-and-dependencies)
+  - [4.1 Azure CLI prerequisites](#41-azure-cli-prerequisites)
+- [5. Control plane: how the secured default route appears](#5-control-plane-how-the-secured-default-route-appears)
+  - [5.1 Query the live provider list for your Virtual WAN](#51-query-the-live-provider-list-for-your-virtual-wan)
+  - [5.2 Inspect VNet-connection effective routes](#52-inspect-vnet-connection-effective-routes)
+- [6. VNet-to-Internet packet flow — minute detail](#6-vnet-to-internet-packet-flow--minute-detail)
+- [7. Branch-to-Internet packet flow](#7-branch-to-internet-packet-flow)
+- [8. Two-security-provider design: SECaaS for Internet, Azure Firewall for private traffic](#8-two-security-provider-design-secaas-for-internet-azure-firewall-for-private-traffic)
+- [9. Routing Intent versus Security Partner Provider semantics](#9-routing-intent-versus-security-partner-provider-semantics)
+- [10. Public IP ranges used internally](#10-public-ip-ranges-used-internally)
+- [11. Configuration workflow](#11-configuration-workflow)
+  - [11.1 Create the Standard Virtual WAN and vHub](#111-create-the-standard-virtual-wan-and-vhub)
+  - [11.2 Deploy the required vHub S2S VPN Gateway](#112-deploy-the-required-vhub-s2s-vpn-gateway)
+  - [11.3 Discover supported providers before creating the resource](#113-discover-supported-providers-before-creating-the-resource)
+  - [11.4 Create the Security Partner Provider resource](#114-create-the-security-partner-provider-resource)
+  - [11.5 Connect a spoke and enable Internet security](#115-connect-a-spoke-and-enable-internet-security)
+  - [11.6 Complete provider-side onboarding](#116-complete-provider-side-onboarding)
+- [12. Zscaler-specific current limitations to validate](#12-zscaler-specific-current-limitations-to-validate)
+- [13. High availability, failure, and convergence](#13-high-availability-failure-and-convergence)
+- [14. Verification checklist and Azure CLI](#14-verification-checklist-and-azure-cli)
+- [15. Troubleshooting by symptom](#15-troubleshooting-by-symptom)
+- [16. Common mistakes](#16-common-mistakes)
+- [17. Official Microsoft architecture image](#17-official-microsoft-architecture-image)
+- [18. Design decision table](#18-design-decision-table)
+- [19. Recommended reference architecture](#19-recommended-reference-architecture)
+- [20. Final takeaways](#20-final-takeaways)
+- [Sources](#sources)
 
 ---
 
@@ -29,9 +68,28 @@
 
 The most important architectural fact is that the Security Partner Provider infrastructure is **not a firewall VM inside your subscription or VNet**. In this model, the security service remains provider-hosted and the Azure Virtual WAN hub reaches it through the hub's **Site-to-Site (S2S) VPN Gateway** over IPsec.
 
-**Current support note:** Microsoft's current dedicated Firewall Manager pages list **Zscaler** as the current Security Partner Provider. An older Virtual WAN third-party-integration page still names Check Point, iboss, and Zscaler. Because those Microsoft pages conflict, use the current Firewall Manager documentation plus the live `supportedSecurityProviders` API for your actual Virtual WAN as the deployment-time source of truth.
-
 **Additional explanation:** Think of Method 6 as **route-based redirection to an external cloud security service**. Azure Virtual WAN supplies transit and route programming; the hub S2S VPN gateway supplies the service tunnel; the provider supplies the Internet/SaaS inspection and provider-side egress.
+
+### 1.1 Current supported Security Partner Providers
+
+As of the current Microsoft Firewall Manager documentation, the dedicated **Security Partner Provider** page and the current deployment guide identify:
+
+| Provider | Current Method 6 status | Notes |
+|---|---|---|
+| **Zscaler** | **Currently documented as supported** | Current Firewall Manager concept and deployment pages list Zscaler. |
+| Check Point | **Do not assume current deployment support** | Older generic Virtual WAN documentation and the current CLI enum still contain `Checkpoint`, but the current dedicated Firewall Manager deployment page does not list it. |
+| iboss | **Do not assume current deployment support** | Older generic Virtual WAN documentation and the current CLI enum still contain `IBoss`, but the current dedicated Firewall Manager deployment page does not list it. |
+
+This documentation mismatch is important:
+
+- the current dedicated Firewall Manager page says **“The current supported security partner is Zscaler”**;
+- the current Security Partner Provider deployment page lists **Zscaler** only;
+- the older generic Virtual WAN third-party integration page still says **Check Point, iboss, and Zscaler**;
+- the current Preview Azure CLI command still accepts `Checkpoint`, `IBoss`, and `ZScaler` as enum values.
+
+**Deployment rule:** do not treat an old documentation table or CLI enum as proof that a provider can be deployed in your subscription/region. Query the live `supportedSecurityProviders` API for your specific Virtual WAN and confirm current provider documentation before production deployment.
+
+Also keep this separate from **Virtual WAN SaaS solutions**. Microsoft currently identifies **Palo Alto Networks Cloud NGFW** as a SaaS solution deployed directly into the vHub model. That is **not Method 6** and does not use the external Firewall Manager Security Partner Provider/IPsec architecture described here.
 
 ---
 
@@ -86,9 +144,9 @@ The most important architectural fact is that the Security Partner Provider infr
 
 Minimum design dependencies:
 
-1. Azure Virtual WAN with a compatible Standard virtual hub.
+1. Azure Virtual WAN with a compatible **Standard** virtual hub.
 2. A Virtual WAN **S2S VPN Gateway** in the hub.
-3. A currently supported Security Partner Provider for the environment.
+3. A currently supported Security Partner Provider for the specific Virtual WAN/region.
 4. Provider subscription/entitlement and tenant.
 5. Microsoft Entra credentials/information required by the provider integration workflow.
 6. Successful provider discovery/synchronization of the Azure vHub.
@@ -102,6 +160,30 @@ Minimum design dependencies:
 **Source information:** Security Partner Providers connect to the hub using VPN Gateway tunnels. Microsoft warns that deleting the gateway removes the provider connections.
 
 **Additional explanation:** This is one of the easiest ways to distinguish Method 6 from a SaaS NGFW directly deployed into the Virtual WAN hub.
+
+### 4.1 Azure CLI prerequisites
+
+The vHub and VPN Gateway command families are supplied by the `virtual-wan` extension in current Azure CLI releases. The extension auto-installs when required, but for repeatable automation you can explicitly update it:
+
+```cli
+az version
+az extension add --name virtual-wan --upgrade
+az account show --output table
+```
+
+Recommended variables used below:
+
+```cli
+RG='RG-Network'
+LOCATION='eastus'
+VWAN='Corp-vWAN'
+VHUB='Hub-East'
+VHUB_PREFIX='10.250.0.0/24'
+VPNGW='Hub-East-VPNGW'
+SEC_PROVIDER_RESOURCE='secpartner-zscaler-east'
+SPOKE_VNET='Spoke-App-East'
+SPOKE_CONN='conn-spoke-app-east'
+```
 
 ---
 
@@ -140,6 +222,58 @@ Selected path: Virtual WAN secured Internet path
 Service next hop: Security Partner Provider
 Transport from vHub to provider: S2S VPN Gateway / IPsec
 ```
+
+### 5.1 Query the live provider list for your Virtual WAN
+
+The Virtual WAN REST API exposes `supportedSecurityProviders`. This is the best Azure-side deployment-time check when documentation and CLI enums disagree.
+
+```cli
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+az rest \
+  --method get \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RG}/providers/Microsoft.Network/virtualWans/${VWAN}/supportedSecurityProviders?api-version=2025-05-01" \
+  --output jsonc
+```
+
+To display only provider names/types:
+
+```cli
+az rest \
+  --method get \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RG}/providers/Microsoft.Network/virtualWans/${VWAN}/supportedSecurityProviders?api-version=2025-05-01" \
+  --query "supportedProviders[].{name:name,type:type,url:url}" \
+  --output table
+```
+
+**What it tests:** providers Azure reports as supported for the specified Virtual WAN/API context.
+
+**Success criteria:** the intended provider appears and is also supported by current provider/Microsoft deployment documentation for the target region/subscription.
+
+**Failure indicator:** the provider is absent. Do not force creation merely because `az network security-partner-provider create --help` still accepts its name.
+
+### 5.2 Inspect VNet-connection effective routes
+
+After the provider is connected and Internet security is enabled on the spoke connection, inspect what the vHub is actually advertising/using for that connection:
+
+```cli
+SPOKE_CONN_ID=$(az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type HubVirtualNetworkConnection \
+  --resource-id "$SPOKE_CONN_ID" \
+  --output table
+```
+
+**What it tests:** actual vHub forwarding state for the selected connection rather than intended configuration alone.
+
+**Success criteria:** the secured default-route behavior expected for the provider-enabled connection is present. Validate the actual returned fields rather than relying on a fabricated fixed output sample.
 
 ---
 
@@ -240,6 +374,8 @@ Modern Virtual WAN Routing Intent exposes private and Internet traffic policies 
 
 **Additional explanation:** For Method 6, operationally focus on Firewall Manager's Security Partner Provider workflow and its automatic secured-Internet route distribution. Do not assume every feature documented for an in-hub NVA or SaaS NGFW applies one-for-one to the external SECaaS VPN model.
 
+**CLI caution:** do not invent a Routing Intent next-hop value for a Security Partner Provider. The supported Method 6 deployment workflow is represented by the Security Partner Provider resource plus Firewall Manager security configuration. Use the specific provider/Firewall Manager workflow documented for the service.
+
 ---
 
 ## 10. Public IP ranges used internally
@@ -260,23 +396,169 @@ If Azure Firewall handles the private traffic class, also review its SNAT behavi
 
 ## 11. Configuration workflow
 
-### A. Create or prepare the vHub
+### 11.1 Create the Standard Virtual WAN and vHub
 
-1. Open **Network Security** / **Firewall Manager**.
-2. Go to **Secure your resources** → **Virtual hubs**.
-3. Create a secured virtual hub or select an existing compatible hub.
-4. For a new hub, include the **VPN Gateway** to enable the Security Partner Provider integration.
-5. Size the VPN gateway for the connectivity requirements.
-6. Decide whether Azure Firewall will also be enabled for private traffic.
+```cli
+az network vwan create \
+  --resource-group "$RG" \
+  --name "$VWAN" \
+  --location "$LOCATION" \
+  --type Standard
 
-### B. Add the Security Partner Provider
+az network vhub create \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --vwan "$VWAN" \
+  --location "$LOCATION" \
+  --address-prefix "$VHUB_PREFIX" \
+  --sku Standard
+```
 
-1. Select the **Security Partner Provider** step in the hub security workflow.
-2. Select a provider currently offered for that environment.
-3. Complete the Azure provisioning step.
-4. Continue with the provider's onboarding procedure.
+Verify:
 
-### C. Complete provider-side integration
+```cli
+az network vwan show \
+  --resource-group "$RG" \
+  --name "$VWAN" \
+  --output yaml
+
+az network vhub show \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --output yaml
+```
+
+**Success criteria:** Standard vWAN, intended region/address prefix, and successful vHub provisioning.
+
+### 11.2 Deploy the required vHub S2S VPN Gateway
+
+Method 6 requires the vHub S2S VPN Gateway because the security partner builds service tunnels through it.
+
+```cli
+az network vpn-gateway create \
+  --resource-group "$RG" \
+  --name "$VPNGW" \
+  --vhub "$VHUB" \
+  --location "$LOCATION" \
+  --scale-unit 2
+```
+
+Verify:
+
+```cli
+az network vpn-gateway show \
+  --resource-group "$RG" \
+  --name "$VPNGW" \
+  --output yaml
+```
+
+**Important:** choose a scale unit based on current bandwidth/capacity requirements. The value `2` above is an example, not a universal recommendation.
+
+### 11.3 Discover supported providers before creating the resource
+
+```cli
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+az rest \
+  --method get \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RG}/providers/Microsoft.Network/virtualWans/${VWAN}/supportedSecurityProviders?api-version=2025-05-01" \
+  --query "supportedProviders[].{name:name,type:type,url:url}" \
+  --output table
+```
+
+Do this **before** trusting the provider choices exposed by the CLI command itself.
+
+### 11.4 Create the Security Partner Provider resource
+
+The current Azure CLI has a dedicated command group:
+
+```text
+az network security-partner-provider
+```
+
+**CLI status warning:** this command group is currently **Preview**. Microsoft documents the accepted enum values as `Checkpoint`, `IBoss`, and `ZScaler`, but the current dedicated Firewall Manager documentation lists **Zscaler** as the current supported Security Partner Provider. Therefore, an accepted CLI enum value is not proof of current service availability.
+
+For the currently documented Zscaler path:
+
+```cli
+az network security-partner-provider create \
+  --resource-group "$RG" \
+  --name "$SEC_PROVIDER_RESOURCE" \
+  --location "$LOCATION" \
+  --vhub "$VHUB" \
+  --provider ZScaler
+```
+
+Inspect the resource:
+
+```cli
+az network security-partner-provider show \
+  --resource-group "$RG" \
+  --name "$SEC_PROVIDER_RESOURCE" \
+  --output yaml
+```
+
+List all provider resources in the resource group:
+
+```cli
+az network security-partner-provider list \
+  --resource-group "$RG" \
+  --output table
+```
+
+You can also wait for Azure resource creation state:
+
+```cli
+az network security-partner-provider wait \
+  --resource-group "$RG" \
+  --name "$SEC_PROVIDER_RESOURCE" \
+  --created
+```
+
+**What these commands do not complete:** provider-side tenant onboarding, service-principal authorization, tunnel/service-edge creation, and security policy remain part of the provider workflow.
+
+### 11.5 Connect a spoke and enable Internet security
+
+Virtual WAN uses a **vHub VNet connection**, not VNet peering to the managed hub.
+
+```cli
+SPOKE_VNET_ID=$(az network vnet show \
+  --resource-group "$RG" \
+  --name "$SPOKE_VNET" \
+  --query id -o tsv)
+
+az network vhub connection create \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --remote-vnet "$SPOKE_VNET_ID" \
+  --internet-security true
+```
+
+For an existing connection:
+
+```cli
+az network vhub connection update \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --internet-security true
+```
+
+Verify:
+
+```cli
+az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --query "{name:name,internetSecurity:enableInternetSecurity,remoteVnet:remoteVirtualNetwork.id,provisioningState:provisioningState}" \
+  --output yaml
+```
+
+**Note:** branch/site secured-Internet selection must be validated against the current Firewall Manager/Virtual WAN configuration surface. Do not invent a branch CLI flag simply because VNet connections expose `--internet-security`.
+
+### 11.6 Complete provider-side onboarding
 
 Current Zscaler documentation describes a workflow that includes:
 
@@ -286,19 +568,13 @@ Current Zscaler documentation describes a workflow that includes:
 4. Sync/discover eligible Azure hubs.
 5. Provision the provider location/tunnel configuration.
 6. Wait for tunnel status to show connected in both Azure and the provider portal.
+7. Configure the provider security policy and Internet egress behavior.
 
-### D. Configure secured routing
-
-1. Return to the vHub **Security Configurations**.
-2. Set **Internet Traffic** to the trusted Security Partner Provider.
-3. If using the split design, set **Private Traffic** to Azure Firewall.
-4. Select/enable the VNet and branch connections that should receive secured Internet routing.
-5. Save/apply the configuration.
-6. Validate default-route behavior before removing temporary management paths.
+Microsoft states that the provider creates a VPN site on your behalf and that this provider-created VPN site does **not** appear in the Azure portal like a normal customer-created VPN site.
 
 ### Management warning
 
-Microsoft notes that once the secured default route is installed, assumptions about direct RDP/SSH can break. Their deployment guidance recommends using Azure Bastion in a peered VNet for controlled management rather than depending on direct public management paths.
+Once the secured default route is installed, assumptions about direct RDP/SSH can break. Microsoft recommends a deliberate management path such as Azure Bastion/private connectivity rather than creating a casual Internet-security bypass.
 
 ---
 
@@ -350,42 +626,103 @@ Spoke/branch
 
 ---
 
-## 14. Verification checklist
+## 14. Verification checklist and Azure CLI
 
-### Azure checks
+### 14.1 Verify the Azure resources
 
-Verify:
+```cli
+az network vhub show \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --query "{name:name,location:location,provisioningState:provisioningState,virtualWan:virtualWan.id}" \
+  --output yaml
 
-- vHub is healthy/provisioned.
-- Security Partner Provider connection is provisioned.
-- Provider S2S tunnel is **Connected**.
-- Intended VNet connections have Internet security enabled.
-- Intended branches/sites have Internet security enabled.
-- Secured `0.0.0.0/0` behavior is present where expected.
-- Public-looking corporate prefixes are explicitly treated as private when needed.
-- Azure Firewall is assigned to private traffic if using the split-provider model.
-- No unauthorized UDR or branch default advertisement bypasses/conflicts with the design.
+az network vpn-gateway show \
+  --resource-group "$RG" \
+  --name "$VPNGW" \
+  --output yaml
 
-### Provider checks
+az network security-partner-provider show \
+  --resource-group "$RG" \
+  --name "$SEC_PROVIDER_RESOURCE" \
+  --output yaml
+```
 
-Verify:
+**Success criteria:** Azure resources are provisioned, the provider resource points at the intended vHub, and the vHub VPN gateway exists.
 
-- Azure credentials/API integration succeeds.
-- Correct vHub is discovered.
-- Provider location/tunnel object exists.
-- Tunnel is active.
-- Correct security policy is assigned.
-- Logs show the expected source/destination.
-- Policy action is expected.
-- Egress service edge/region is expected.
+### 14.2 Verify spoke Internet-security opt-in
 
-### Workload checks
+```cli
+az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --output yaml
+```
+
+Check `enableInternetSecurity`/the current equivalent property returned by the API.
+
+### 14.3 Verify vHub effective routing
+
+```cli
+SPOKE_CONN_ID=$(az network vhub connection show \
+  --resource-group "$RG" \
+  --vhub-name "$VHUB" \
+  --name "$SPOKE_CONN" \
+  --query id -o tsv)
+
+az network vhub get-effective-routes \
+  --resource-group "$RG" \
+  --name "$VHUB" \
+  --resource-type HubVirtualNetworkConnection \
+  --resource-id "$SPOKE_CONN_ID" \
+  --output table
+```
+
+### 14.4 Verify the workload NIC route view
+
+If you know the VM NIC:
+
+```cli
+az network nic show-effective-route-table \
+  --resource-group RG-App \
+  --name NIC-App01 \
+  --output table
+```
+
+**Success criteria:** the workload no longer follows an unintended direct Internet route for traffic that is supposed to use the secured provider path.
+
+### 14.5 Verify one concrete public destination
+
+```cli
+az network watcher show-next-hop \
+  --resource-group RG-App \
+  --vm App01 \
+  --nic NIC-App01 \
+  --source-ip 10.10.1.10 \
+  --dest-ip 8.8.8.8 \
+  --output table
+```
+
+Treat this as one Azure-routing observation, not as proof that the provider inspected the session. Correlate with provider logs.
+
+### 14.6 Provider and workload checks
+
+Provider-side verify:
+
+- Azure credential/API integration succeeds;
+- correct vHub is discovered;
+- provider location/tunnel object exists;
+- tunnel is active;
+- correct security policy is assigned;
+- logs show the expected source/destination;
+- policy action is expected;
+- egress service edge/region is expected.
+
+Workload tests:
 
 ```cli
 nslookup example.com
-```
-
-```cli
 curl -I https://example.com
 ```
 
@@ -410,18 +747,50 @@ Traceroute through a cloud security service or encrypted tunnel can be incomplet
 ### VNet has Internet but provider sees no logs
 
 **Where:** Spoke effective routes and vHub security configuration.  
-**Tests:** Whether the connection actually received the secured Internet path.  
-**Success:** Internet default directs to the Security Partner Provider.  
+**CLI:**
+
+```cli
+az network vhub connection show -g "$RG" --vhub-name "$VHUB" -n "$SPOKE_CONN" -o yaml
+az network nic show-effective-route-table -g RG-App -n NIC-App01 -o table
+```
+
+**What it tests:** Whether the connection actually received the secured Internet path.  
+**Success:** Internet traffic is on the intended secured path and the provider sees a matching session.  
 **Failure means:** Bypass or incomplete security configuration.  
 **Next action:** Correct Internet-security opt-in and check competing UDRs/routes.
 
 ### VNet loses Internet immediately after enabling Method 6
 
-**Where:** vHub VPN gateway and provider portal.  
+**Where:** provider resource, vHub VPN gateway, provider portal.  
+**CLI:**
+
+```cli
+az network security-partner-provider show -g "$RG" -n "$SEC_PROVIDER_RESOURCE" -o yaml
+az network vpn-gateway show -g "$RG" -n "$VPNGW" -o yaml
+```
+
 **Tests:** Whether the default route was installed before a working provider tunnel/policy existed.  
-**Success:** Tunnel is Connected and provider permits the test flow.  
+**Success:** Azure resources are healthy, the provider tunnel is Connected in Azure/provider observability, and provider policy permits the test flow.  
 **Failure means:** Secured route exists but the service path is broken.  
-**Next action:** Restore tunnel/provider policy or temporarily remove the affected connection from the secured Internet configuration while troubleshooting.
+**Next action:** Restore tunnel/provider policy or temporarily remove the affected connection from secured Internet routing while troubleshooting.
+
+### Provider name is accepted by CLI but deployment fails
+
+**Where:** provider discovery.  
+**CLI:**
+
+```cli
+az network security-partner-provider create --help
+
+az rest \
+  --method get \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RG}/providers/Microsoft.Network/virtualWans/${VWAN}/supportedSecurityProviders?api-version=2025-05-01" \
+  --output jsonc
+```
+
+**What it tests:** whether you are relying on the broader CLI enum rather than current service availability.  
+**Failure means:** the CLI schema and current deployable provider set differ.  
+**Next action:** use the current dedicated Microsoft/provider documentation and live API response; do not force an unsupported provider.
 
 ### Branch cannot reach Internet but spokes can
 
@@ -429,7 +798,7 @@ Traceroute through a cloud security service or encrypted tunnel can be incomplet
 **Tests:** Whether the branch enters the same secured path and receives the intended default.  
 **Success:** Non-bypassed branch Internet traffic reaches SECaaS.  
 **Failure means:** Branch-specific routing or local-breakout issue.  
-**Next action:** Compare branch route/connection state with a working spoke.
+**Next action:** Compare branch route/connection state with a working spoke and verify no manually advertised `0.0.0.0/0` conflicts with the provider workflow.
 
 ### SaaS performance is poor
 
@@ -475,8 +844,9 @@ Traceroute through a cloud security service or encrypted tunnel can be incomplet
 6. Failing to declare public-looking enterprise prefixes as private.
 7. Hairpinning key Microsoft 365 branch traffic when direct/local breakout is recommended.
 8. Assuming provider HA equals Azure Virtual WAN hub HA.
-9. Assuming old partner logos/lists are still current.
+9. Assuming old partner logos/lists or CLI enums are still current.
 10. Assuming the Internet-facing public source IP is an Azure Firewall public IP; SECaaS NAT/egress is provider-specific.
+11. Treating Palo Alto Networks Cloud NGFW as the same integration class as Firewall Manager Security Partner Provider.
 
 ---
 
@@ -547,7 +917,9 @@ This gives each security platform the traffic class most clearly supported by Mi
 - Pairing SECaaS for Internet with **Azure Firewall for private traffic** is a clean supported pattern.
 - Microsoft recommends local breakout for key Microsoft 365 branch connectivity.
 - Provider NAT, identity, inspection depth, HA, service-edge behavior, tenancy, licensing, and limits are provider-specific.
-- Current dedicated Firewall Manager documentation identifies **Zscaler** as the supported Security Partner Provider; validate the live API before production deployment because older Microsoft pages contain a broader historical list.
+- Current dedicated Firewall Manager documentation identifies **Zscaler** as the supported Security Partner Provider.
+- Older Microsoft pages and the current Preview CLI still expose Check Point/iboss names; validate the live API and current deployment documentation rather than assuming those are currently deployable.
+- Palo Alto Networks Cloud NGFW is a **different Virtual WAN SaaS solution model**, not this external SECaaS Security Partner Provider design.
 
 ---
 
@@ -563,6 +935,11 @@ This gives each security platform the traffic class most clearly supported by Mi
 - https://learn.microsoft.com/en-us/azure/networking/design-guide/virtual-wan
 - https://learn.microsoft.com/en-us/azure/architecture/networking/architecture/hub-spoke-virtual-wan-architecture
 - https://learn.microsoft.com/en-us/rest/api/virtualwan/supported-security-providers/supported-security-providers?view=rest-virtualwan-2025-05-01
+- https://learn.microsoft.com/en-us/cli/azure/network/security-partner-provider?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vwan?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vhub/connection?view=azure-cli-latest
+- https://learn.microsoft.com/en-us/cli/azure/network/vpn-gateway?view=azure-cli-latest
 
 ### Zscaler
 
