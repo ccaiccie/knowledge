@@ -32,6 +32,7 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/firewall-policies-overview
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-tutorial
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-intercept-deployments
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-intercept-endpoint-groups
@@ -590,7 +591,75 @@ Server: 10.10.2.20:443
 13. The appliance sends that GENEVE packet back by **Direct Server Return (DSR)**, bypassing the producer ILB on reinjection.
 14. Google resumes the original consumer-network delivery toward `10.10.2.20`.
 
-The return packet is independently subject to the relevant consumer ingress/egress firewall-policy direction and, when selected for inspection, follows the same logical service chain. You do **not** add a route to the VM-Series IP merely to force NSI symmetry.
+## 5.1 Return path — NSI firewall rules are stateful
+
+A **separate reverse-direction `APPLY_SECURITY_PROFILE_GROUP` rule is not required for return packets that belong to an already tracked NSI session**. Google explicitly documents that intercept firewall rules are stateful: when a **new session** matches an intercept rule, all subsequent **ingress and egress** packets associated with that session are intercepted automatically and are encapsulated with the appropriate security-profile-group context.
+
+![NSI stateful return traffic](images/09-07-26-08-06_pan_gcp_nsi_stateful_session_return.svg)
+
+[Editable draw.io](images/09-07-26-08-06_pan_gcp_nsi_stateful_session_return.drawio)
+
+**What this image shows:** The first SYN is selected by one directional NSI intercept rule. Once Google has created state for that connection, the reverse SYN-ACK and later packets are automatically intercepted as members of the same tracked session.
+
+**What matters:** Rule direction determines which **new connections** enter NSI inspection. It does not require every packet direction of an already established connection to independently match a second `APPLY_SECURITY_PROFILE_GROUP` rule.
+
+**What to verify:** Confirm the initiating packet matches the intended intercept rule; endpoint/deployment resources are healthy; VM-Series receives the GENEVE packet; and both traffic directions appear in the expected PAN-OS session.
+
+For example, if this new connection is selected by an egress intercept rule:
+
+```text
+10.10.1.10:51514 -> 10.10.2.20:443
+```
+
+then the response:
+
+```text
+10.10.2.20:443 -> 10.10.1.10:51514
+```
+
+is recognized by Google as the reverse direction of the tracked NSI session and is automatically sent through the same inspection service. It does **not** need to independently match a newly created ingress interception rule simply to preserve stateful symmetry.
+
+| Traffic case | Separate opposite-direction intercept rule required? |
+|---|---|
+| Return packet for a session that already matched NSI | **No** — automatically intercepted as part of the tracked session |
+| Later packets in either direction of that same session | **No** — NSI session state preserves interception |
+| Brand-new connection initiated from the opposite direction | **Yes**, if that independently initiated connection must be inspected |
+| TCP non-SYN packet that is not part of a known active tracked session | Cannot establish a new intercepted TCP session; Google documents that matching partial TCP sessions are dropped |
+
+### 5.2 New-session policy selection versus reverse-session state
+
+This distinction is important when designing policy. A reverse-direction intercept rule is useful when the opposite endpoint is allowed to initiate **new** connections. It is not required merely because TCP has response packets traveling in the opposite direction.
+
+Correct mental model:
+
+```text
+First packet of NEW connection
+        |
+        v
+Directional firewall rule matches
+APPLY_SECURITY_PROFILE_GROUP
+        |
+        v
+Google creates tracked NSI session
+        |
+        +-------------------------------+
+        |                               |
+        v                               v
+Forward packets                    Reverse packets
+automatically intercepted          automatically intercepted
+        |                               |
+        +-------------> VM-Series <-----+
+```
+
+### 5.3 Partial TCP-session caveat
+
+Google cautions that intercept rules cannot process arbitrary partial TCP sessions. Non-SYN TCP packets that match an intercept rule but do not belong to a known, tracked active connection are dropped. This is another indication that NSI interception is connection-state-aware rather than a stateless per-packet redirect mechanism.
+
+**Source information:** Google states that intercept firewall rules are stateful and that all subsequent ingress and egress packets associated with a matching new session are intercepted automatically.
+
+**Additional explanation:** PAN-OS remains stateful too. Because Google keeps both directions in the NSI inspection path, the VM-Series can inspect both halves of a connection in its PAN-OS session without you creating a second consumer-VPC route or duplicate reverse-direction intercept rule.
+
+**Reasonable inference:** For an established intercepted connection with return-path problems, first validate the NSI endpoint/deployment state, GENEVE delivery/reinjection, and PAN-OS session before assuming the fix is another reverse-direction intercept rule.
 
 ---
 
@@ -600,11 +669,11 @@ The return packet is independently subject to the relevant consumer ingress/egre
 
 [Editable draw.io](images/09-07-26-07-03_nsi_internet_egress_return_paths.drawio)
 
-**What this image shows:** NSI now has two materially different Internet-egress models: **standard in-band reinjection**, in which the consumer VPC still owns Internet routing/NAT, and **direct Internet egress**, in which the producer VM-Series sends allowed packets directly to the Internet and returns responses to the consumer over GENEVE.
+**What this image shows:** NSI has two materially different Internet-egress models: **standard in-band reinjection**, in which the consumer VPC still owns Internet routing/NAT, and **direct Internet egress**, in which the producer VM-Series sends allowed packets directly to the Internet and returns responses to the consumer over GENEVE.
 
-**What matters:** The return path is not “Internet → VM” with no inspection. In the standard model the response returns through the consumer Internet/NAT path and is intercepted again for inbound inspection. In direct Internet egress the response terminates at the VM-Series Internet-facing path, is inspected there, and is GENEVE-reinjected directly to the consumer VM.
+**What matters:** In standard NSI, once the outbound connection has matched an intercept rule, return packets belonging to that same tracked connection are automatically intercepted by NSI. You do not need a separate ingress `APPLY_SECURITY_PROFILE_GROUP` rule merely for the response leg. In direct Internet egress the response lands on VM-Series itself and is GENEVE-reinjected to the consumer.
 
-**What to verify:** identify which model your VM-Series deployment is actually configured for before troubleshooting routes or NAT. They have different ownership of the Internet edge.
+**What to verify:** identify which model your VM-Series deployment is actually configured for before troubleshooting routes, NAT, or interception state.
 
 ## 6.1 Model A — standard in-band reinjection with Cloud NAT or a workload external IP
 
@@ -618,7 +687,7 @@ Internet server:   198.51.100.25:443
 ### 6.1.1 Forward path
 
 1. `10.10.1.10` creates the TCP connection toward `198.51.100.25:443`.
-2. The consumer VPC's **egress** firewall policy matches the flow and invokes `APPLY_SECURITY_PROFILE_GROUP`.
+2. The consumer VPC's **egress** firewall policy matches the **new session** and invokes `APPLY_SECURITY_PROFILE_GROUP`.
 3. NSI resolves the security profile group → custom-intercept profile → `pan-ieg` → `pan-idg` → the zonal intercept deployment.
 4. Google GENEVE-encapsulates the original packet and sends it to the producer internal passthrough ILB on UDP/6081.
 5. The ILB selects a healthy VM-Series backend.
@@ -645,9 +714,9 @@ NAT_PUBLIC_IP:translated-source-port -> 198.51.100.25:443
 The exact translated source port is implementation/runtime state and should not be fabricated in a design document.
 12. The packet reaches the Internet server.
 
-### 6.1.2 Return path — the part that was missing
+### 6.1.2 Return path — automatically intercepted as part of the existing NSI session
 
-The Internet response does **not** bypass inspection.
+The Internet response does **not** need a second independent ingress intercept-rule match simply to return through VM-Series.
 
 1. The server replies:
 
@@ -662,31 +731,32 @@ The Internet response does **not** bypass inspection.
 198.51.100.25:443 -> 10.10.1.10:51514
 ```
 
-4. As Google delivers the response toward the consumer VM, the applicable consumer **ingress** firewall policy is evaluated.
-5. If that direction is configured for NSI inspection, the response again matches `APPLY_SECURITY_PROFILE_GROUP`.
-6. NSI GENEVE-encapsulates the response and sends it across the consumer/producer boundary to the producer VM-Series service.
-7. VM-Series decapsulates and evaluates the response against PAN-OS session/security state.
-8. If the response is allowed, VM-Series re-encapsulates the original response packet and reinjects it using DSR.
+4. Google recognizes the response as the reverse direction of the **existing tracked NSI connection** created when the outbound session first matched the egress intercept rule.
+5. Because intercept firewall rules are stateful, NSI automatically intercepts this response packet. A separate ingress `APPLY_SECURITY_PROFILE_GROUP` rule is not required for the return traffic of this established session.
+6. NSI GENEVE-encapsulates the response with the appropriate security-profile context and sends it to the producer VM-Series service.
+7. VM-Series decapsulates the response and evaluates it against the existing PAN-OS session/security state.
+8. If allowed, VM-Series re-encapsulates the response and reinjects it by DSR.
 9. Google delivers the restored response to `10.10.1.10`.
 10. The client TCP stack receives the response and the session continues.
 
-Google describes the standard model as **four cross-VPC boundary hops**:
+The standard model still has **four logical consumer/producer boundary crossings** for a full bidirectional exchange, but the third crossing is triggered by the state of the already intercepted session—not by a requirement for a separately authored reverse-direction intercept rule:
 
 ```text
-Hop 1  consumer -> producer   outbound inspection
+Hop 1  consumer -> producer   new outbound session inspection
 Hop 2  producer -> consumer   outbound reinjection
-Hop 3  consumer -> producer   inbound response inspection
+Hop 3  consumer -> producer   automatic reverse-packet interception for tracked session
 Hop 4  producer -> consumer   inbound response reinjection
 ```
 
 ### 6.1.3 Who owns state?
 
-There are two different state systems here:
+There are three relevant state domains to keep distinct:
 
-- **PAN-OS session state** — App-ID, Security policy, threat inspection, and any PAN-OS state for the inspected connection.
+- **Google NSI intercept-session state** — determines that subsequent ingress and egress packets belong to the connection selected for interception.
+- **PAN-OS session state** — App-ID, Security policy, threat inspection, and PAN-OS connection/session processing.
 - **Cloud NAT state** — the private-to-public source translation and reverse mapping, if Cloud NAT is used.
 
-Do not treat those as one shared state table. PAN-OS is not performing Cloud NAT's translation merely because it inspected the packet first.
+Do not treat those as one shared state table. PAN-OS is not performing Cloud NAT's translation merely because it inspected the packet first, and an additional reverse NSI rule is not what preserves interception for an already tracked NSI session.
 
 ### 6.1.4 Why the consumer default route still matters
 
@@ -749,7 +819,8 @@ Hop 2  producer -> consumer   Internet response inspection + direct GENEVE reinj
 | VM-Series sends packet directly to Internet | No | Yes |
 | Internet response first lands in consumer Internet path | Yes | No |
 | Internet response first lands on producer firewall | No | Yes |
-| Response inspected | Yes, by a second consumer→producer interception | Yes, directly on VM-Series |
+| Response inspected | **Yes — automatically as reverse traffic of the tracked NSI session** | Yes, directly on VM-Series |
+| Separate ingress intercept rule required for response leg | **No** | No; response is already on VM-Series |
 | Cross-VPC boundary crossings per bidirectional Internet exchange | Four logical hops | Two logical hops |
 
 ## 6.4 Verification for Internet egress
@@ -774,11 +845,11 @@ Also verify PAN-OS sees both directions of the private inner flow.
 
 **Success criteria:**
 
-- outbound packet is inspected and reinjected;
+- outbound new session is inspected and reinjected;
 - consumer route/NAT sends it to the Internet;
 - response reverse-NATs back to the private VM;
-- response is intercepted for inbound inspection;
-- PAN-OS allows it and NSI reinjects it to the VM.
+- Google recognizes it as reverse traffic for the existing NSI session and automatically intercepts it;
+- PAN-OS sees the response in the expected session and NSI reinjects it to the VM.
 
 ### Direct Internet egress
 
@@ -1411,7 +1482,7 @@ Palo Alto's NSI overlay documentation currently notes that autoscaling is not su
 - PAN-OS SNAT is not automatically required.
 - Consumer Cloud NAT can remain the Internet translation point.
 - Outbound inspected traffic is reinjected to the consumer before Internet routing.
-- Return traffic is reverse-NATed in the consumer path and can be intercepted again for inbound inspection.
+- Return traffic is reverse-NATed in the consumer path and is **automatically intercepted again because it belongs to the existing tracked NSI session**.
 
 ## NSI direct Internet egress
 
@@ -1507,10 +1578,12 @@ Verify required reboot and interface/plugin state.
 
 1. consumer Cloud NAT/external-IP return path;
 2. reverse NAT back to the private consumer VM;
-3. consumer ingress firewall policy selection;
-4. second NSI interception to VM-Series;
+3. Google NSI state for the already intercepted connection;
+4. automatic reverse-packet interception to the producer VM-Series service;
 5. PAN-OS response session state;
 6. GENEVE DSR reinjection.
+
+A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** normally the explanation for return packets that already belong to the tracked outbound NSI session.
 
 ## Direct Internet egress sends outbound traffic but receives no usable response
 
@@ -1532,13 +1605,14 @@ Verify required reboot and interface/plugin state.
 6. Ignoring zonal intercept-deployment coverage.
 7. Treating an unhealthy ILB backend as a firewall-policy problem.
 8. Assuming standard NSI Internet responses bypass inspection.
-9. Confusing standard NSI Cloud NAT state with PAN-OS NAT state.
-10. Assuming direct Internet egress still requires consumer Cloud NAT.
-11. Expecting a forward-only PBR to provide stateful symmetry in the traditional model.
-12. Applying a broad PBR to VM-Series backend traffic and creating recursive service insertion.
-13. Assuming an Interconnect-region-scoped PBR also means the same thing for HA VPN tunnels.
-14. Assuming Cloud Router's dynamic route automatically exists inside the PAN-OS virtual router.
-15. Ignoring GCP primary-interface/load-balancer constraints for Internet ingress.
+9. **Assuming return packets for an established NSI session need a second ingress `APPLY_SECURITY_PROFILE_GROUP` rule.** They are automatically intercepted as part of the tracked session; the opposite-direction rule is for independently initiated new connections.
+10. Confusing standard NSI Cloud NAT state with PAN-OS NAT state.
+11. Assuming direct Internet egress still requires consumer Cloud NAT.
+12. Expecting a forward-only PBR to provide stateful symmetry in the traditional routed model.
+13. Applying a broad PBR to VM-Series backend traffic and creating recursive service insertion.
+14. Assuming an Interconnect-region-scoped PBR also means the same thing for HA VPN tunnels.
+15. Assuming Cloud Router's dynamic route automatically exists inside the PAN-OS virtual router.
+16. Ignoring GCP primary-interface/load-balancer constraints for Internet ingress.
 
 ---
 
@@ -1574,6 +1648,7 @@ Verify required reboot and interface/plugin state.
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/firewall-policies-overview
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-tutorial
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-consumer-service
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-firewall-rules
