@@ -17,6 +17,8 @@ Examples use Azure SQL terminology where useful, but the networking principles a
 - https://learn.microsoft.com/en-us/azure/private-link/tutorial-inspect-traffic-azure-firewall
 - https://learn.microsoft.com/en-us/azure/private-link/disable-private-endpoint-network-policy
 - https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview
+- https://learn.microsoft.com/en-us/azure/private-link/create-private-endpoint-cli
+- https://learn.microsoft.com/en-us/cli/azure/network/private-endpoint?view=azure-cli-latest
 - https://learn.microsoft.com/en-us/azure/private-link/secure-private-link
 - https://learn.microsoft.com/en-us/azure/firewall/snat-private-range
 - https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
@@ -24,6 +26,44 @@ Examples use Azure SQL terminology where useful, but the networking principles a
 - https://learn.microsoft.com/en-us/azure/load-balancer/quickstart-load-balancer-standard-internal-cli
 - https://learn.microsoft.com/en-us/cli/azure/network/lb/rule?view=azure-cli-latest
 - https://learn.microsoft.com/en-us/azure/architecture/example-scenario/firewalls/
+
+## Table of contents
+
+- [1. What makes Private Endpoint inspection special](#1-what-makes-private-endpoint-inspection-special)
+- [2. Common routing requirement for Azure Firewall and NVA designs](#2-common-routing-requirement-for-azure-firewall-and-nva-designs)
+- [3. Enable Private Endpoint network policies](#3-enable-private-endpoint-network-policies)
+- [Part I — Azure Firewall](#part-i--azure-firewall)
+  - [4. Azure Firewall architecture](#4-azure-firewall-architecture)
+  - [5. Azure Firewall forward and return path](#5-azure-firewall-forward-and-return-path)
+- [Part II — Standard ILB → NVA(s) → Private Endpoint](#part-ii--standard-ilb---nvas---private-endpoint)
+  - [6. Is this supported conceptually?](#6-is-this-supported-conceptually)
+  - [6.1 The missing detail: there is no direct ILB-to-Private-Endpoint link](#61-the-missing-detail-there-is-no-direct-ilb-to-private-endpoint-link)
+  - [6.2 What actually links the traffic path together](#62-what-actually-links-the-traffic-path-together)
+  - [6.3 Create and identify the Private Endpoint](#63-create-and-identify-the-private-endpoint)
+  - [6.4 Route the Private Endpoint prefix to the ILB](#64-route-the-private-endpoint-prefix-to-the-ilb)
+  - [6.5 Why the UDR is on the source subnet, not the Private Endpoint object](#65-why-the-udr-is-on-the-source-subnet-not-the-private-endpoint-object)
+  - [6.6 Complete object-to-object relationship](#66-complete-object-to-object-relationship)
+  - [7. ILB/NVA architecture diagram](#7-ilbnva-architecture-diagram)
+  - [8. Exact ILB/NVA forward packet flow](#8-exact-ilbnva-forward-packet-flow)
+  - [9. Exact ILB/NVA return packet flow](#9-exact-ilbnva-return-packet-flow)
+  - [10. HA behavior: what ILB does and does not provide](#10-ha-behavior-what-ilb-does-and-does-not-provide)
+  - [11. Azure CLI — create the ILB and NVA service insertion layer](#11-azure-cli--create-the-ilb-and-nva-service-insertion-layer)
+  - [12. Create workload UDR to the ILB frontend](#12-create-workload-udr-to-the-ilb-frontend)
+  - [13. Verify the source NIC effective route](#13-verify-the-source-nic-effective-route)
+  - [14. Verify ILB rule and health configuration](#14-verify-ilb-rule-and-health-configuration)
+  - [15. NVA routing requirements](#15-nva-routing-requirements)
+  - [16. NAT policy on the NVA](#16-nat-policy-on-the-nva)
+  - [17. Flow symmetry and HA Ports](#17-flow-symmetry-and-ha-ports)
+  - [18. Important Azure Load Balancer constraints](#18-important-azure-load-balancer-constraints)
+  - [19. DNS path remains unchanged](#19-dns-path-remains-unchanged)
+  - [20. Peering requirements](#20-peering-requirements)
+  - [21. Failure scenarios](#21-failure-scenarios)
+  - [22. Troubleshooting by symptom](#22-troubleshooting-by-symptom)
+  - [23. Azure Firewall vs ILB/NVA comparison](#23-azure-firewall-vs-ilbnva-comparison)
+  - [24. Common mistakes](#24-common-mistakes)
+  - [25. Recommended production design sequence](#25-recommended-production-design-sequence)
+  - [26. Source information, additional explanation, and inference](#26-source-information-additional-explanation-and-inference)
+- [Sources](#sources)
 
 ---
 
@@ -85,7 +125,7 @@ A `/24` or `/32` can be used when you need narrower steering. A dedicated PE sub
 
 ### Why `0.0.0.0/0` is not enough
 
-The Private Endpoint route is more specific. Longest-prefix match wins. Microsoft explicitly notes that a default route does not override the PE route. When network policies are enabled, a UDR for the PE VNet/subnet or an individual `/32` can be used to force the inspection path.
+The Private Endpoint route is more specific. Longest-prefix match wins. Microsoft documents that when PE network policy support for UDRs is enabled, the custom route prefix must be **equal to or more specific than the address-space prefix of the VNet in which the PE is deployed**. For a PE in a `10.20.0.0/16` VNet, examples such as `10.20.0.0/16`, `10.20.1.0/24`, or `10.20.1.4/32` can participate in overriding the PE route; `0.0.0.0/0` cannot.
 
 ---
 
@@ -117,6 +157,8 @@ az network vnet subnet show \
 **Success criteria:** `privateEndpointNetworkPolicies` reports an enabled state.
 
 **Failure indicator:** it remains disabled. Fix this before troubleshooting firewall policy because the traffic can bypass the UDR inspection design.
+
+> Current Private Link documentation also allows enabling only UDR policy or only NSG policy. For this inspection design, at minimum the PE subnet must permit **UDR policy enforcement**.
 
 ---
 
@@ -206,6 +248,270 @@ Standard Internal Load Balancer frontend IP
 ```
 
 The ILB does **not** inspect traffic. It is the highly available next-hop abstraction. The selected NVA owns firewall policy, state, optional TLS inspection, logging, and NAT.
+
+## 6.1 The missing detail: there is no direct ILB-to-Private-Endpoint link
+
+This is the most important correction to the mental model.
+
+There is **no Azure object property** such as:
+
+```text
+PrivateEndpoint.gatewayLoadBalancer = ILB
+```
+
+and there is no CLI command such as:
+
+```text
+az network private-endpoint attach-load-balancer ...
+```
+
+The ILB is not attached to the Private Endpoint. The ILB becomes part of the path because a **UDR on the traffic source's subnet** tells Azure that destinations covering the PE IP must use the ILB frontend IP as the `VirtualAppliance` next hop.
+
+![How ILB routing reaches a Private Endpoint](images/09-06-26-12-37_ilb_to_private_endpoint_routing_relationship.svg)
+
+[Editable draw.io source](images/09-06-26-12-37_ilb_to_private_endpoint_routing_relationship.drawio)
+
+**What this image shows:** The Private Endpoint retains its real IP `10.20.1.4`. The workload does not address the ILB. The workload addresses `10.20.1.4`; Azure's route lookup selects the ILB VIP `10.0.2.10` as the next hop. The ILB selects an NVA, and the NVA forwards the original destination toward the PE after inspection/SNAT.
+
+**What matters:** The destination IP remains the PE IP throughout the steering decision. The ILB frontend is a **next-hop address**, not a replacement destination and not a DNAT address.
+
+**What to verify:** DNS returns the PE IP, the client effective route for that PE prefix points to `10.0.2.10`, the selected NVA receives a packet whose destination is still the PE IP, and the NVA has a direct routed path from itself to the PE VNet.
+
+## 6.2 What actually links the traffic path together
+
+The complete relationship is:
+
+```text
+1. Private Endpoint object
+      creates/owns PE NIC + private IP 10.20.1.4
+
+2. Private DNS
+      service FQDN -> 10.20.1.4
+
+3. PE subnet network policy
+      allows UDR policy to override PE routing behavior
+
+4. Workload subnet route table
+      10.20.0.0/16 -> VirtualAppliance -> 10.0.2.10
+
+5. Internal Standard Load Balancer
+      frontend 10.0.2.10 -> HA Ports backend pool -> healthy NVA
+
+6. Selected NVA
+      receives original destination 10.20.1.4
+      inspects
+      SNATs
+      routes toward PE VNet
+
+7. Private Endpoint
+      receives flow addressed to 10.20.1.4
+      hands it through Private Link to PaaS
+```
+
+That is the "link." It is a **routing/service-insertion chain**, not an Azure resource attachment between the ILB and PE.
+
+## 6.3 Create and identify the Private Endpoint
+
+The following generic Azure CLI structure is current and documented. The exact `--group-id` depends on the target service.
+
+First identify the target resource and supported Private Link group IDs. For a service that exposes Private Link resources:
+
+```cli
+TARGET_RESOURCE_ID=<resource-id-of-paas-service>
+
+az network private-link-resource list \
+  --id "$TARGET_RESOURCE_ID" \
+  --output table
+```
+
+Then create the PE in the dedicated PE subnet:
+
+```cli
+RG=rg-pe-inspection
+PE_VNET=vnet-pe
+PE_SUBNET=snet-private-endpoints
+PE_NAME=pe-app-service
+PE_CONNECTION=pe-app-service-connection
+GROUP_ID=<service-specific-group-id>
+
+az network private-endpoint create \
+  --resource-group "$RG" \
+  --name "$PE_NAME" \
+  --vnet-name "$PE_VNET" \
+  --subnet "$PE_SUBNET" \
+  --private-connection-resource-id "$TARGET_RESOURCE_ID" \
+  --group-id "$GROUP_ID" \
+  --connection-name "$PE_CONNECTION"
+```
+
+To inspect the PE object and its NIC reference:
+
+```cli
+az network private-endpoint show \
+  --resource-group "$RG" \
+  --name "$PE_NAME" \
+  --query '{name:name,state:provisioningState,nics:networkInterfaces[].id,connections:privateLinkServiceConnections[].privateLinkServiceConnectionState.status}' \
+  --output json
+```
+
+Get the PE NIC ID and actual private IP:
+
+```cli
+PE_NIC_ID=$(az network private-endpoint show \
+  --resource-group "$RG" \
+  --name "$PE_NAME" \
+  --query 'networkInterfaces[0].id' \
+  --output tsv)
+
+PE_NIC_NAME=${PE_NIC_ID##*/}
+
+PE_IP=$(az network nic show \
+  --ids "$PE_NIC_ID" \
+  --query 'ipConfigurations[0].privateIPAddress' \
+  --output tsv)
+
+echo "$PE_IP"
+```
+
+For the examples in this guide, assume the result is:
+
+```text
+10.20.1.4
+```
+
+That is the address the application will connect to after Private DNS resolution. You do **not** replace it with `10.0.2.10`.
+
+## 6.4 Route the Private Endpoint prefix to the ILB
+
+Assume:
+
+```text
+PE VNet      = 10.20.0.0/16
+PE subnet    = 10.20.1.0/24
+PE IP        = 10.20.1.4
+ILB frontend = 10.0.2.10
+```
+
+The workload subnet route can be aggregated at the PE VNet level:
+
+```cli
+APP_RT=rt-app-pe-via-nva
+
+az network route-table create \
+  --resource-group "$RG" \
+  --name "$APP_RT" \
+  --location "$LOCATION"
+
+az network route-table route create \
+  --resource-group "$RG" \
+  --route-table-name "$APP_RT" \
+  --name pe-vnet-via-ilb \
+  --address-prefix 10.20.0.0/16 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address 10.0.2.10
+
+az network vnet subnet update \
+  --resource-group "$RG" \
+  --vnet-name vnet-app \
+  --name snet-app \
+  --route-table "$APP_RT"
+```
+
+Or scope the steering to only one PE:
+
+```cli
+az network route-table route create \
+  --resource-group "$RG" \
+  --route-table-name "$APP_RT" \
+  --name single-pe-via-ilb \
+  --address-prefix 10.20.1.4/32 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address 10.0.2.10
+```
+
+The choice is operational:
+
+| UDR prefix | Effect |
+|---|---|
+| `10.20.0.0/16` | Steer destinations in the whole dedicated PE VNet through the NVA service |
+| `10.20.1.0/24` | Steer the dedicated PE subnet |
+| `10.20.1.4/32` | Steer only one PE IP |
+| `0.0.0.0/0` | Too broad to override the PE route by itself |
+
+The prefix must follow Microsoft's PE UDR precedence requirements and must not be broader than the PE VNet address-space prefix when the goal is to override the PE route.
+
+## 6.5 Why the UDR is on the source subnet, not the Private Endpoint object
+
+A common misunderstanding is to look for a route-table property on the PE NIC that says "send inbound PE traffic through the ILB." That is not how this pattern works.
+
+The route decision that inserts the firewall occurs **before the packet reaches the PE**, on the source side:
+
+```text
+Client 10.10.1.4
+  |
+  | destination = 10.20.1.4
+  v
+Azure source-NIC route lookup
+  |
+  | UDR says next hop = 10.0.2.10
+  v
+ILB -> NVA
+  |
+  | destination is still 10.20.1.4
+  v
+Private Endpoint
+```
+
+The PE subnet's network-policy setting matters because it permits the platform to honor UDR policy for traffic destined to PE addresses. It does **not** make the PE point to the ILB.
+
+## 6.6 Complete object-to-object relationship
+
+Use this as the configuration checklist:
+
+```text
+PaaS resource
+  ^
+  | privateLinkServiceConnection
+  |
+Private Endpoint pe-app-service
+  |
+  +-- NIC -> 10.20.1.4
+  |
+  +-- placed in vnet-pe/snet-private-endpoints
+              |
+              +-- PE network policies enabled for UDR
+
+Private DNS zone
+  service FQDN -> 10.20.1.4
+
+vnet-app/snet-app
+  |
+  +-- route table rt-app-pe-via-nva
+        |
+        +-- 10.20.0.0/16
+            nextHopType = VirtualAppliance
+            nextHopIp   = 10.0.2.10
+
+10.0.2.10
+  = Standard ILB frontend
+      |
+      +-- HA Ports rule
+      +-- backend pool
+          +-- NVA-1
+          +-- NVA-2
+
+Selected NVA
+  |
+  +-- policy/inspection
+  +-- SNAT
+  +-- route 10.20.0.0/16 toward PE VNet
+  v
+10.20.1.4 Private Endpoint
+```
+
+There is therefore **one actual Azure Private Link attachment**: the **Private Endpoint to the PaaS/private-link resource**. The ILB/NVA relationship to that PE is only routing and forwarding.
+
+---
 
 ## 7. ILB/NVA architecture diagram
 
@@ -352,7 +658,7 @@ DST 10.20.1.4
 
 The reply can then be routed directly toward `10.10.1.4`, bypassing the selected NVA/ILB path. The firewall would see only one direction and stateful inspection would fail or behave unpredictably.
 
-This is why SNAT is the preferred PE-inspection design unless the NVA vendor documents another supported symmetry mechanism.
+This is why SNAT is the preferred PE-inspection design unless the NVA vendor documents another supported symmetry mechanism. Current Microsoft documentation also notes that some NVA scenarios can remove the SNAT requirement through the `disableSnatOnPL` mechanism; treat that as an advanced NVA-specific design and validate vendor support rather than assuming it applies universally.
 
 ---
 
@@ -384,6 +690,7 @@ Confirm with the NVA vendor:
 - which NIC/interface should be placed in the backend pool;
 - whether one-arm or two-arm topology is supported;
 - whether SNAT is required and to what address;
+- whether the vendor supports the Private Link `disableSnatOnPL` design;
 - how session synchronization works;
 - health-probe port/path requirements;
 - whether asymmetric return traffic is tolerated;
@@ -616,6 +923,20 @@ az network nic show-effective-route-table \
 - PE network policies are disabled;
 - UDR points directly to an NVA instead of the intended ILB VIP.
 
+For one concrete destination, also use Network Watcher Next Hop:
+
+```cli
+az network watcher show-next-hop \
+  --resource-group "$RG" \
+  --vm <client-vm-name> \
+  --nic "$CLIENT_NIC" \
+  --source-ip 10.10.1.4 \
+  --dest-ip 10.20.1.4 \
+  --output table
+```
+
+The expected selected next hop is the virtual-appliance path associated with the ILB next-hop design, not a direct PE route.
+
 ---
 
 ## 14. Verify ILB rule and health configuration
@@ -789,19 +1110,51 @@ Workload spoke <-> Hub/NVA VNet <-> PE spoke
 
 VNet peering is non-transitive by itself. The NVA is the routed transit point.
 
-Enable forwarded traffic on the peerings where required:
+For this customer-managed NVA hub model, create both peering directions and allow forwarded traffic. Example for workload ↔ hub:
 
 ```cli
+HUB_VNET_ID=$(az network vnet show -g "$RG" -n vnet-hub --query id -o tsv)
+APP_VNET_ID=$(az network vnet show -g "$RG" -n vnet-app --query id -o tsv)
+PE_VNET_ID=$(az network vnet show -g "$RG" -n vnet-pe --query id -o tsv)
+
 az network vnet peering create \
   --resource-group "$RG" \
   --vnet-name vnet-app \
   --name app-to-hub \
-  --remote-vnet <hub-vnet-resource-id> \
+  --remote-vnet "$HUB_VNET_ID" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic
+
+az network vnet peering create \
+  --resource-group "$RG" \
+  --vnet-name vnet-hub \
+  --name hub-to-app \
+  --remote-vnet "$APP_VNET_ID" \
   --allow-vnet-access \
   --allow-forwarded-traffic
 ```
 
-and corresponding reverse-direction peerings as appropriate.
+And hub ↔ PE VNet:
+
+```cli
+az network vnet peering create \
+  --resource-group "$RG" \
+  --vnet-name vnet-hub \
+  --name hub-to-pe \
+  --remote-vnet "$PE_VNET_ID" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic
+
+az network vnet peering create \
+  --resource-group "$RG" \
+  --vnet-name vnet-pe \
+  --name pe-to-hub \
+  --remote-vnet "$HUB_VNET_ID" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic
+```
+
+Unlike the Azure Route Server/gateway-transit pattern, these peerings do not inherently require `--allow-gateway-transit`/`--use-remote-gateways` merely to pass NVA-forwarded traffic. Those flags are used when the spoke must consume a remote VNet gateway/Route Server function.
 
 Do not add a direct workload-to-PE peering path unless you deliberately control it; an alternate direct path can undermine centralized inspection.
 
@@ -866,6 +1219,32 @@ az network nic show-effective-route-table -g "$RG" -n "$CLIENT_NIC" -o table
 
 **Next action:** correct routing before debugging the NVA.
 
+### Symptom: DNS resolves PE correctly, but effective route still uses InterfaceEndpoint/direct PE
+
+**Where:** PE subnet policy plus workload effective routes.
+
+**Commands:**
+
+```cli
+az network vnet subnet show \
+  -g "$RG" \
+  --vnet-name "$PE_VNET" \
+  -n "$PE_SUBNET" \
+  --query privateEndpointNetworkPolicies \
+  -o tsv
+
+az network route-table route list \
+  -g "$RG" \
+  --route-table-name "$APP_RT" \
+  -o table
+```
+
+**What it tests:** whether the PE subnet permits UDR enforcement and whether the UDR is sufficiently specific.
+
+**Failure means:** network policies are still disabled or the UDR prefix is too broad.
+
+**Next action:** enable PE UDR policy and use the PE VNet/subnet or PE `/32` prefix.
+
 ### Symptom: ILB receives flows but one NVA never gets traffic
 
 **Where:** ILB backend pool and health probes.  
@@ -902,17 +1281,19 @@ az network lb probe show -g "$RG" --lb-name "$ILB" -n "$ILB_PROBE" -o json
 
 Check in order:
 
-1. client effective route;
-2. ILB HA Ports rule;
-3. health probe;
-4. backend NIC IP forwarding;
-5. NVA transit forwarding;
-6. NVA security policy;
-7. NVA SNAT;
-8. PE subnet network-policy state;
-9. PE connection approval;
-10. DNS resolution;
-11. PaaS-specific ports and connection mode.
+1. DNS resolves the service FQDN to the PE IP;
+2. PE connection state is approved;
+3. PE subnet UDR policy is enabled;
+4. client effective route selects the ILB VIP;
+5. ILB HA Ports rule exists;
+6. health probe is correct;
+7. correct NVA interface is in the backend pool;
+8. backend NIC IP forwarding is enabled;
+9. NVA transit forwarding works;
+10. NVA security policy permits the flow;
+11. NVA SNAT is present unless using a specifically supported no-SNAT Private Link design;
+12. NVA PE-facing route does not hairpin to ILB;
+13. PaaS-specific ports and connection mode are correct.
 
 ---
 
@@ -922,8 +1303,9 @@ Check in order:
 |---|---|---|
 | Managed HA | Azure-managed | ILB plus vendor HA design |
 | UDR next hop | Firewall private IP | ILB frontend IP |
+| Direct resource attachment to PE | **None** — routing inserts firewall | **None** — routing inserts ILB/NVA |
 | Scale/failover | Service-managed | Health probe + backend pool + vendor clustering |
-| SNAT for PE flow | Application rules always SNAT | Must be designed/configured in NVA |
+| SNAT for PE flow | Application rules always SNAT | Must normally be designed/configured in NVA |
 | FQDN policy | Native firewall features | Vendor-specific |
 | TLS inspection | Premium feature where supported | Vendor-specific |
 | Session synchronization | Managed service behavior | Vendor-specific |
@@ -935,6 +1317,9 @@ Check in order:
 
 ## 24. Common mistakes
 
+- Assuming the ILB must be attached or associated directly with the Private Endpoint object.
+- DNATing the PE address to the ILB VIP; the destination should remain the real PE IP.
+- Putting a route on the wrong subnet and expecting the PE object itself to discover the ILB.
 - Assuming Private Endpoint inspection requires Azure Firewall; third-party NVAs are valid.
 - Assuming an NVA VM alone is highly available without an HA mechanism.
 - Pointing the UDR directly at one NVA when the intended design is an ILB-backed NVA pool.
@@ -943,7 +1328,7 @@ Check in order:
 - Using an arbitrary health-probe port that the appliance does not support.
 - Forgetting Azure NIC IP forwarding.
 - Forgetting OS/appliance forwarding even though Azure NIC IP forwarding is enabled.
-- Omitting SNAT on the PE-facing leg.
+- Omitting SNAT on the PE-facing leg without a vendor-supported alternative.
 - Assuming HA Ports removes the need for firewall session-state synchronization.
 - Hairpinning an NVA backend back into its own ILB frontend.
 - Leaving Private Endpoint network policies disabled.
@@ -956,22 +1341,25 @@ Check in order:
 ## 25. Recommended production design sequence
 
 1. Put Private Endpoints in a dedicated subnet or VNet.
-2. Enable Private Endpoint network policies for UDR support.
-3. Build hub-to-workload and hub-to-PE connectivity with forwarded traffic allowed where required.
-4. Deploy two or more vendor-supported NVA instances.
-5. Enable IP forwarding on the NVA data-plane NICs.
-6. Create an internal **Standard** Load Balancer.
-7. Put the vendor-designated NVA interface/IP configuration in the backend pool.
-8. Create a vendor-supported health probe.
-9. Create an HA Ports rule (`All`, `0`, `0`).
-10. Configure the NVA routing table so PE-facing traffic exits toward the PE VNet, not back into the ILB VIP.
-11. Configure security policy and SNAT.
-12. Add source-subnet UDRs for the PE prefix with next hop equal to the ILB frontend IP.
-13. Validate DNS returns the PE private address.
-14. Validate effective routes.
-15. Establish a test connection and verify the exact session on the selected NVA.
-16. Fail one NVA and measure new-flow behavior and existing-flow behavior separately.
-17. Document whether the vendor provides state/NAT synchronization and what sessions are expected to survive failover.
+2. Create the PE against the intended PaaS subresource and record its actual private IP.
+3. Configure Private DNS so applications resolve the service name to that PE IP.
+4. Enable Private Endpoint network policies for UDR support.
+5. Build hub-to-workload and hub-to-PE connectivity with forwarded traffic allowed where required.
+6. Deploy two or more vendor-supported NVA instances.
+7. Enable IP forwarding on the NVA data-plane NICs.
+8. Create an internal **Standard** Load Balancer.
+9. Put the vendor-designated NVA interface/IP configuration in the backend pool.
+10. Create a vendor-supported health probe.
+11. Create an HA Ports rule (`All`, `0`, `0`).
+12. Configure the NVA routing table so PE-facing traffic exits toward the PE VNet, not back into the ILB VIP.
+13. Configure security policy and SNAT, unless the vendor explicitly supports an alternate Private Link symmetry design.
+14. Add **source-subnet** UDRs for the PE VNet/subnet or `/32`, with next hop equal to the ILB frontend IP.
+15. Validate the client effective route for the PE IP.
+16. Establish a test connection and verify that the NVA sees the destination as the **real PE IP**, not the ILB IP.
+17. Verify the NVA's translated source and PE-facing route.
+18. Verify the return packet hits the same logical firewall state and reverse NAT occurs.
+19. Fail one NVA and measure new-flow behavior and existing-flow behavior separately.
+20. Document whether the vendor provides state/NAT synchronization and what sessions are expected to survive failover.
 
 ---
 
@@ -984,8 +1372,10 @@ Microsoft documentation directly supports the following:
 - Private Endpoint traffic can be inspected by Azure Firewall or a third-party NVA.
 - Private Endpoint network policies must be enabled to use UDR/NSG enforcement for PEs.
 - A generic default route does not automatically override a PE-specific route.
-- SNAT is recommended for inspected Private Endpoint traffic.
+- When UDR policy is enabled, the overriding UDR must meet the documented prefix-specificity requirements relative to the PE VNet address space.
+- SNAT is recommended for inspected Private Endpoint traffic, subject to documented advanced NVA exceptions.
 - Azure Firewall application rules always SNAT.
+- A Private Endpoint is created against a target resource/subresource and owns a private NIC/IP in the selected subnet.
 - Internal Standard Load Balancer supports HA Ports for NVA high availability/scale.
 - HA Ports uses protocol `All` and port `0`.
 - Load Balancer uses per-flow selection and health probes.
@@ -994,7 +1384,16 @@ Microsoft documentation directly supports the following:
 
 ### Additional explanation
 
-The packet walks in this guide combine those documented primitives into a full PE inspection design: UDR -> ILB VIP -> selected NVA -> SNAT -> PE -> return to session owner -> reverse NAT -> client.
+There is no direct ILB-to-PE resource association. The packet walks in this guide combine the documented primitives into the actual PE inspection design:
+
+```text
+DNS -> PE IP
+source-subnet UDR -> ILB VIP
+ILB -> selected NVA
+NVA inspection/SNAT -> real PE IP
+Private Link -> service
+return -> SNAT/session owner -> reverse NAT -> client
+```
 
 ### Reasonable inference
 
@@ -1007,6 +1406,9 @@ The exact firewall-side SNAT address, session replication mechanics, zone names,
 - Microsoft Learn — Azure Firewall scenarios to inspect traffic destined to a private endpoint: https://learn.microsoft.com/en-us/azure/private-link/inspect-traffic-with-azure-firewall
 - Microsoft Learn — Tutorial: Inspect private endpoint traffic with Azure Firewall: https://learn.microsoft.com/en-us/azure/private-link/tutorial-inspect-traffic-azure-firewall
 - Microsoft Learn — Manage network policies for private endpoints: https://learn.microsoft.com/en-us/azure/private-link/disable-private-endpoint-network-policy
+- Microsoft Learn — What is a private endpoint?: https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview
+- Microsoft Learn — Create a private endpoint with Azure CLI: https://learn.microsoft.com/en-us/azure/private-link/create-private-endpoint-cli
+- Microsoft Learn — `az network private-endpoint`: https://learn.microsoft.com/en-us/cli/azure/network/private-endpoint?view=azure-cli-latest
 - Microsoft Learn — Secure your Azure Private Link deployment: https://learn.microsoft.com/en-us/azure/private-link/secure-private-link
 - Microsoft Learn — Azure Firewall SNAT private IP address ranges: https://learn.microsoft.com/en-us/azure/firewall/snat-private-range
 - Microsoft Learn — High availability ports overview: https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-ha-ports-overview
