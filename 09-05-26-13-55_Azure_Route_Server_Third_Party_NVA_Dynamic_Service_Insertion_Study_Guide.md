@@ -4,6 +4,33 @@
 **Updated:** 2026-09-05 — expanded with NVA placement, route injection, hub/spoke peering, ExpressRoute, and VPN Gateway integration  
 **Scope:** Azure Route Server (ARS), Border Gateway Protocol (BGP), third-party Network Virtual Appliances (NVAs), dynamic service insertion, route tables, effective routes, hub-and-spoke peering, internet/hybrid/East-West flow paths, high availability, symmetry, verification, and troubleshooting.
 
+## Table of contents
+
+- [1. The single most important concept](#1-the-single-most-important-concept)
+- [2. Three different "route tables" you must keep separate mentally](#2-three-different-route-tables-you-must-keep-separate-mentally)
+- [3. Does the NVA have to be in the same VNet as Azure Route Server?](#3-does-the-nva-have-to-be-in-the-same-vnet-as-azure-route-server)
+- [4. Peering requirements for a spoke to consume the hub Route Server](#4-peering-requirements-for-a-spoke-to-consume-the-hub-route-server)
+- [5. Minute detail: exactly how an NVA route reaches a spoke VM](#5-minute-detail-exactly-how-an-nva-route-reaches-a-spoke-vm)
+- [6. Before and after route injection](#6-before-and-after-route-injection)
+- [7. How system routes, BGP routes, and UDRs interact](#7-how-system-routes-bgp-routes-and-udrs-interact)
+- [8. Why Route Server does not eliminate every UDR](#8-why-route-server-does-not-eliminate-every-udr)
+- [9. East-West service insertion between separate spokes](#9-east-west-service-insertion-between-separate-spokes)
+- [10. Internet egress with an NVA-advertised default](#10-internet-egress-with-an-nva-advertised-default)
+- [11. Dynamic withdrawal and failover](#11-dynamic-withdrawal-and-failover)
+- [12. Active/active and active/standby NVAs](#12-activeactive-and-activestandby-nvas)
+- [13. Hybrid route exchange with ExpressRoute or VPN](#13-hybrid-route-exchange-with-expressroute-or-vpn)
+- [14. Route maps and BGP policy](#14-route-maps-and-bgp-policy)
+- [15. Route Server and NVA requirements checklist](#15-route-server-and-nva-requirements-checklist)
+- [16. Current scale considerations](#16-current-scale-considerations)
+- [17. Verification chain — prove every stage](#17-verification-chain--prove-every-stage)
+- [18. Symptom-based troubleshooting](#18-symptom-based-troubleshooting)
+- [19. Static UDR versus ARS/BGP service insertion](#19-static-udr-versus-arsbgp-service-insertion)
+- [20. Final mental model](#20-final-mental-model)
+- [21. Exactly how the spoke is tied to the hub: the peering contract](#21-exactly-how-the-spoke-is-tied-to-the-hub-the-peering-contract)
+- [22. ExpressRoute + Route Server + NVA in detail](#22-expressroute--route-server--nva-in-detail)
+- [23. VPN Gateway + Route Server + NVA in detail](#23-vpn-gateway--route-server--nva-in-detail)
+- [Sources](#sources)
+
 ## Supplied / supporting URLs
 
 - https://learn.microsoft.com/en-us/azure/route-server/route-injection-in-spokes
