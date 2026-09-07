@@ -1390,30 +1390,70 @@ If the workload's return route points directly to another Internet gateway and b
 
 Yes — **Cloud Interconnect is a supported and important traditional PBR service-insertion use case**.
 
-Google PBRs can be installed specifically on **Cloud Interconnect VLAN attachments by region**. This lets you intercept packets as they enter the VPC from on-premises before the normal dynamic/subnet route sends them directly to a workload.
+### 7.9.1 Where is the PBR actually applied?
+
+This is different from AWS or Azure and is the most important point to understand:
+
+> **A Google Cloud Policy-Based Route is not attached to a subnet and it is not associated with a customer-managed route table.**
+
+The PBR is created as a **global resource that belongs to one VPC network**. The `--network` parameter is the VPC attachment:
+
+```cli
+--network="projects/SEC_PROJECT/global/networks/trust-vpc"
+```
+
+After the PBR belongs to `trust-vpc`, the route's own **scope** determines which packet sources are eligible to use it.
+
+Google supports three practical scope models:
+
+| PBR scope | How configured | Which packet sources are eligible |
+|---|---|---|
+| Network-wide | Omit `--tags` and `--interconnect-attachment-region` | All applicable VMs, Cloud VPN tunnels, and Cloud Interconnect VLAN attachments in the VPC |
+| Selected VM sources | `--tags=TAG` | Only packets emitted by VMs in the VPC that have the specified network tag |
+| Cloud Interconnect ingress | `--interconnect-attachment-region=REGION` or `all` | Packets entering the VPC through Cloud Interconnect VLAN attachments in that region, or all regions |
+
+There is therefore **no later step such as “associate this PBR with subnet 10.10.0.0/24.”** The source/destination filters identify packet characteristics, while the route scope identifies the VPC endpoints where the PBR is applicable.
+
+Mental model:
+
+```text
+Policy-Based Route
+        |
+        +-- belongs to trust-vpc
+        |      --network=trust-vpc
+        |
+        +-- scope decides WHERE it can be evaluated
+        |      |
+        |      +-- network-wide
+        |      +-- tagged VMs
+        |      +-- Interconnect VLAN attachments by region
+        |
+        +-- filter decides WHICH packets match
+               source CIDR
+               destination CIDR
+               protocol
+        |
+        +-- action
+               next-hop internal passthrough ILB
+```
+
+Google's PBR is a **global Network Connectivity Center/Network Connectivity API resource**, but its routing applicability is tied to the specified VPC and route scope. It does not create a separate user-visible per-subnet route table.
+
+### 7.9.2 Inbound Cloud Interconnect traffic — how the PBR is scoped
+
+Google PBRs can be installed specifically for **Cloud Interconnect VLAN attachments by region**. This lets the PBR intercept packets as they enter the VPC from on-premises before ordinary dynamic/subnet routing sends them directly to a workload.
 
 Example:
 
 ```text
-On-prem source: 10.100.0.0/16
-GCP workload:   10.10.0.0/16
-Trust ILB VIP:  10.250.10.25
+On-prem source:                 10.100.0.0/16
+GCP workload:                   10.10.0.0/16
+Trust ILB VIP:                  10.250.10.25
 Interconnect attachment region: us-central1
+VPC:                            trust-vpc
 ```
 
-### Inbound on-prem → GCP path
-
-1. On-prem router sends the packet across Dedicated/Partner Cross-Cloud Interconnect connectivity toward Google.
-2. The packet enters through a VLAN attachment associated with Cloud Router.
-3. Normally, a learned/dynamic route or subnet route could deliver it directly to the workload.
-4. The PBR is evaluated at the Interconnect attachment ingress context.
-5. If the source/destination/protocol matches, the PBR chooses the trust-side internal passthrough ILB instead.
-6. The ILB selects VM-Series.
-7. PAN-OS inspects the packet and routes it toward the workload prefix.
-8. The packet re-enters the VPC data plane from the firewall interface.
-9. Normal VPC routing then delivers the packet to the workload.
-
-Example PBR scoped to Interconnect attachments in `us-central1`:
+The PBR:
 
 ```cli
 gcloud network-connectivity policy-based-routes create pbr-interconnect-to-apps \
@@ -1429,25 +1469,215 @@ gcloud network-connectivity policy-based-routes create pbr-interconnect-to-apps 
   --description="Inspect on-prem traffic arriving through us-central1 Interconnect attachments"
 ```
 
-You cannot scope this PBR to one individual VLAN attachment; the documented scope is the region's attachments or `all` attachment regions.
+Read that command literally as:
 
-### Return GCP → on-prem path
+```text
+Create PBR pbr-interconnect-to-apps
+        |
+        +-- belongs to trust-vpc
+        |
+        +-- eligible ingress points:
+        |      Cloud Interconnect VLAN attachments in us-central1
+        |
+        +-- if source      = 10.100.0.0/16
+        +-- and destination = 10.10.0.0/16
+        |
+        +-- next hop = 10.250.10.25
+                        internal passthrough ILB
+                        -> VM-Series
+```
+
+You **do not** attach the PBR to the Cloud Router, VLAN attachment, subnet, or a route table after this command. `--interconnect-attachment-region=us-central1` is what makes the route applicable to packets entering through the qualifying VLAN attachments.
+
+Google does not let you scope the route to one individual VLAN attachment. The documented granularity is the VLAN-attachment **region**, or `all` attachment regions.
+
+Only VLAN attachments that meet Google's current PBR dataplane requirements can use policy-based routes; verify the current Cloud Interconnect dataplane version requirements before deployment.
+
+### 7.9.3 Inbound on-prem → GCP packet walk
+
+1. On-prem router sends the packet across Dedicated or Partner Interconnect toward Google.
+2. The packet enters `trust-vpc` through a VLAN attachment in `us-central1`.
+3. Because `pbr-interconnect-to-apps` has `--interconnect-attachment-region=us-central1`, this PBR is applicable at that ingress point.
+4. Google evaluates the PBR filter:
+
+```text
+source      10.100.0.0/16
+             matches
+
+destination 10.10.0.0/16
+             matches
+
+protocol    ALL
+             matches
+```
+
+5. The PBR wins before ordinary destination routing and selects the internal passthrough ILB `10.250.10.25`.
+6. The ILB selects a healthy VM-Series backend.
+7. PAN-OS performs Security/App-ID/threat inspection and its own route lookup.
+8. VM-Series forwards the packet toward the workload side.
+9. The packet re-enters the Google VPC dataplane.
+10. Normal VPC routing delivers it to the final workload in `10.10.0.0/16`.
+
+So the forward path is:
+
+```text
+On-prem
+   |
+   v
+Cloud Interconnect
+VLAN attachment in us-central1
+   |
+   | PBR applies HERE because of
+   | --interconnect-attachment-region=us-central1
+   v
+PBR filter match
+   |
+   v
+Trust ILB 10.250.10.25
+   |
+   v
+VM-Series
+   |
+   v
+normal VPC routing
+   |
+   v
+10.10.0.0/16 workload
+```
+
+### 7.9.4 Return GCP → on-prem — the Interconnect-scoped PBR does not apply to the workload VM
+
+This is where designs commonly become confusing.
+
+The inbound PBR is scoped to **Interconnect VLAN attachments**. A workload VM sending a return packet is a different packet source, so the `--interconnect-attachment-region` scope does not make that route automatically applicable to the workload VM.
+
+For the workload-to-on-prem direction, use an appropriate return steering method. A clean PBR example is to tag the workload VMs that should send hybrid traffic through VM-Series.
+
+Tag the workload:
+
+```cli
+gcloud compute instances add-tags app-vm-1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-a \
+  --tags=inspect-hybrid
+```
+
+Then create the return-side PBR in the **same VPC**, scoped to that VM tag:
+
+```cli
+gcloud network-connectivity policy-based-routes create pbr-apps-to-onprem \
+  --project=SEC_PROJECT \
+  --network="projects/SEC_PROJECT/global/networks/trust-vpc" \
+  --source-range=10.10.0.0/16 \
+  --destination-range=10.100.0.0/16 \
+  --ip-protocol=ALL \
+  --protocol-version=IPv4 \
+  --next-hop-ilb-ip=10.250.10.25 \
+  --priority=400 \
+  --tags=inspect-hybrid \
+  --description="Inspect workload traffic returning to on-prem"
+```
+
+Again, there is no subnet/route-table association. The logic is:
+
+```text
+app-vm-1 has network tag inspect-hybrid
+        |
+        v
+VM emits packet to 10.100.0.0/16
+        |
+        v
+pbr-apps-to-onprem is applicable
+because --tags=inspect-hybrid
+        |
+        v
+PBR sends packet to trust ILB
+        |
+        v
+VM-Series
+        |
+        v
+Google performs normal routing after firewall
+        |
+        v
+Cloud Router dynamic route
+        |
+        v
+Interconnect VLAN attachment
+        |
+        v
+On-prem
+```
+
+The two PBRs therefore solve **different source contexts**:
+
+| Direction | Packet source | PBR scope |
+|---|---|---|
+| On-prem → GCP | Interconnect VLAN attachment | `--interconnect-attachment-region=us-central1` |
+| GCP → on-prem | Workload VM | `--tags=inspect-hybrid` |
+
+### 7.9.5 Return packet walk
 
 1. Workload sends traffic to `10.100.0.0/16`.
-2. Workload-side PBR/static route sends the packet to the trust ILB.
-3. The ILB selects the same logical firewall service; symmetric hashing helps backend symmetry under the documented conditions.
-4. PAN-OS finds/creates the session, inspects, and routes the packet toward the on-prem prefix.
-5. The packet leaves the VM-Series interface and re-enters Google routing.
-6. Cloud Router dynamic routing selects the appropriate Interconnect VLAN attachment based on learned route/BGP policy.
-7. The packet crosses Interconnect to the on-prem router.
+2. Because the workload VM has the `inspect-hybrid` network tag, `pbr-apps-to-onprem` is applicable to packets it emits.
+3. Source and destination ranges match.
+4. PBR selects the trust ILB.
+5. ILB sends the flow to the VM-Series service.
+6. PAN-OS finds the existing session, inspects the response, and routes toward the on-prem prefix.
+7. VM-Series emits the packet back into `trust-vpc`.
+8. Section 7.11's firewall-bypass PBR prevents this post-inspection packet from being recursively sent to the ILB again.
+9. Google resumes ordinary VPC routing.
+10. The Cloud Router-learned dynamic route identifies the appropriate Interconnect path.
+11. The packet exits through the selected VLAN attachment and reaches on-prem.
 
 This separation is important:
 
 ```text
-PBR decides:       Should this packet visit VM-Series first?
-PAN-OS decides:    Is it allowed and which firewall interface/route is used?
-Cloud Router/BGP:  Which hybrid attachment/path reaches the on-prem prefix?
+PBR scope:        Where can this PBR apply?
+PBR filter:       Does this packet match source/destination/protocol?
+PBR next hop:     Should it visit VM-Series first?
+PAN-OS:           Is it allowed and which firewall egress path is used?
+Cloud Router/BGP: After inspection, which hybrid path reaches on-prem?
 ```
+
+### 7.9.6 Verification — prove scope instead of looking for a subnet association
+
+Because there is no subnet attachment to inspect, verify the PBR object itself and the resource that provides its scope.
+
+Describe the Interconnect ingress PBR:
+
+```cli
+gcloud network-connectivity policy-based-routes describe pbr-interconnect-to-apps \
+  --project=SEC_PROJECT
+```
+
+Verify:
+
+- `network` points to `trust-vpc`;
+- source/destination ranges are correct;
+- next-hop ILB IP is correct;
+- priority is correct;
+- Interconnect attachment region is `us-central1`.
+
+Describe the workload return PBR:
+
+```cli
+gcloud network-connectivity policy-based-routes describe pbr-apps-to-onprem \
+  --project=SEC_PROJECT
+```
+
+Verify that its VM scope contains `inspect-hybrid`.
+
+Verify the workload actually has the tag:
+
+```cli
+gcloud compute instances describe app-vm-1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-a \
+  --format='yaml(name,tags.items,networkInterfaces.networkIP)'
+```
+
+**Success criteria:** the workload shows `inspect-hybrid`, the return PBR references the same tag, and the PBR belongs to the expected VPC.
 
 ## 7.10 On-premises inspection through HA VPN
 
@@ -1513,14 +1743,78 @@ This is one of the most important traditional-service-insertion design details.
 
 If a network-wide PBR also applies to packets emitted by the VM-Series backend after inspection, the firewall can send a packet back into Google and have Google immediately steer it **back to the ILB/firewall again**, creating a loop.
 
-Typical techniques include:
+### 7.11.1 Where is the bypass PBR applied?
 
-1. Apply interception PBRs only to tagged workload VMs where possible.
-2. Do not give firewall backend VMs the workload interception tag.
-3. Create a higher-priority PBR for firewall VMs that uses `--next-hop-other-routes=DEFAULT_ROUTING` so their post-inspection packets bypass lower-priority interception PBRs.
-4. Make source/destination match ranges precise enough that the firewall's egress stage does not re-match the same policy.
+Just like the inspection PBRs, the bypass PBR is **not attached to the firewall subnet or to a route table**.
 
-Example bypass for firewall VMs tagged `pan-fw`:
+The bypass PBR:
+
+1. belongs to `trust-vpc` because of `--network`;
+2. is scoped to VM instances carrying the `pan-fw` **network tag** because of `--tags=pan-fw`;
+3. uses `--next-hop-other-routes=DEFAULT_ROUTING` so matching packets skip lower-priority PBRs and continue with normal Google VPC destination routing.
+
+Therefore the effective association is:
+
+```text
+VM-Series VM
+   |
+   | network tag: pan-fw
+   v
+PBR pbr-pan-fw-bypass
+   |
+   | belongs to trust-vpc
+   | --tags=pan-fw
+   | priority 100
+   | DEFAULT_ROUTING
+   v
+skip lower-priority interception PBRs
+   |
+   v
+normal VPC routing
+```
+
+You do not apply it to `10.250.10.0/24`. You apply the **tag to the firewall VM**, and the PBR itself says that VMs with that tag are in scope.
+
+### 7.11.2 First tag every VM-Series backend that must bypass interception
+
+For example:
+
+```cli
+gcloud compute instances add-tags pan-fw-a1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-a \
+  --tags=pan-fw
+```
+
+If there is another firewall backend:
+
+```cli
+gcloud compute instances add-tags pan-fw-b1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-b \
+  --tags=pan-fw
+```
+
+The tag is a **GCP Compute Engine network tag** on the VM instance. It is not a PAN-OS tag, security tag, subnet tag, or firewall-policy tag.
+
+Verify:
+
+```cli
+gcloud compute instances describe pan-fw-a1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-a \
+  --format='yaml(name,tags.items,networkInterfaces.networkIP)'
+```
+
+Expected state includes:
+
+```text
+tags:
+  items:
+  - pan-fw
+```
+
+### 7.11.3 Create the higher-priority bypass PBR in the same VPC
 
 ```cli
 gcloud network-connectivity policy-based-routes create pbr-pan-fw-bypass \
@@ -1536,7 +1830,161 @@ gcloud network-connectivity policy-based-routes create pbr-pan-fw-bypass \
   --description="Prevent VM-Series post-inspection traffic from re-entering interception PBRs"
 ```
 
-The lower numeric priority wins among matching PBRs.
+Read the command as:
+
+```text
+PBR pbr-pan-fw-bypass
+        |
+        +-- belongs to trust-vpc
+        |
+        +-- only applies to VMs tagged pan-fw
+        |
+        +-- matches any IPv4 source/destination/protocol
+        |
+        +-- priority 100
+        |
+        +-- action = DEFAULT_ROUTING
+                |
+                +-- ignore lower-priority PBRs
+                +-- resume normal VPC destination routing
+```
+
+The lower numeric priority wins between matching PBRs. Therefore a priority `100` firewall bypass is evaluated before inspection PBRs at priority `400` or `500`.
+
+### 7.11.4 Why this stops the loop
+
+Assume the inbound Interconnect PBR sends this packet to VM-Series:
+
+```text
+10.100.1.10 -> 10.10.1.20
+```
+
+Forward inspection:
+
+```text
+Interconnect VLAN attachment
+    |
+    | pbr-interconnect-to-apps priority 400
+    v
+Trust ILB
+    |
+    v
+VM-Series pan-fw-a1
+```
+
+PAN-OS allows the packet and emits it toward `10.10.1.20`.
+
+At that moment this is a **new GCP routing decision for a packet emitted by the VM-Series VM**. Because that VM has tag `pan-fw`, the bypass PBR is applicable:
+
+```text
+VM-Series emits post-inspection packet
+    |
+    | source endpoint = VM tagged pan-fw
+    v
+pbr-pan-fw-bypass priority 100
+    |
+    | DEFAULT_ROUTING
+    v
+skip interception PBRs
+    |
+    v
+normal subnet/dynamic/static route selection
+    |
+    v
+10.10.1.20
+```
+
+Without the bypass, a broad network-wide PBR could match the packet after VM-Series emits it:
+
+```text
+VM-Series
+   -> broad PBR
+   -> ILB
+   -> VM-Series
+   -> broad PBR
+   -> ILB
+   -> loop
+```
+
+### 7.11.5 Why tagging the firewall is different from tagging the workload
+
+The two tags have opposite purposes:
+
+| Tag | Applied to | Purpose |
+|---|---|---|
+| `inspect-hybrid` | Application/workload VMs | Make their emitted traffic eligible for inspection PBRs |
+| `pan-fw` | VM-Series firewall VMs | Make their post-inspection emitted traffic eligible for the high-priority `DEFAULT_ROUTING` bypass PBR |
+
+Example evaluation for a workload return packet:
+
+```text
+app-vm-1 tag = inspect-hybrid
+        |
+        v
+pbr-apps-to-onprem priority 400
+        |
+        v
+Trust ILB -> VM-Series
+        |
+        v
+pan-fw-a1 emits inspected packet
+pan-fw-a1 tag = pan-fw
+        |
+        v
+pbr-pan-fw-bypass priority 100
+        |
+        v
+DEFAULT_ROUTING
+        |
+        v
+Cloud Router dynamic route
+        |
+        v
+Interconnect / HA VPN
+```
+
+There is no route-table association anywhere in this sequence. Applicability follows the **VPC + endpoint scope + packet filter** model.
+
+### 7.11.6 Scope alternatives and design cautions
+
+Typical techniques include:
+
+1. Scope interception PBRs only to tagged workload VMs where possible.
+2. Do not give firewall backend VMs the workload interception tag.
+3. Tag firewall VMs separately with `pan-fw`.
+4. Create a higher-priority `DEFAULT_ROUTING` PBR for `pan-fw` VMs.
+5. Make source/destination match ranges precise enough to avoid unwanted matches.
+6. Use network-wide PBR scope cautiously because Google explicitly warns that it can also apply to packets emitted by an internal passthrough ILB backend VM.
+
+The bypass PBR is particularly valuable when the inspection rule must be network-wide, such as when it needs to apply to Cloud VPN tunnel traffic and cannot be limited with a VM tag.
+
+### 7.11.7 Verify the bypass PBR
+
+```cli
+gcloud network-connectivity policy-based-routes describe pbr-pan-fw-bypass \
+  --project=SEC_PROJECT
+```
+
+Verify:
+
+- network is `trust-vpc`;
+- VM scope/tag is `pan-fw`;
+- priority is `100`;
+- next-hop-other-routes is `DEFAULT_ROUTING`;
+- source and destination cover the intended bypass traffic.
+
+Also verify firewall instance tags:
+
+```cli
+gcloud compute instances describe pan-fw-a1 \
+  --project=SEC_PROJECT \
+  --zone=us-central1-a \
+  --format='yaml(name,tags.items)'
+```
+
+**Success criteria:** the VM contains `pan-fw`, the bypass PBR contains the same tag, and all lower-priority interception PBRs have numerically larger priorities.
+
+If the VM does not have the tag, the bypass PBR is not applicable to packets emitted by that VM even though the PBR exists in the same VPC.
 
 ## 7.12 Cloud Interconnect versus HA VPN for this inspection design
 
