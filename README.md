@@ -12,6 +12,9 @@ Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA c
 
 ## GCP Networking
 
+### [Google Cloud Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
+Comprehensive GCP firewall-insertion taxonomy covering Cloud NGFW distributed enforcement, Cloud NGFW Enterprise zonal firewall endpoints, Network Security Integration in-band GENEVE packet intercept, Policy-Based Routes and static routes to internal passthrough Network Load Balancers fronting third-party NVAs, direct multi-NIC firewalls, Network Connectivity Center Router Appliance/BGP, NCC Gateway/SSE, load-balancer sandwich patterns, Packet Mirroring/Cloud IDS distinctions, state symmetry, NAT, HA, verification, and troubleshooting, with matching SVG/editable draw.io diagrams.
+
 ### [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
 Deep dive into Google Cloud VPC Policy-Based Routing for source/destination/protocol-based traffic steering and service insertion. Covers routing order, internal passthrough Network Load Balancer next hops, stateful NVA/firewall symmetry, VM-tag and Cloud Interconnect scopes, `DEFAULT_ROUTING` bypass policies, Google APIs/GKE/Private Service Connect caveats, Console configuration, `gcloud` examples, Terraform resources and lab skeletons, official Google diagrams/screenshots, verification, and symptom-based troubleshooting.
 
