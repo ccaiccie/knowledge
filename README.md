@@ -12,6 +12,9 @@ Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA c
 
 ## GCP Networking
 
+### [Google Cloud Network Connectivity Center (NCC) — Comprehensive Study Guide](09-06-26-19-15_GCP_Network_Connectivity_Center_Comprehensive_Study_Guide.md)
+Deep dive into GCP Network Connectivity Center as a global hub-and-spoke connectivity control plane. Covers VPC and producer VPC spokes, HA VPN/Interconnect/Router Appliance hybrid spokes, mesh/star/hybrid-inspection topologies, VPC and hybrid route exchange, spoke import/export filters, site-to-site data transfer, cross-spoke static NLB next hops, Private Service Connect propagation, Private NAT, NCC Gateway/SSE, BGP and packet flows, HA/failover, gcloud/Terraform patterns, scaling limits, pricing, verification, and symptom-based troubleshooting, with matching SVG/editable draw.io diagrams.
+
 ### [Google Cloud Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
 Comprehensive GCP firewall-insertion taxonomy covering Cloud NGFW distributed enforcement, Cloud NGFW Enterprise zonal firewall endpoints, Network Security Integration in-band GENEVE packet intercept, Policy-Based Routes and static routes to internal passthrough Network Load Balancers fronting third-party NVAs, direct multi-NIC firewalls, Network Connectivity Center Router Appliance/BGP, NCC Gateway/SSE, load-balancer sandwich patterns, Packet Mirroring/Cloud IDS distinctions, state symmetry, NAT, HA, verification, and troubleshooting, with matching SVG/editable draw.io diagrams.
 
