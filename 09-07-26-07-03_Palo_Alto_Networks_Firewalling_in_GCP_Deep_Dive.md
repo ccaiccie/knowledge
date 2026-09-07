@@ -37,6 +37,7 @@ This guide separates three concepts that are easy to conflate:
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-security-profiles
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-security-profile-groups
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-firewall-rules
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-consumer-service
 
 ---
 
@@ -412,7 +413,46 @@ pan-fw-a1       (healthy VM-Series inspection node)
 
 Step 4.5 then binds NSI to the load balancer by referencing `pan-nsi-ilb-fr`; that reference is what makes this producer ILB part of the interception data path.
 
-## 4.4 Create intercept deployment group
+## 4.4–4.7 Tie the producer service to the consumer VPC
+
+The next four objects are easier to understand as **one chain** instead of four unrelated commands.
+
+![NSI producer-consumer object chain](images/09-07-26-07-03_nsi_producer_consumer_object_chain.svg)
+
+[Editable draw.io](images/09-07-26-07-03_nsi_producer_consumer_object_chain.drawio)
+
+**What this image shows:** The consumer-side policy objects ultimately point to a producer-side **intercept deployment group**. That global producer object owns one or more **zonal intercept deployments**, and each zonal deployment references the internal forwarding rule that fronts the VM-Series service.
+
+**What matters:** The consumer never points directly to `pan-nsi-ilb-fr`. The stable cross-project contract is the **intercept deployment group**. The consumer creates its own **intercept endpoint group** as a pointer to that producer service, and an **endpoint-group association** binds that pointer to the actual consumer VPC.
+
+**What to verify:** Read the diagram from right-to-left for resource ownership and left-to-right for packet selection. A complete path is:
+
+```text
+Consumer firewall rule
+  -> security profile group
+  -> custom-intercept profile
+  -> intercept endpoint group (pan-ieg)
+  -> producer intercept deployment group (pan-idg)
+  -> selected zonal intercept deployment (pan-id-uscentral1a)
+  -> producer forwarding rule (pan-nsi-ilb-fr)
+  -> backend service
+  -> healthy VM-Series
+```
+
+### 4.4 Create the producer intercept deployment group — the global service umbrella
+
+**Source information:** An intercept deployment group is the producer's global logical representation of an in-band packet-inspection service. It is associated with the producer VPC and provides the stable object that consumer endpoint groups reference.
+
+**Additional explanation:** `pan-idg` does not have an IP address and it does not load-balance packets. It is the **service-level namespace/umbrella** above the zonal intercept deployments. Think of it as saying: “`pan-inspection-vpc` publishes one NSI inspection service called `pan-idg`; the actual service entry points are supplied by its zonal deployments.”
+
+Why Google needs this extra layer:
+
+- A producer service can have multiple zonal deployments.
+- Consumers should not need to know or reference each regional ILB forwarding rule.
+- A stable global producer object lets the producer change or add zonal capacity without changing the consumer's logical service reference.
+- Cross-project access can be granted to this producer offering rather than exposing arbitrary producer compute resources directly.
+
+Create it:
 
 ```cli
 gcloud network-security intercept-deployment-groups create pan-idg \
@@ -422,6 +462,23 @@ gcloud network-security intercept-deployment-groups create pan-idg \
   --no-async
 ```
 
+Object created:
+
+```text
+projects/pan-sec-prod/locations/global/interceptDeploymentGroups/pan-idg
+```
+
+It means:
+
+```text
+Producer project: pan-sec-prod
+Producer VPC:     pan-inspection-vpc
+Global NSI offer: pan-idg
+Actual packet entry point: NOT DEFINED YET
+```
+
+That last line is important. The deployment group alone does not tell NSI which ILB frontend receives packets. Step 4.5 supplies that missing zonal mapping.
+
 Verify:
 
 ```cli
@@ -430,11 +487,29 @@ gcloud network-security intercept-deployment-groups describe pan-idg \
   --location=global
 ```
 
-**Success criteria:** the deployment group reaches an active/ready state and references the intended producer VPC.
+**Success criteria:** the object exists at `global`, references `pan-inspection-vpc`, and is in the expected operational state.
 
-## 4.5 Create zonal intercept deployment
+**Failure indicator:** if the wrong producer VPC is referenced here, all downstream consumer objects can be syntactically valid while still pointing at the wrong producer service boundary.
 
-Assume the producer ILB forwarding rule is `pan-nsi-ilb-fr`.
+### 4.5 Create the zonal intercept deployment — map one zone to one producer ILB frontend
+
+The **intercept deployment** is where the logical producer service becomes a real data-plane destination.
+
+`pan-id-uscentral1a` says, in effect:
+
+> For the `pan-idg` service in `us-central1-a`, send intercepted traffic to the regional forwarding rule `pan-nsi-ilb-fr`.
+
+This creates the critical relationship:
+
+```text
+pan-idg
+  -> pan-id-uscentral1a
+       -> pan-nsi-ilb-fr
+            -> pan-nsi-ilb-bs
+                 -> VM-Series backends
+```
+
+Create it:
 
 ```cli
 gcloud network-security intercept-deployments create pan-id-uscentral1a \
@@ -446,6 +521,22 @@ gcloud network-security intercept-deployments create pan-id-uscentral1a \
   --no-async
 ```
 
+Why both a **zone** and a **regional forwarding rule** appear:
+
+- The intercept deployment is **zonal** because NSI uses zonal producer service placements.
+- The internal passthrough NLB forwarding rule is **regional**.
+- The zonal deployment tells NSI which regional producer frontend represents the inspection service for that zone.
+
+For another supported zone, you create another intercept deployment under the same `pan-idg`, for example conceptually:
+
+```text
+pan-idg
+  +-- pan-id-uscentral1a -> forwarding rule for the zone-A service path
+  +-- pan-id-uscentral1b -> forwarding rule for the zone-B service path
+```
+
+Do not infer that the deployment group itself performs load balancing between VM-Series appliances. Appliance selection still occurs through the referenced internal passthrough load balancer/backend service.
+
 Verify:
 
 ```cli
@@ -454,9 +545,31 @@ gcloud network-security intercept-deployments describe pan-id-uscentral1a \
   --location=us-central1-a
 ```
 
-**Important fields:** deployment group, forwarding rule, location, and state.
+**Important fields to verify:**
 
-## 4.6 Create consumer endpoint group
+- intercept deployment group = `pan-idg`
+- forwarding rule = `pan-nsi-ilb-fr`
+- forwarding rule location = `us-central1`
+- deployment location = `us-central1-a`
+- state = expected ready/active state
+
+**Failure indicator:** a healthy ILB does not help if this deployment references the wrong forwarding rule. Conversely, a correct NSI control-plane object cannot pass traffic if the referenced ILB has no healthy backend.
+
+### 4.6 Create the consumer intercept endpoint group — the consumer-side pointer to the producer service
+
+Now cross from the **producer** to the **consumer** side.
+
+The consumer does not reference `pan-nsi-ilb-fr` and does not reference a VM-Series IP. Instead it creates `pan-ieg`, whose job is to point to the producer's global service offering `pan-idg`.
+
+Conceptually:
+
+```text
+CONSUMER                                   PRODUCER
+pan-ieg  --------------------------------> pan-idg
+(endpoint group)                           (deployment group)
+```
+
+Create it:
 
 ```cli
 gcloud network-security intercept-endpoint-groups create pan-ieg \
@@ -466,9 +579,43 @@ gcloud network-security intercept-endpoint-groups create pan-ieg \
   --no-async
 ```
 
-The consumer identity also needs the appropriate Intercept Deployment User permission on the producer-side deployment group/project.
+This means:
 
-## 4.7 Associate endpoint group with consumer VPC
+```text
+Consumer-owned object: pan-ieg
+References producer:    pan-idg
+Does not yet select:    any consumer VPC
+```
+
+That final point is why Step 4.7 exists. Creating `pan-ieg` establishes **which producer offering** the consumer wants, but not **which consumer network** is allowed to use it.
+
+The consumer identity must also have the required permission to use the producer intercept deployment group. In a cross-project design, treat IAM on the producer service as part of the service contract, not as an afterthought.
+
+Verify:
+
+```cli
+gcloud network-security intercept-endpoint-groups describe pan-ieg \
+  --project=app-prod-1 \
+  --location=global
+```
+
+**Success criteria:** `pan-ieg` resolves to the intended fully-qualified producer deployment group `pan-idg`.
+
+### 4.7 Associate the endpoint group with the consumer VPC — choose which VPC can use the service
+
+`pan-ieg` still is not attached to a VPC. The **intercept endpoint group association** performs that binding.
+
+The association means:
+
+```text
+app-vpc
+   |
+   +-- uses pan-ieg
+            |
+            +-- points to producer pan-idg
+```
+
+Create it:
 
 ```cli
 gcloud network-security intercept-endpoint-group-associations create pan-ieg-app-vpc \
@@ -479,13 +626,90 @@ gcloud network-security intercept-endpoint-group-associations create pan-ieg-app
   --no-async
 ```
 
-Verify:
+The distinction between the two consumer objects is important:
+
+| Object | Question it answers |
+|---|---|
+| `pan-ieg` intercept endpoint group | **Which producer inspection service do I want to consume?** |
+| `pan-ieg-app-vpc` association | **Which consumer VPC is allowed to consume it?** |
+
+Without the association, the endpoint group can exist but `app-vpc` is not bound to it. Google documents that the consumer VPC and its endpoint-group association must be in the same project; the endpoint group itself can be managed separately subject to the documented organization/project constraints.
+
+Verify both the endpoint group and association:
 
 ```cli
 gcloud network-security intercept-endpoint-groups describe pan-ieg \
   --project=app-prod-1 \
   --location=global
+
+gcloud network-security intercept-endpoint-group-associations describe pan-ieg-app-vpc \
+  --project=app-prod-1 \
+  --location=global
 ```
+
+**Success criteria:**
+
+- endpoint group `pan-ieg` points to producer `pan-idg`
+- association `pan-ieg-app-vpc` points to `pan-ieg`
+- association network is `app-vpc`
+- resources reach the expected operational state
+
+### 4.7.1 What exists after Step 4.7 — and what still does not
+
+At this moment, you have built the cross-project service plumbing:
+
+```text
+app-vpc
+  -> pan-ieg-app-vpc association
+  -> pan-ieg endpoint group
+  -> pan-idg deployment group
+  -> pan-id-uscentral1a zonal deployment
+  -> pan-nsi-ilb-fr
+  -> pan-nsi-ilb-bs
+  -> VM-Series
+```
+
+But **no workload flow is intercepted merely because these objects exist**.
+
+Steps 4.8–4.12 add the policy selection layer:
+
+```text
+Firewall policy rule
+  -> security profile group
+  -> custom-intercept profile
+  -> pan-ieg
+```
+
+Only when a packet matches a firewall rule using `APPLY_SECURITY_PROFILE_GROUP` does NSI use this service chain for that traffic.
+
+### 4.7.2 Control-plane reference chain versus data-plane packet path
+
+These are related but not identical.
+
+**Control-plane/reference chain:**
+
+```text
+Rule -> Security Profile Group -> Custom Intercept Profile
+     -> Intercept Endpoint Group -> Intercept Deployment Group
+     -> Zonal Intercept Deployment -> Forwarding Rule
+```
+
+This answers: **which service should a matching flow use?**
+
+**Producer data plane:**
+
+```text
+Forwarding rule UDP/6081
+  -> backend service
+  -> healthy instance-group member
+  -> VM-Series GENEVE inspection
+  -> allow/drop verdict
+  -> NSI reinjection for allowed traffic
+```
+
+This answers: **where does the intercepted packet physically get inspected?**
+
+Keeping these two views separate makes the large NSI object model much easier to troubleshoot.
 
 ## 4.8 Create custom-intercept security profile
 
@@ -819,4 +1043,5 @@ request plugins vm_series geneve-inspect enable yes
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-tutorial
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-consumer-service
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-firewall-rules
