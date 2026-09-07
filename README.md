@@ -12,6 +12,9 @@ Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA c
 
 ## GCP Networking
 
+### [Google Cloud NGFW Enterprise Firewall Endpoints — Deep Dive](09-07-26-07-05_GCP_Cloud_NGFW_Enterprise_Firewall_Endpoints_Deep_Dive.md)
+Deep dive into Cloud NGFW Enterprise zonal firewall endpoints, organization-level versus project-level ownership, VPC endpoint associations, Google Packet Intercept behavior without customer-managed firewall next-hop routes, `apply_security_profile_group` rule processing, threat-prevention/URL-filtering/malware profiles, TLS inspection and CA relationships, MTU/GENEVE overhead, capacity limits, multi-zone coverage, `gcloud` deployment, expected verification states, routing/NAT interactions, limitations, common mistakes, and symptom-based troubleshooting, with three matching SVG/editable draw.io diagrams.
+
 ### [Google Cloud Network Connectivity Center (NCC) — Comprehensive Study Guide](09-06-26-19-15_GCP_Network_Connectivity_Center_Comprehensive_Study_Guide.md)
 Deep dive into GCP Network Connectivity Center as a global hub-and-spoke connectivity control plane. Covers VPC and producer VPC spokes, HA VPN/Interconnect/Router Appliance hybrid spokes, mesh/star/hybrid-inspection topologies, VPC and hybrid route exchange, spoke import/export filters, site-to-site data transfer, cross-spoke static NLB next hops, Private Service Connect propagation, Private NAT, NCC Gateway/SSE, BGP and packet flows, HA/failover, gcloud/Terraform patterns, scaling limits, pricing, verification, and symptom-based troubleshooting, with matching SVG/editable draw.io diagrams.
 
