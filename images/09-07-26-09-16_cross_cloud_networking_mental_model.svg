@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker>
+    <style>
+      .title{font:700 34px Arial,sans-serif;fill:#0f172a}.h{font:700 24px Arial,sans-serif;fill:#0f172a}.t{font:18px Arial,sans-serif;fill:#0f172a}.s{font:15px Arial,sans-serif;fill:#334155}.box{fill:#f8fafc;stroke:#64748b;stroke-width:2;rx:14}.aws{fill:#fff7ed;stroke:#f59e0b}.az{fill:#eff6ff;stroke:#3b82f6}.gcp{fill:#f0fdf4;stroke:#22c55e}.route{fill:#ffffff;stroke:#475569;stroke-width:2;rx:10}.arrow{stroke:#334155;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <text x="800" y="52" text-anchor="middle" class="title">AWS vs Azure vs GCP — Network, Subnet, and Routing Mental Model</text>
+
+  <rect x="40" y="95" width="470" height="730" class="box aws"/>
+  <text x="275" y="135" text-anchor="middle" class="h">AWS</text>
+  <text x="275" y="165" text-anchor="middle" class="s">VPC is regional; subnet is AZ-scoped</text>
+  <rect x="95" y="205" width="360" height="90" class="route"/>
+  <text x="275" y="242" text-anchor="middle" class="t">VPC 10.0.0.0/16</text><text x="275" y="270" text-anchor="middle" class="s">Regional network boundary</text>
+  <path d="M275 295 V345" class="arrow"/>
+  <rect x="85" y="350" width="170" height="105" class="route"/><rect x="295" y="350" width="170" height="105" class="route"/>
+  <text x="170" y="385" text-anchor="middle" class="t">Subnet A</text><text x="170" y="412" text-anchor="middle" class="s">10.0.1.0/24</text><text x="170" y="438" text-anchor="middle" class="s">AZ-a</text>
+  <text x="380" y="385" text-anchor="middle" class="t">Subnet B</text><text x="380" y="412" text-anchor="middle" class="s">10.0.2.0/24</text><text x="380" y="438" text-anchor="middle" class="s">AZ-b</text>
+  <path d="M170 455 V510" class="arrow"/><path d="M380 455 V510" class="arrow"/>
+  <rect x="85" y="515" width="170" height="115" class="route"/><rect x="295" y="515" width="170" height="115" class="route"/>
+  <text x="170" y="548" text-anchor="middle" class="t">Route Table A</text><text x="170" y="578" text-anchor="middle" class="s">0/0 → NAT / IGW / TGW</text><text x="170" y="605" text-anchor="middle" class="s">Explicit or main association</text>
+  <text x="380" y="548" text-anchor="middle" class="t">Route Table B</text><text x="380" y="578" text-anchor="middle" class="s">Custom next hops</text><text x="380" y="605" text-anchor="middle" class="s">1 table per subnet at a time</text>
+  <text x="275" y="700" text-anchor="middle" class="h">Question to ask</text><text x="275" y="738" text-anchor="middle" class="t">“Which route is in this subnet's</text><text x="275" y="765" text-anchor="middle" class="t">associated route table?”</text>
+
+  <rect x="565" y="95" width="470" height="730" class="box az"/>
+  <text x="800" y="135" text-anchor="middle" class="h">Azure</text>
+  <text x="800" y="165" text-anchor="middle" class="s">VNet is regional; subnets span zones in-region</text>
+  <rect x="620" y="205" width="360" height="90" class="route"/>
+  <text x="800" y="242" text-anchor="middle" class="t">VNet 10.0.0.0/16</text><text x="800" y="270" text-anchor="middle" class="s">Regional network boundary</text>
+  <path d="M800 295 V345" class="arrow"/>
+  <rect x="610" y="350" width="170" height="105" class="route"/><rect x="820" y="350" width="170" height="105" class="route"/>
+  <text x="695" y="385" text-anchor="middle" class="t">Subnet A</text><text x="695" y="412" text-anchor="middle" class="s">10.0.1.0/24</text><text x="695" y="438" text-anchor="middle" class="s">Regional subnet</text>
+  <text x="905" y="385" text-anchor="middle" class="t">Subnet B</text><text x="905" y="412" text-anchor="middle" class="s">10.0.2.0/24</text><text x="905" y="438" text-anchor="middle" class="s">Regional subnet</text>
+  <path d="M695 455 V510" class="arrow"/><path d="M905 455 V510" class="arrow"/>
+  <rect x="610" y="515" width="380" height="130" class="route"/>
+  <text x="800" y="550" text-anchor="middle" class="t">Effective routes</text><text x="800" y="582" text-anchor="middle" class="s">System routes + UDRs + propagated BGP</text><text x="800" y="612" text-anchor="middle" class="s">Route-table object is associated to subnet</text>
+  <text x="800" y="700" text-anchor="middle" class="h">Question to ask</text><text x="800" y="738" text-anchor="middle" class="t">“Which effective route wins for traffic</text><text x="800" y="765" text-anchor="middle" class="t">leaving this subnet/NIC?”</text>
+
+  <rect x="1090" y="95" width="470" height="730" class="box gcp"/>
+  <text x="1325" y="135" text-anchor="middle" class="h">Google Cloud</text>
+  <text x="1325" y="165" text-anchor="middle" class="s">VPC and routes are global; subnets are regional</text>
+  <rect x="1145" y="205" width="360" height="90" class="route"/>
+  <text x="1325" y="242" text-anchor="middle" class="t">VPC Network</text><text x="1325" y="270" text-anchor="middle" class="s">Global network resource</text>
+  <path d="M1325 295 V345" class="arrow"/>
+  <rect x="1135" y="350" width="170" height="105" class="route"/><rect x="1345" y="350" width="170" height="105" class="route"/>
+  <text x="1220" y="385" text-anchor="middle" class="t">us-west1 subnet</text><text x="1220" y="412" text-anchor="middle" class="s">10.1.0.0/24</text><text x="1220" y="438" text-anchor="middle" class="s">Regional</text>
+  <text x="1430" y="385" text-anchor="middle" class="t">us-east1 subnet</text><text x="1430" y="412" text-anchor="middle" class="s">10.2.0.0/24</text><text x="1430" y="438" text-anchor="middle" class="s">Regional</text>
+  <path d="M1220 455 C1220 500 1325 490 1325 520" class="arrow"/><path d="M1430 455 C1430 500 1325 490 1325 520" class="arrow"/>
+  <rect x="1135" y="525" width="380" height="145" class="route"/>
+  <text x="1325" y="560" text-anchor="middle" class="t">VPC-level distributed routing table</text><text x="1325" y="592" text-anchor="middle" class="s">Subnet + static + dynamic + policy-based routes</text><text x="1325" y="622" text-anchor="middle" class="s">Some routes apply selectively via tags/scope</text><text x="1325" y="648" text-anchor="middle" class="s">No AWS/Azure-style subnet route-table attachment</text>
+  <text x="1325" y="715" text-anchor="middle" class="h">Question to ask</text><text x="1325" y="753" text-anchor="middle" class="t">“Which VPC routes are applicable to</text><text x="1325" y="780" text-anchor="middle" class="t">this VM/resource, and which wins?”</text>
+
+  <text x="800" y="870" text-anchor="middle" class="s">Core translation: AWS subnet route table → Azure effective subnet routes → GCP applicable VPC routes</text>
+</svg>
