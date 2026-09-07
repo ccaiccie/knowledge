@@ -53,6 +53,7 @@ This guide separates three concepts that are easy to conflate:
   - [4.9 Create security profile group](#49-create-security-profile-group)
   - [4.10 Create global network firewall policy](#410-create-global-network-firewall-policy)
   - [4.11 Create interception rule](#411-create-interception-rule)
+    - [4.11.1 Firewall-policy actions and why they matter](#4111-firewall-policy-actions-and-why-they-matter)
   - [4.12 Associate firewall policy with VPC](#412-associate-firewall-policy-with-vpc)
 - [5. East-west packet flow with NSI](#5-east-west-packet-flow-with-nsi)
   - [5.1 Return path — NSI firewall rules are stateful](#51-return-path--nsi-firewall-rules-are-stateful)
@@ -111,6 +112,10 @@ This guide separates three concepts that are easy to conflate:
 - https://cloud.google.com/security/products/firewall
 - https://cloud.google.com/blog/products/identity-security/announcing-next-gen-firewall-enterprise-now-in-ga-next24
 - https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention
+- https://docs.cloud.google.com/firewall/docs/firewall-policies
+- https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details
+- https://docs.cloud.google.com/firewall/docs/use-network-firewall-policies
+- https://docs.cloud.google.com/firewall/docs/troubleshoot/layer-7-inspection-setup
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
@@ -989,6 +994,167 @@ gcloud compute network-firewall-policies rules create 1000 \
 ```
 
 For egress rules, use destination matching instead of ingress source matching.
+
+### 4.11.1 Firewall-policy actions and why they matter
+
+The `--action` field decides what Google Cloud does **after a firewall-policy rule matches**. For global network firewall policies and hierarchical firewall policies, the actions you need to understand are:
+
+| Action | Meaning | Does evaluation stop in the current policy? | Relevance to this NSI design |
+|---|---|---:|---|
+| `allow` | Permit the matching connection. | Yes | Use for traffic that should be allowed without VM-Series interception. |
+| `deny` | Block the matching connection. | Yes | Use for traffic that should be dropped by Google before it reaches the NSI inspection service. |
+| `goto_next` | Stop evaluating the current policy and continue at the next step in Google's firewall-policy evaluation order. | Yes, for the current policy; evaluation continues elsewhere. | Useful when an organization/folder policy deliberately delegates the decision to the next policy layer. It is **not** equivalent to `allow`. |
+| `apply_security_profile_group` | Send matching traffic to a firewall endpoint or NSI intercept endpoint group referenced through the security profile group. | Yes | This is the action that performs NSI in-band service insertion into the VM-Series inspection service. |
+
+**Source information:** Google documents `allow`, `deny`, `goto_next`, and `apply_security_profile_group` as valid actions for global network firewall policies. For NSI in-band integration, the interception rule must use `apply_security_profile_group` and reference the security profile group containing the custom-intercept profile.
+
+The high-level decision tree is:
+
+```text
+Packet matches firewall-policy rule
+                |
+                +--> allow
+                |      |
+                |      +--> permit connection
+                |           stop current rule evaluation
+                |
+                +--> deny
+                |      |
+                |      +--> drop connection
+                |           stop current rule evaluation
+                |
+                +--> goto_next
+                |      |
+                |      +--> do not allow yet
+                |           do not deny yet
+                |           do not intercept yet
+                |           continue at next firewall-policy stage
+                |
+                +--> apply_security_profile_group
+                       |
+                       +--> security profile group pan-spg
+                              |
+                              +--> custom-intercept profile
+                                     |
+                                     +--> intercept endpoint group pan-ieg
+                                            |
+                                            +--> producer deployment group pan-idg
+                                                   |
+                                                   +--> VM-Series inspection
+```
+
+#### `allow` versus `goto_next`
+
+This distinction is easy to miss.
+
+An `allow` action is a final permit decision for that firewall-policy evaluation path:
+
+```cli
+gcloud compute network-firewall-policies rules create 500 \
+  --project=app-prod-1 \
+  --firewall-policy=pan-nsi-policy \
+  --action=allow \
+  --direction=INGRESS \
+  --src-ip-ranges=10.20.0.0/16 \
+  --layer4-configs=all \
+  --global-firewall-policy
+```
+
+Conceptually:
+
+```text
+match rule 500
+   -> ALLOW
+   -> permit connection
+```
+
+By contrast, `goto_next` means that this policy is **delegating**, not permitting:
+
+```cli
+gcloud compute network-firewall-policies rules create 500 \
+  --project=app-prod-1 \
+  --firewall-policy=pan-nsi-policy \
+  --action=goto_next \
+  --direction=INGRESS \
+  --src-ip-ranges=10.20.0.0/16 \
+  --layer4-configs=all \
+  --global-firewall-policy
+```
+
+Conceptually:
+
+```text
+match rule 500
+   -> GOTO_NEXT
+   -> stop evaluating this policy
+   -> continue to the next policy/evaluation stage
+   -> later policy or implied rule decides allow/deny/interception
+```
+
+This matters most with hierarchical policies, where an organization-level or folder-level policy can intentionally defer a subset of traffic to a lower policy layer.
+
+#### Why `apply_security_profile_group` is special for NSI
+
+For this guide's VM-Series + NSI design, `apply_security_profile_group` is not just another permit/deny action. It changes the processing path:
+
+```text
+normal VPC packet
+      |
+      v
+firewall-policy rule matches
+      |
+      v
+APPLY_SECURITY_PROFILE_GROUP
+      |
+      v
+pan-spg
+      |
+      v
+pan-custom-intercept
+      |
+      v
+pan-ieg
+      |
+      v
+NSI producer service
+      |
+      v
+VM-Series
+```
+
+Google stops evaluating other firewall rules once this action matches. The security appliance path then determines whether the intercepted traffic is allowed or blocked.
+
+For supported stateful connections, Google also creates firewall connection-tracking state for an `apply_security_profile_group` match. That is why subsequent packets in both directions of the established connection remain intercepted without requiring a separate reverse-direction interception rule merely for reply traffic.
+
+#### Critical fallback behavior
+
+Google documents an important operational caveat: the default fallback action for `apply_security_profile_group` rules is **allow**.
+
+If advanced inspection cannot be applied because the inspection setup is invalid—for example, the expected endpoint/association is missing—Google can allow the traffic instead of silently converting the condition into an implicit deny. In firewall-policy logs, this condition is represented with:
+
+```text
+rule_details.action="APPLY_SECURITY_PROFILE_GROUP"
+rule_details.apply_security_profile_fallback_action="ALLOW"
+```
+
+That means **logging and alerting are part of the security design**, not just troubleshooting convenience.
+
+A useful log-based monitoring condition is conceptually:
+
+```text
+jsonPayload.rule_details.action="APPLY_SECURITY_PROFILE_GROUP"
+jsonPayload.rule_details.apply_security_profile_fallback_action="ALLOW"
+```
+
+**Success state:** intercepted connections normally show that the rule action was `APPLY_SECURITY_PROFILE_GROUP` and the traffic was sent to the intended NSI endpoint chain.
+
+**Failure indicator:** `apply_security_profile_fallback_action=ALLOW` appears when traffic that was intended for advanced inspection fell back to allow.
+
+**Next action:** immediately validate the consumer endpoint-group association, security profile group, custom-intercept profile, producer deployment health, and VM-Series service availability before treating the flow as successfully inspected.
+
+#### Regional-policy limitation
+
+Do not attempt to build this NSI interception rule in a **regional network firewall policy**. Google documents that `apply_security_profile_group` is not supported there. Use a global network firewall policy or a supported hierarchical firewall policy for NSI in-band interception.
 
 ## 4.12 Associate firewall policy with VPC
 
@@ -2724,6 +2890,23 @@ Verify required reboot and interface/plugin state.
 
 A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** normally the explanation for return packets that already belong to the tracked outbound NSI session.
 
+## `apply_security_profile_group` unexpectedly falls back to allow
+
+**Where:** consumer firewall-policy logging and the NSI endpoint/profile chain.
+
+**Check:** search firewall logs for:
+
+```text
+jsonPayload.rule_details.action="APPLY_SECURITY_PROFILE_GROUP"
+jsonPayload.rule_details.apply_security_profile_fallback_action="ALLOW"
+```
+
+**What it tests:** whether traffic that was intended for advanced inspection failed to use a valid inspection path and used Google's documented fallback action instead.
+
+**Failure meaning:** the connection may have been permitted without the intended VM-Series inspection.
+
+**Next action:** verify `pan-spg` → `pan-custom-intercept` → `pan-ieg`, the endpoint-group association to `app-vpc`, the producer deployment group, zonal intercept deployment, ILB health, and VM-Series availability.
+
 ## Direct Internet egress sends outbound traffic but receives no usable response
 
 **Check:** PAN-OS untrust return route/NAT state, Security policy, response session lookup, and GENEVE response reinjection metadata.
@@ -2754,6 +2937,8 @@ A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** norm
 16. Ignoring GCP primary-interface/load-balancer constraints for Internet ingress.
 17. Creating an unmanaged instance group and trying to add `pan-fw-a1` before actually creating the VM-Series Compute Engine instance.
 18. Using the standard-NSI management-interface-swap NIC model and the NSI Overlay `nic0=Management, nic1=Trust, nic2=Untrust` model as though they were the same topology.
+19. Treating `goto_next` as equivalent to `allow`; `goto_next` delegates evaluation to the next firewall-policy stage rather than making a final permit decision.
+20. Assuming `apply_security_profile_group` fails closed by default. Google documents a default fallback of `allow`; monitor `apply_security_profile_fallback_action=ALLOW` and treat it as a security-relevant condition.
 
 ---
 
@@ -2789,6 +2974,10 @@ A missing standalone ingress `APPLY_SECURITY_PROFILE_GROUP` rule is **not** norm
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/management-interface-mapping-for-google-internal-load-balancing
 - https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform/deploy-the-vm-series-firewall-on-gcp/use-the-vm-series-firewall-cli-to-swap-the-management-interface-on-google
 - https://cloud.google.com/security/products/firewall
+- https://docs.cloud.google.com/firewall/docs/firewall-policies
+- https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details
+- https://docs.cloud.google.com/firewall/docs/use-network-firewall-policies
+- https://docs.cloud.google.com/firewall/docs/troubleshoot/layer-7-inspection-setup
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
 - https://docs.cloud.google.com/network-security-integration/docs/understand-geneve
 - https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
