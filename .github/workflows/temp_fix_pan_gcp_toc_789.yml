@@ -1,0 +1,18 @@
+name: temp-fix-pan-gcp-toc-789
+on: push
+permissions:
+  contents: write
+jobs:
+  edit:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/temp_fix_pan_gcp_toc_789.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md
+          git rm .github/scripts/temp_fix_pan_gcp_toc_789.py .github/workflows/temp_fix_pan_gcp_toc_789.yml
+          git commit -m "Fix Palo Alto GCP TOC ordering for Internet ingress"
+          git push
