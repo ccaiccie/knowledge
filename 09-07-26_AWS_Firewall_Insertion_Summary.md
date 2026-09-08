@@ -12,14 +12,14 @@ AWS has several fundamentally different ways to put a security function into a p
 
 | Method | What selects traffic? | Where is the firewall? | Customer route steering? | Best mental label |
 |---|---|---|---:|---|
-| **AWS Network Firewall in a VPC** | VPC/IGW route table | AWS-managed firewall endpoints | Yes | **Native routed firewall** |
-| **TGW-attached AWS Network Firewall** | Transit Gateway route table | AWS-managed network-function attachment | Yes, on TGW | **Native TGW security attachment** |
-| **Distributed GWLBE** | VPC/IGW route → GWLBE | Third-party NVA behind centralized GWLB | Yes | **Distributed transparent insertion** |
-| **TGW + GWLB inspection VPC** | TGW route table + VPC routes | Third-party NVA behind GWLB | Yes | **Centralized third-party inspection** |
-| **Legacy TGW + direct NVA VPC** | TGW route table + ENI/VPC route | Customer-managed NVA | Yes | **Direct appliance transit** |
-| **Cloud WAN service insertion** | Core-network policy `send-via` / `send-to` | Network Function Group | Policy-driven | **Global policy service insertion** |
-| **VPC Route Server + NVA** | BGP advertisements | Customer-managed NVA | Dynamic | **Dynamic VPC routed insertion** |
-| **AWS WAF / CloudFront / ALB** | L7 resource association | AWS WAF | No routed hop | **HTTP/S application inspection** |
+| **[AWS Network Firewall in a VPC](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)** | VPC/IGW route table | AWS-managed firewall endpoints | Yes | **Native routed firewall** |
+| **[TGW-attached AWS Network Firewall](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)** | Transit Gateway route table | AWS-managed network-function attachment | Yes, on TGW | **Native TGW security attachment** |
+| **[Distributed GWLBE](09-06-26-15-23_Distributed_GWLBE_Centralized_Third_Party_Firewall_Fleet_Deep_Dive.md)** | VPC/IGW route → GWLBE | Third-party NVA behind centralized GWLB | Yes | **Distributed transparent insertion** |
+| **[TGW + GWLB inspection VPC](09-06-26-15-45_TGW_Centralized_GWLB_GWLBE_Inspection_VPC_Deep_Dive.md)** | TGW route table + VPC routes | Third-party NVA behind GWLB | Yes | **Centralized third-party inspection** |
+| **[Legacy TGW + direct NVA VPC](09-06-26-16-41_Legacy_TGW_NVA_VPC_Attachment_Deep_Dive.md)** | TGW route table + ENI/VPC route | Customer-managed NVA | Yes | **Direct appliance transit** |
+| **[Cloud WAN service insertion](09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive.md)** | Core-network policy `send-via` / `send-to` | Network Function Group | Policy-driven | **Global policy service insertion** |
+| **[VPC Route Server + NVA](09-06-26-17-01_AWS_VPC_Route_Server_NVA_Dynamic_Service_Insertion_Deep_Dive.md)** | BGP advertisements | Customer-managed NVA | Dynamic | **Dynamic VPC routed insertion** |
+| **[AWS WAF / CloudFront / ALB](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)** | L7 resource association | AWS WAF | No routed hop | **HTTP/S application inspection** |
 
 A useful shorthand is:
 
