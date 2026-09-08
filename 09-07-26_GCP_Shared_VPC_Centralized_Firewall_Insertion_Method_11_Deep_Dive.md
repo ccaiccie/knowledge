@@ -373,7 +373,7 @@ gcloud compute backend-services create fw-ilb-be \
   --project=network-host-prod \
   --region=us-central1 \
   --load-balancing-scheme=INTERNAL \
-  --protocol=TCP \
+  --protocol=UNSPECIFIED \
   --network=prod-shared-vpc \
   --health-checks=fw-hc \
   --health-checks-region=us-central1
@@ -403,7 +403,7 @@ gcloud compute forwarding-rules create fw-ilb-fr \
   --network=prod-shared-vpc \
   --subnet=firewall-subnet \
   --address=10.100.10.10 \
-  --ip-protocol=TCP \
+  --ip-protocol=L3_DEFAULT \
   --ports=ALL \
   --allow-global-access \
   --backend-service=fw-ilb-be \
@@ -417,6 +417,23 @@ gcloud compute backend-services get-health fw-ilb-be \
   --project=network-host-prod \
   --region=us-central1
 ```
+
+### Why this PBR firewall ILB uses `L3_DEFAULT` + `ALL`
+
+For this **PBR -> internal passthrough NLB -> firewall/NVA** design, the forwarding rule is intentionally configured with:
+
+```text
+Forwarding rule protocol: L3_DEFAULT
+Ports:                    ALL
+Backend service protocol: UNSPECIFIED
+```
+
+That combination makes the firewall service explicitly multi-protocol. For IPv4 internal passthrough Network Load Balancers, Google documents `L3_DEFAULT` as supporting TCP, UDP, ICMP, SCTP, ESP, AH, GRE, and other supported L3 protocols. `L3_DEFAULT` requires `ALL` ports, and the corresponding backend service protocol is `UNSPECIFIED`.
+
+The TCP health check above does **not** limit inspected traffic to TCP. It only determines whether each firewall backend is healthy enough to receive data-plane flows.
+
+> **Do not copy this forwarding rule unchanged into the static-route design in Section 7.2.** Google documents that an internal passthrough NLB whose forwarding rule uses `L3_DEFAULT` **cannot be the next hop of a static route**. If such a static route is created, traffic is silently dropped.
+
 
 Create the PBR:
 
@@ -587,6 +604,20 @@ must reach the same firewall state/NAT domain before the destination can be reve
 Do not design forward steering without separately proving the return route.
 
 ## 7.2 Static-route egress `gcloud` build
+
+> **Protocol behavior is different from the PBR example in Section 5.4.** Do **not** use an `L3_DEFAULT` forwarding rule when an internal passthrough NLB is the next hop of a **static route**. Google documents that `L3_DEFAULT` forwarding rules cannot be static-route next hops; traffic is silently dropped. Use a supported TCP or UDP forwarding-rule configuration for the static-route next-hop ILB. For modern next-hop ILB routes, Google Cloud forwards supported VPC protocol traffic on all ports to the appliance backends regardless of the forwarding rule's protocol/port configuration. In other words, the TCP/UDP forwarding-rule setting is a next-hop compatibility requirement here, not a statement that the firewall only receives that one protocol.
+
+```text
+PBR -> ILB -> firewall:
+  L3_DEFAULT + ALL
+  backend protocol UNSPECIFIED
+
+Static route -> ILB -> firewall:
+  TCP or UDP forwarding rule as supported next-hop configuration
+  NOT L3_DEFAULT
+  next-hop behavior still forwards supported VPC protocols/all ports
+```
+
 
 ```cli
 gcloud compute routes create default-via-fw-ilb \
