@@ -1,7 +1,7 @@
 # GCP Firewall Policy Hierarchy, `goto_next`, and NSI — Deep Dive
 
 **Last validated:** 2026-09-07  
-**Focus:** organization/folder hierarchical firewall policies, VPC-scoped global and regional network firewall policies, classic VPC firewall rules, evaluation order, `goto_next`, `apply_security_profile_group`, Network Security Integration (NSI), policy association, worked packet walks, CLI configuration, verification, limitations, and troubleshooting.
+**Focus:** organization/folder hierarchical firewall policies, VPC-scoped global and regional network firewall policies, regional system firewall policies, classic VPC firewall rules, evaluation order, `goto_next`, `apply_security_profile_group`, Network Security Integration (NSI), policy association, worked packet walks, CLI configuration, verification, limitations, and troubleshooting.
 
 > **Source information** = behavior explicitly documented by Google Cloud.  
 > **Additional explanation** = networking/security interpretation added to make the behavior easier to reason about.  
@@ -20,11 +20,17 @@
   - [3.1 Hierarchical firewall policy](#31-hierarchical-firewall-policy)
   - [3.2 Global network firewall policy](#32-global-network-firewall-policy)
   - [3.3 Regional network firewall policy](#33-regional-network-firewall-policy)
-  - [3.4 Classic VPC firewall rules](#34-classic-vpc-firewall-rules)
+  - [3.4 Regional system firewall policy — Google-managed](#34-regional-system-firewall-policy--google-managed)
+    - [3.4.1 Why Google creates one](#341-why-google-creates-one)
+    - [3.4.2 What you can and cannot change](#342-what-you-can-and-cannot-change)
+    - [3.4.3 Multiple regional system policies and association priority](#343-multiple-regional-system-policies-and-association-priority)
+    - [3.4.4 How a system-policy match affects NSI](#344-how-a-system-policy-match-affects-nsi)
+  - [3.5 Classic VPC firewall rules](#35-classic-vpc-firewall-rules)
 - [4. The complete evaluation order](#4-the-complete-evaluation-order)
   - [4.1 Default `AFTER_CLASSIC_FIREWALL`](#41-default-after_classic_firewall)
   - [4.2 `BEFORE_CLASSIC_FIREWALL`](#42-before_classic_firewall)
   - [4.3 Hierarchical policies are always first](#43-hierarchical-policies-are-always-first)
+  - [4.4 Regional system policies stay fixed in the order](#44-regional-system-policies-stay-fixed-in-the-order)
 - [5. What `goto_next` actually means](#5-what-goto_next-actually-means)
   - [5.1 `goto_next` does not mean allow](#51-goto_next-does-not-mean-allow)
   - [5.2 `goto_next` does not mean next rule in the same policy](#52-goto_next-does-not-mean-next-rule-in-the-same-policy)
@@ -53,6 +59,7 @@
   - [18.3 Verify the VPC enforcement order](#183-verify-the-vpc-enforcement-order)
   - [18.4 Verify policy rules](#184-verify-policy-rules)
   - [18.5 Verify effective firewall rules](#185-verify-effective-firewall-rules)
+  - [18.6 Verify effective regional rules, including system policies](#186-verify-effective-regional-rules-including-system-policies)
 - [19. Troubleshooting by symptom](#19-troubleshooting-by-symptom)
 - [20. Common mistakes](#20-common-mistakes)
 - [21. One-page mental model](#21-one-page-mental-model)
@@ -66,6 +73,9 @@
 Primary Google Cloud references:
 
 - https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-eval-order
+- https://docs.cloud.google.com/firewall/docs/firewall-policies-overview
+- https://docs.cloud.google.com/firewall/docs/release-notes
+- https://docs.cloud.google.com/firewall/docs/manage-regional-firewall-policies
 - https://docs.cloud.google.com/firewall/docs/firewall-policies
 - https://docs.cloud.google.com/firewall/docs/using-firewall-policies
 - https://docs.cloud.google.com/firewall/docs/network-firewall-policies
@@ -260,7 +270,170 @@ But Google does **not** support `apply_security_profile_group` in regional netwo
 
 Therefore do not build NSI in-band interception in a regional network firewall policy.
 
-## 3.4 Classic VPC firewall rules
+## 3.4 Regional system firewall policy — Google-managed
+
+A **regional system firewall policy** is not a policy that you create and manage yourself. It is a **Google-managed, regional, read-only firewall policy** that Google Cloud creates in a region of a VPC network when an internal Google service needs firewall rules in that region.
+
+This policy type became Generally Available on **February 19, 2026**. Google explicitly identifies internal Google services such as **Google Kubernetes Engine (GKE)** as users of regional system firewall policies.
+
+The naming distinction is critical:
+
+```text
+REGIONAL NETWORK FIREWALL POLICY
+= customer-created
+= customer-managed
+= associated by you to a VPC region
+
+REGIONAL SYSTEM FIREWALL POLICY
+= Google-created
+= Google-managed
+= read-only except logging
+= associated automatically when a Google service requires it
+```
+
+Google evaluates regional system firewall policies **immediately after hierarchical firewall policies and before every customer-controlled VPC-level firewall stage**. Their position does not move when you switch between `AFTER_CLASSIC_FIREWALL` and `BEFORE_CLASSIC_FIREWALL`.
+
+### 3.4.1 Why Google creates one
+
+Google creates a regional system firewall policy when one of its managed services needs firewall rules to secure or enable that service's operations inside a particular region of your VPC.
+
+Conceptually:
+
+```text
+Your VPC
+   |
+   +-- workloads
+   |
+   +-- Google-managed service
+          |
+          +-- service requires regional firewall behavior
+                  |
+                  v
+          Regional system firewall policy
+          created and managed by Google
+```
+
+**Source information:** Google states that regional system firewall policies are Google-managed, are created when a Google service requires rules in a region of a VPC network, and that services such as GKE use them to secure their operations.
+
+**Additional explanation:** Think of this policy as a protected system layer in the firewall decision chain. It exists so a managed Google service can enforce service-specific network requirements without asking you to reproduce or maintain those rules manually.
+
+### 3.4.2 What you can and cannot change
+
+You do **not** create, delete, reorder, or rewrite the rules in a regional system firewall policy.
+
+Google documents one operational exception: you can enable or disable **firewall rule logging** for a system-policy rule.
+
+So the management boundary is:
+
+| Operation | Customer control? |
+|---|---:|
+| Create the regional system firewall policy | No |
+| Associate it to the VPC region | No — Google does this as required by the service |
+| Add/remove/change system rules | No |
+| Change rule priority/action/match | No |
+| Enable/disable rule logging | Yes |
+| View effective firewall behavior | Yes |
+| Charged for evaluation of system-policy rules | No |
+
+Regional system firewall policies do **not** support `apply_security_profile_group`. Their matching actions are `allow`, `deny`, or `goto_next`.
+
+### 3.4.3 Multiple regional system policies and association priority
+
+Google can associate **more than one** regional system firewall policy with the same region of a VPC when multiple Google services require system rules.
+
+Conceptually:
+
+```text
+Hierarchical policies
+        |
+        v
+Regional system policy A
+association priority 1
+        |
+        | goto_next / no match
+        v
+Regional system policy B
+association priority 2
+        |
+        | goto_next / no match
+        v
+Next customer-controlled firewall stage
+```
+
+Within each system policy, Google evaluates applicable rules from highest to lowest rule priority. If a rule returns `allow` or `deny`, firewall evaluation stops. If the action is `goto_next`, or if no rule matches, evaluation moves to the system policy with the next association priority or, after the last system policy, to the next firewall stage.
+
+This means there are **two ordering concepts**:
+
+```text
+Association priority
+= order between multiple regional system firewall policies
+
+Rule priority
+= order of rules inside one regional system firewall policy
+```
+
+### 3.4.4 How a system-policy match affects NSI
+
+This is important for Network Security Integration.
+
+Suppose the VPC uses `BEFORE_CLASSIC_FIREWALL` and its global network firewall policy contains an NSI rule:
+
+```text
+Global network firewall policy
+100 APPLY_SECURITY_PROFILE_GROUP tcp/443
+```
+
+You might expect that rule to run before everything except hierarchical policy. But the actual order is:
+
+```text
+Hierarchical firewall policies
+        |
+        v
+Regional system firewall policies
+        |
+        v
+Global network firewall policy
+        |
+        v
+Regional network firewall policy
+        |
+        v
+Classic VPC firewall rules
+```
+
+Therefore, if a regional system rule matches first with a final action:
+
+```text
+System rule ALLOW
+   -> traffic is allowed
+   -> evaluation stops
+   -> VPC NSI rule is not reached
+
+System rule DENY
+   -> traffic is dropped
+   -> evaluation stops
+   -> VPC NSI rule is not reached
+
+System rule GOTO_NEXT
+   -> continue
+   -> later global policy can invoke NSI
+```
+
+This is why `BEFORE_CLASSIC_FIREWALL` should be understood as:
+
+```text
+Put customer network firewall policies before classic VPC rules.
+```
+
+It does **not** mean:
+
+```text
+Put the global NSI policy before Google-managed system policies.
+```
+
+Regional system firewall policies remain above the global network policy in both enforcement modes.
+
+## 3.5 Classic VPC firewall rules
 
 Classic VPC firewall rules are network-scoped rules associated with the VPC itself.
 
@@ -338,6 +511,40 @@ Folder containing the project
 ```
 
 A higher-level final decision cannot be overridden by a lower-level policy.
+
+## 4.4 Regional system policies stay fixed in the order
+
+`BEFORE_CLASSIC_FIREWALL` and `AFTER_CLASSIC_FIREWALL` only change the relative placement of **customer-controlled network firewall policies** versus **classic VPC firewall rules**. They do not move the Google-managed system-policy stage.
+
+```text
+AFTER_CLASSIC_FIREWALL (default)
+
+Hierarchical
+  -> Regional system
+  -> Classic VPC
+  -> Global network policy
+  -> Regional network policy
+  -> Implied action
+```
+
+```text
+BEFORE_CLASSIC_FIREWALL
+
+Hierarchical
+  -> Regional system
+  -> Global network policy
+  -> Regional network policy
+  -> Classic VPC
+  -> Implied action
+```
+
+The fixed portion to memorize is:
+
+```text
+ORG / FOLDER
+   -> GOOGLE SYSTEM POLICY
+      -> YOUR VPC-LEVEL POLICY ORDER
+```
 
 ---
 
@@ -1264,6 +1471,40 @@ Which global/regional policies apply?
 Which classic rules remain in the path?
 What is their actual evaluation order for this VPC?
 ```
+
+## 18.6 Verify effective regional rules, including system policies
+
+Because regional system firewall policies are regional, use the regional effective-firewall view when investigating a service or workload in a specific region:
+
+```cli
+gcloud compute network-firewall-policies get-effective-firewalls \
+  --project=app-prod-1 \
+  --network=prod-vpc \
+  --region=us-central1 \
+  --format=json
+```
+
+**What it tests:** The effective firewall rule set for `prod-vpc` in `us-central1`, including regional firewall context.
+
+**What to inspect:** policy/rule type, policy name, rule priority, action, direction, logging state, and target/match fields. Use the returned metadata to distinguish Google-managed system policy entries from your global/regional network policy rules and classic VPC rules.
+
+**Success criteria:** You can account for every firewall stage that can affect the test flow in that region and identify whether a Google-managed system rule returns `allow`, `deny`, or delegates with `goto_next`.
+
+**Failure indicator:** You inspect only the ordinary network-wide effective rules and overlook a regional system policy that exists in the workload's region.
+
+**Next action:** Re-run the effective-firewall query with the workload's exact region, then correlate the resulting policy/rule metadata with firewall-policy logs.
+
+For a specific VM NIC, also inspect the interface-effective rules:
+
+```cli
+gcloud compute instances network-interfaces get-effective-firewalls app-vm-1 \
+  --project=app-prod-1 \
+  --zone=us-central1-a \
+  --network-interface=nic0 \
+  --format=json
+```
+
+Do not try to recreate a regional system firewall policy with `gcloud compute network-firewall-policies create`; that command creates **customer-managed network firewall policies**, not Google-managed system policies.
 
 ---
 
