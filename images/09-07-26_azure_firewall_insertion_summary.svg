@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#333"/></marker></defs>
+<rect width="1600" height="900" fill="white"/>
+<text x="800" y="50" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700">Azure Firewall Insertion — Steering Mechanisms and Security Services</text>
+<g font-family="Arial" font-size="16" text-anchor="middle" fill="white" stroke="#333" stroke-width="2">
+<rect x="60" y="130" width="240" height="90" rx="12"/><rect x="360" y="130" width="240" height="90" rx="12"/><rect x="660" y="130" width="240" height="90" rx="12"/><rect x="960" y="130" width="240" height="90" rx="12"/><rect x="1260" y="130" width="270" height="90" rx="12"/>
+<rect x="60" y="390" width="240" height="90" rx="12"/><rect x="360" y="390" width="240" height="90" rx="12"/><rect x="660" y="390" width="240" height="90" rx="12"/><rect x="960" y="390" width="240" height="90" rx="12"/><rect x="1260" y="390" width="270" height="90" rx="12"/>
+<rect x="210" y="650" width="300" height="90" rx="12"/><rect x="650" y="650" width="300" height="90" rx="12"/><rect x="1090" y="650" width="300" height="90" rx="12"/>
+</g>
+<g font-family="Arial" font-size="16" fill="#111" text-anchor="middle">
+<text x="180" y="165"><tspan x="180">UDR</tspan><tspan x="180" dy="24">Explicit route steering</tspan></text>
+<text x="480" y="165"><tspan x="480">Azure Route Server</tspan><tspan x="480" dy="24">Dynamic BGP route injection</tspan></text>
+<text x="780" y="165"><tspan x="780">Routing Intent</tspan><tspan x="780" dy="24">Managed vWAN security steering</tspan></text>
+<text x="1080" y="165"><tspan x="1080">Gateway Load Balancer</tspan><tspan x="1080" dy="24">Transparent endpoint chaining</tspan></text>
+<text x="1395" y="165"><tspan x="1395">Front Door / App Gateway WAF</tspan><tspan x="1395" dy="24">HTTP/S reverse-proxy inspection</tspan></text>
+<text x="180" y="425"><tspan x="180">Azure Firewall</tspan><tspan x="180" dy="24">Customer-managed hub</tspan></text>
+<text x="480" y="425"><tspan x="480">Third-party NVA</tspan><tspan x="480" dy="24">ILB HA Ports / direct next hop</tspan></text>
+<text x="780" y="425"><tspan x="780">Secured vHub</tspan><tspan x="780" dy="24">Azure Firewall / integrated NVA</tspan></text>
+<text x="1080" y="425"><tspan x="1080">GWLB + NVA fleet</tspan><tspan x="1080" dy="24">VXLAN service chain</tspan></text>
+<text x="1395" y="425"><tspan x="1395">WAF policy</tspan><tspan x="1395" dy="24">Layer-7 application security</tspan></text>
+<text x="360" y="685"><tspan x="360">Forced tunneling</tspan><tspan x="360" dy="24">VPN / ExpressRoute → on-prem firewall</tspan></text>
+<text x="800" y="685"><tspan x="800">Private Endpoint inspection</tspan><tspan x="800" dy="24">Steer before the PE destination</tspan></text>
+<text x="1240" y="685"><tspan x="1240">vWAN Security SaaS</tspan><tspan x="1240" dy="24">Provider-hosted inspection cloud</tspan></text>
+</g>
+<g stroke="#333" stroke-width="3" fill="none" marker-end="url(#arrow)">
+<path d="M180 220 L180 390"/><path d="M480 220 L480 390"/><path d="M780 220 L780 390"/><path d="M1080 220 L1080 390"/><path d="M1395 220 L1395 390"/>
+</g>
+</svg>
