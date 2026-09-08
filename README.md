@@ -15,6 +15,9 @@ Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA c
 ### [GCP Firewall Insertion Summary](09-07-26_GCP_Firewall_Insertion_Summary.md)
 Compact decision-oriented reference for Google Cloud firewall insertion. Distinguishes Cloud NGFW Enterprise, VM-Series with NSI, PBR and static-route service insertion, same-VPC versus inter-VPC inspection, VPC Peering versus NCC Router Appliance/BGP, Cloud Interconnect and HA VPN inspection, Internet ingress/egress, PBR recursion protection, state symmetry, and a one-page decision tree/mnemonic.
 
+### [GCP Firewall Policy Hierarchy, `goto_next`, and NSI — Deep Dive](09-07-26_GCP_Firewall_Policy_Hierarchy_Goto_Next_NSI_Deep_Dive.md)
+Detailed explanation of organization/folder hierarchical firewall policies, VPC-scoped global and regional network firewall policies, classic VPC rules, `AFTER_CLASSIC_FIREWALL` versus `BEFORE_CLASSIC_FIREWALL`, explicit and implied `goto_next`, `apply_security_profile_group`, NSI interception scope, organization- versus project-level security profile groups, CLI configuration, worked packet walks, verification, common mistakes, and a matching SVG/editable draw.io hierarchy diagram.
+
 ### [AWS vs Azure vs Google Cloud Networking — VPC, VNet, Subnet, Route Table, NAT, and Routing Mental Model](09-07-26-09-16_AWS_Azure_GCP_VPC_Subnet_Routing_Mental_Model.md)
 Cross-cloud translation guide for engineers moving among AWS, Azure, and Google Cloud. Explains regional versus global network scope, AZ versus regional subnets, AWS subnet route-table associations, Azure effective routes from system/UDR/BGP sources, Google Cloud VPC-level applicable routes and routing order, NAT Gateway versus Cloud NAT behavior, security-policy mappings, NCC placement, firewall-insertion implications, packet-walk troubleshooting, common mistakes, and a matching SVG/editable draw.io mental-model diagram.
 
@@ -149,4 +152,4 @@ Practical GitOps/NetDevOps guide for using GitHub as the reviewed source of trut
 ## Hands-On Labs
 
 ### [Runnable FRR BGP ORR-Behavior / ADD-PATH GNS3 Lab](labs/bgp-orr-frr-gns3-lab/README.md)
-Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and automation details.
+Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and automation details.
