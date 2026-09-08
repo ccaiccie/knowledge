@@ -1070,6 +1070,8 @@ match rule 500
 
 By contrast, `goto_next` means that this policy is **delegating**, not permitting:
 
+**For more details:** [GCP Firewall Policy Hierarchy, `goto_next`, and NSI — Deep Dive](09-07-26_GCP_Firewall_Policy_Hierarchy_Goto_Next_NSI_Deep_Dive.md)
+
 ```cli
 gcloud compute network-firewall-policies rules create 500 \
   --project=app-prod-1 \
