@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L12,6 L0,12 z" fill="currentColor"/></marker>
+  </defs>
+  <rect width="1600" height="900" fill="white"/>
+  <text x="800" y="45" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="700">GCP Internet Ingress through VM-Series — External Passthrough LB + PAN-OS DNAT</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="60" y="170" rx="18" ry="18" width="180" height="80" fill="#dae8fc" stroke="#6c8ebf" stroke-width="2"/>
+    <text x="150" y="202" text-anchor="middle" font-size="16"><tspan x="150">Internet client</tspan><tspan x="150" dy="24">203.0.113.50:51514</tspan></text>
+
+    <rect x="320" y="150" rx="18" ry="18" width="220" height="120" fill="#fff2cc" stroke="#d6b656" stroke-width="2"/>
+    <text x="430" y="183" text-anchor="middle" font-size="16"><tspan x="430">External passthrough NLB</tspan><tspan x="430" dy="24">Forwarding rule VIP</tspan><tspan x="430" dy="24">34.172.143.223:80</tspan></text>
+
+    <rect x="620" y="95" rx="20" ry="20" width="330" height="245" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+    <text x="785" y="125" text-anchor="middle" font-size="17" font-weight="700">VM-Series HA / backend service</text>
+    <rect x="655" y="155" rx="16" ry="16" width="125" height="120" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+    <text x="718" y="183" text-anchor="middle" font-size="14"><tspan x="718">Active VM-Series</tspan><tspan x="718" dy="20">untrust NIC0</tspan><tspan x="718" dy="20">PAN-OS session</tspan><tspan x="718" dy="20">owner</tspan></text>
+    <rect x="805" y="155" rx="16" ry="16" width="125" height="120" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+    <text x="868" y="180" text-anchor="middle" font-size="14"><tspan x="868">Passive VM-Series</tspan><tspan x="868" dy="20">untrust NIC0</tspan><tspan x="868" dy="20">health check fails</tspan><tspan x="868" dy="20">until active</tspan></text>
+
+    <rect x="1010" y="140" rx="18" ry="18" width="250" height="140" fill="#e1d5e7" stroke="#9673a6" stroke-width="2"/>
+    <text x="1135" y="174" text-anchor="middle" font-size="15"><tspan x="1135">PAN-OS NAT + Security</tspan><tspan x="1135" dy="22">DNAT 34.172.143.223:80</tspan><tspan x="1135" dy="22">→ 10.0.2.4:80</tspan><tspan x="1135" dy="22">Security/App-ID/Threat</tspan><tspan x="1135" dy="22">inspection</tspan></text>
+
+    <rect x="1340" y="165" rx="18" ry="18" width="190" height="90" fill="#d5e8d4" stroke="#82b366" stroke-width="2"/>
+    <text x="1435" y="196" text-anchor="middle" font-size="16"><tspan x="1435">Published workload</tspan><tspan x="1435" dy="22">trust VPC</tspan><tspan x="1435" dy="22">10.0.2.4:80</tspan></text>
+
+    <path d="M240 210 C280 110, 340 110, 430 150" fill="none" stroke="#1f5fa9" stroke-width="4" marker-end="url(#arrow)" style="color:#1f5fa9"/>
+    <text x="330" y="98" text-anchor="middle" font-size="14" fill="#1f5fa9">1  Client sends packet to public forwarding-rule VIP</text>
+
+    <path d="M540 210 C580 95, 640 95, 718 155" fill="none" stroke="#1f5fa9" stroke-width="4" marker-end="url(#arrow)" style="color:#1f5fa9"/>
+    <text x="640" y="82" text-anchor="middle" font-size="14" fill="#1f5fa9">2  Passthrough LB preserves original client IP and selects active backend</text>
+
+    <path d="M780 205 C860 115, 970 115, 1010 205" fill="none" stroke="#1f5fa9" stroke-width="4" marker-end="url(#arrow)" style="color:#1f5fa9"/>
+    <text x="905" y="102" text-anchor="middle" font-size="14" fill="#1f5fa9">3  PAN-OS policy lookup + DNAT</text>
+
+    <path d="M1260 205 C1300 115, 1370 115, 1435 165" fill="none" stroke="#1f5fa9" stroke-width="4" marker-end="url(#arrow)" style="color:#1f5fa9"/>
+    <text x="1360" y="102" text-anchor="middle" font-size="14" fill="#1f5fa9">4  Allowed packet routed out trust toward 10.0.2.4</text>
+
+    <path d="M1435 255 C1435 395, 1260 395, 1135 280" fill="none" stroke="#7a3fa0" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#arrow)" style="color:#7a3fa0"/>
+    <text x="1330" y="420" text-anchor="middle" font-size="14" fill="#7a3fa0">5  Response returns through firewall</text>
+
+    <path d="M1135 280 C1135 430, 850 430, 718 275" fill="none" stroke="#7a3fa0" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#arrow)" style="color:#7a3fa0"/>
+    <text x="930" y="455" text-anchor="middle" font-size="14" fill="#7a3fa0">6  Existing session lookup + reverse DNAT</text>
+
+    <path d="M655 235 C560 465, 310 465, 150 250" fill="none" stroke="#7a3fa0" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#arrow)" style="color:#7a3fa0"/>
+    <text x="420" y="490" text-anchor="middle" font-size="14" fill="#7a3fa0">7  Return exits untrust via external LB path to client</text>
+
+    <rect x="390" y="520" rx="18" ry="18" width="820" height="95" fill="#f5f5f5" stroke="#666" stroke-width="2"/>
+    <text x="800" y="550" text-anchor="middle" font-size="15"><tspan x="800">Key requirement: return traffic must traverse the same logical VM-Series state owner so reverse NAT and</tspan><tspan x="800" dy="22">the existing PAN-OS session are used. In active/passive, Palo Alto requires an external passthrough</tspan><tspan x="800" dy="22">load balancer because it supports connection tracking.</tspan></text>
+
+    <text x="190" y="680" font-size="15" font-weight="700" fill="#1f5fa9">Forward path</text>
+    <text x="190" y="710" font-size="14">203.0.113.50:51514 → 34.172.143.223:80 → VM-Series untrust → DNAT → 10.0.2.4:80</text>
+    <text x="190" y="755" font-size="15" font-weight="700" fill="#7a3fa0">Return path</text>
+    <text x="190" y="785" font-size="14">10.0.2.4:80 → VM-Series trust → reverse NAT/session → untrust/external LB → 203.0.113.50:51514</text>
+  </g>
+</svg>
