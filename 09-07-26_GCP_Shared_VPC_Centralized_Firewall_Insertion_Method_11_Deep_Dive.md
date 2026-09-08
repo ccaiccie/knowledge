@@ -874,7 +874,7 @@ Use this model for dynamic hybrid/site-to-cloud/site-to-site routing where BGP a
 
 ## 12.1 Router Appliance + BGP `gcloud` build
 
-Create NCC hub, Router Appliance spoke, and Cloud Router in the Shared VPC host project:
+Create the NCC hub, Router Appliance spoke, and Cloud Router in the Shared VPC **host project**:
 
 ```cli
 gcloud network-connectivity hubs create shared-vpc-security-hub \
@@ -894,33 +894,68 @@ gcloud compute routers create shared-vpc-fw-cr \
   --asn=64514
 ```
 
-Representative first BGP peer; use design-specific link-local IPs and ASNs and repeat for the second appliance:
+For Router Appliance, the Cloud Router interfaces use **RFC1918 addresses from the appliance subnet**, not HA-VPN-style link-local addresses. Create a redundant interface pair in `firewall-subnet`:
 
 ```cli
 gcloud compute routers add-interface shared-vpc-fw-cr \
   --project=network-host-prod \
   --region=us-central1 \
-  --interface-name=to-fw-a \
-  --ip-address=169.254.10.1 \
-  --mask-length=30
+  --interface-name=router-appliance-interface-0 \
+  --ip-address=10.100.10.5 \
+  --subnetwork=firewall-subnet
+
+gcloud compute routers add-interface shared-vpc-fw-cr \
+  --project=network-host-prod \
+  --region=us-central1 \
+  --interface-name=router-appliance-interface-1 \
+  --ip-address=10.100.10.6 \
+  --subnetwork=firewall-subnet \
+  --redundant-interface=router-appliance-interface-0
+```
+
+Create BGP sessions to `fw-router-a`. The peer address is the appliance VM's **primary internal IP on nic0**, and the BGP peer explicitly identifies the Router Appliance VM and zone:
+
+```cli
+gcloud compute routers add-bgp-peer shared-vpc-fw-cr \
+  --project=network-host-prod \
+  --region=us-central1 \
+  --peer-name=fw-router-a-peer-0 \
+  --interface=router-appliance-interface-0 \
+  --peer-ip-address=10.100.10.20 \
+  --peer-asn=65010 \
+  --instance=fw-router-a \
+  --instance-zone=us-central1-a
 
 gcloud compute routers add-bgp-peer shared-vpc-fw-cr \
   --project=network-host-prod \
   --region=us-central1 \
-  --peer-name=fw-a \
-  --interface=to-fw-a \
-  --peer-ip-address=169.254.10.2 \
-  --peer-asn=65010
+  --peer-name=fw-router-a-peer-1 \
+  --interface=router-appliance-interface-1 \
+  --peer-ip-address=10.100.10.20 \
+  --peer-asn=65010 \
+  --instance=fw-router-a \
+  --instance-zone=us-central1-a
 ```
 
-Verify:
+Create equivalent BGP peers for `fw-router-b`, using its primary internal IP `10.100.10.21`, its zone `us-central1-b`, and its configured private ASN, for example `65011`.
+
+Verify the NCC spoke and Cloud Router BGP state:
 
 ```cli
-gcloud network-connectivity spokes describe shared-vpc-fw-spoke --project=network-host-prod --region=us-central1
-gcloud compute routers get-status shared-vpc-fw-cr --project=network-host-prod --region=us-central1
+gcloud network-connectivity spokes describe shared-vpc-fw-spoke \
+  --project=network-host-prod \
+  --region=us-central1
+
+gcloud compute routers get-status shared-vpc-fw-cr \
+  --project=network-host-prod \
+  --region=us-central1
 ```
 
-Cloud Router is the BGP control plane; the Router Appliance VM is the forwarding data plane.
+**Success criteria:** the Router Appliance spoke is active, the expected BGP peers are established, and the intended prefixes are learned and advertised through the appliances.
+
+**Control-plane reminder:** Cloud Router exchanges routes; the Router Appliance VM forwards and inspects packets.
+
+**Important:** the interface addresses, appliance addresses, and private ASNs above are examples. They must be replaced with values that match the actual appliance subnet and vendor BGP configuration.
 
 ---
 
