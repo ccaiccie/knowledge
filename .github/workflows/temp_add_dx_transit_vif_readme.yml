@@ -1,0 +1,22 @@
+name: temp-add-dx-transit-vif-readme
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/temp_add_dx_transit_vif_readme.py'
+      - '.github/workflows/temp_add_dx_transit_vif_readme.yml'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/temp_add_dx_transit_vif_readme.py
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/scripts/temp_add_dx_transit_vif_readme.py .github/workflows/temp_add_dx_transit_vif_readme.yml
+          git add README.md
+          git commit -m 'Add Direct Connect Transit VIF guide to README'
+          git push
