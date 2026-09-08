@@ -6,6 +6,41 @@
 > **Additional explanation** = packet/routing interpretation derived from the documented behavior.  
 > **Reasonable inference** = design conclusions that follow from those facts but are not themselves AWS guarantees.
 
+## Table of contents
+
+- [Key references and case studies](#key-references-and-case-studies)
+- [1. The central idea](#1-the-central-idea)
+  - [1.1 Centralized ingress](#11-centralized-ingress)
+  - [1.2 Distributed / spoke ingress](#12-distributed--spoke-ingress)
+- [2. Why the Experian ALB pattern works](#2-why-the-experian-alb-pattern-works)
+- [3. Exact Experian-style return-path logic](#3-exact-experian-style-return-path-logic)
+- [4. Why the ALB makes this possible](#4-why-the-alb-makes-this-possible)
+- [5. Why the same idea does not translate to NLB with preserved client IP](#5-why-the-same-idea-does-not-translate-to-nlb-with-preserved-client-ip)
+- [6. Important correction: NLB with client IP preservation requires a direct target path](#6-important-correction-nlb-with-client-ip-preservation-requires-a-direct-target-path)
+- [7. Does distributed / spoke ingress remove the problem?](#7-does-distributed--spoke-ingress-remove-the-problem)
+  - [Yes — it removes the centralized TGW return-AZ recovery problem](#yes--it-removes-the-centralized-tgw-return-az-recovery-problem)
+- [8. Two distributed ingress placements must be distinguished](#8-two-distributed-ingress-placements-must-be-distinguished)
+  - [8.1 GWLBE before the public load balancer](#81-gwlbe-before-the-public-load-balancer)
+  - [8.2 GWLBE between ALB/NLB and target](#82-gwlbe-between-albnlb-and-target)
+- [9. NLB choices when client identity is required](#9-nlb-choices-when-client-identity-is-required)
+  - [9.1 Disable client IP preservation and use Proxy Protocol v2](#91-disable-client-ip-preservation-and-use-proxy-protocol-v2)
+  - [9.2 Put GWLBE before the NLB rather than between NLB and target](#92-put-gwlbe-before-the-nlb-rather-than-between-nlb-and-target)
+  - [9.3 Use ALB when HTTP/HTTPS proxy semantics are acceptable](#93-use-alb-when-httphttps-proxy-semantics-are-acceptable)
+- [10. Why TGW Appliance Mode does not solve the Experian ingress problem by itself](#10-why-tgw-appliance-mode-does-not-solve-the-experian-ingress-problem-by-itself)
+- [11. Centralized vs distributed ingress comparison](#11-centralized-vs-distributed-ingress-comparison)
+- [12. Case-study and architecture references worth reading](#12-case-study-and-architecture-references-worth-reading)
+  - [12.1 Experian — centralized ingress](#121-experian--centralized-ingress)
+  - [12.2 AWS Internet-ingress design comparison](#122-aws-internet-ingress-design-comparison)
+  - [12.3 VPC routing enhancements](#123-vpc-routing-enhancements)
+  - [12.4 GWLB supported architecture patterns](#124-gwlb-supported-architecture-patterns)
+  - [12.5 NLB client IP preservation requirements](#125-nlb-client-ip-preservation-requirements)
+  - [12.6 AWS Network Firewall deployment discussions](#126-aws-network-firewall-deployment-discussions)
+  - [12.7 Cloud WAN centralized ingress discussion](#127-cloud-wan-centralized-ingress-discussion)
+- [13. Common mistakes](#13-common-mistakes)
+- [14. Verification checklist](#14-verification-checklist)
+- [15. Design recommendations](#15-design-recommendations)
+- [Sources](#sources)
+
 ---
 
 ## Key references and case studies
