@@ -97,6 +97,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS Direct Connect Transit VIF — Deep Dive](09-08-26_AWS_Direct_Connect_Transit_VIF_Deep_Dive.md)
+Deep dive into AWS Direct Connect transit virtual interfaces for Transit Gateway connectivity. Separates the physical Direct Connect connection, transit VIF, Direct Connect gateway, Transit Gateway, TGW route tables, and VPC route tables; explains BGP adjacency and ASN behavior, DXGW allowed-prefix semantics, exact on-premises-to-VPC and return packet walks, multi-VPC and multi-Region designs, redundant-circuit failover, AWS CLI deployment, verification, troubleshooting, and common mistakes, with matching SVG/editable draw.io architecture and route-flow diagrams.
+
 ### [AWS Firewall Insertion Summary](09-07-26_AWS_Firewall_Insertion_Summary.md)
 Compact decision-oriented reference for AWS firewall insertion. Distinguishes AWS Network Firewall in VPC and directly attached to Transit Gateway, centralized and distributed GWLB/GWLBE third-party inspection, TGW appliance mode and pre/post route domains, VPC Route Server/BGP, Cloud WAN `send-via`/`send-to`, Direct Connect/VPN inspection, Internet ingress/egress, NAT placement, ALB/NLB caveats, WAF layering, and stateful symmetry, with a matching SVG/editable draw.io overview.
 
