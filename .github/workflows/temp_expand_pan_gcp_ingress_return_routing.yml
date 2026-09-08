@@ -1,0 +1,21 @@
+name: temp-expand-pan-gcp-ingress-return-routing
+on:
+  push:
+    paths:
+      - '.github/workflows/temp_expand_pan_gcp_ingress_return_routing.yml'
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/temp_expand_pan_gcp_ingress_return_routing.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md
+          git rm .github/scripts/temp_expand_pan_gcp_ingress_return_routing.py
+          git rm .github/workflows/temp_expand_pan_gcp_ingress_return_routing.yml
+          git commit -m "Clarify GCP VM-Series ingress NAT and return routing"
+          git push
