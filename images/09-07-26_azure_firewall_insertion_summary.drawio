@@ -1,0 +1,29 @@
+<mxfile host="app.diagrams.net" modified="2026-09-07T18:00:00.000Z" agent="ChatGPT" version="24.7.17">
+  <diagram id="azure-firewall-insertion-summary" name="Page-1">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Azure Firewall Insertion — Steering Mechanisms and Security Services" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="250" y="20" width="1100" height="50" as="geometry"/></mxCell>
+        <mxCell id="udr" value="UDR&#xa;Explicit route steering" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="60" y="130" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="ars" value="Azure Route Server&#xa;Dynamic BGP route injection" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="360" y="130" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="ri" value="Routing Intent&#xa;Managed vWAN security steering" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="660" y="130" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="gwlb" value="Gateway Load Balancer&#xa;Transparent endpoint chaining" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="960" y="130" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="waf" value="Front Door / App Gateway WAF&#xa;HTTP/S reverse-proxy inspection" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="1260" y="130" width="270" height="90" as="geometry"/></mxCell>
+        <mxCell id="azfw" value="Azure Firewall&#xa;Customer-managed hub" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="60" y="390" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="nva" value="Third-party NVA&#xa;ILB HA Ports / direct next hop" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="360" y="390" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="vwanfw" value="Secured vHub&#xa;Azure Firewall / integrated NVA" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="660" y="390" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="gwlbnva" value="GWLB + NVA fleet&#xa;VXLAN service chain" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="960" y="390" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="wafsvc" value="WAF policy&#xa;Layer-7 application security" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="1260" y="390" width="270" height="90" as="geometry"/></mxCell>
+        <mxCell id="forced" value="Forced tunneling&#xa;VPN / ExpressRoute → on-prem firewall" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="210" y="650" width="300" height="90" as="geometry"/></mxCell>
+        <mxCell id="pe" value="Private Endpoint inspection&#xa;Steer before the PE destination" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="650" y="650" width="300" height="90" as="geometry"/></mxCell>
+        <mxCell id="saas" value="vWAN Security SaaS&#xa;Provider-hosted inspection cloud" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="1090" y="650" width="300" height="90" as="geometry"/></mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="udr" target="azfw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="ars" target="nva"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="ri" target="vwanfw"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="gwlb" target="gwlbnva"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="waf" target="wafsvc"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
