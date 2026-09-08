@@ -152,4 +152,4 @@ Practical GitOps/NetDevOps guide for using GitHub as the reviewed source of trut
 ## Hands-On Labs
 
 ### [Runnable FRR BGP ORR-Behavior / ADD-PATH GNS3 Lab](labs/bgp-orr-frr-gns3-lab/README.md)
-Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and automation details.
+Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and automation details.
