@@ -530,15 +530,16 @@ aws directconnect describe-direct-connect-gateways
 
 ## 12.2 Associate the Transit Gateway
 
-For same-account ownership, use the Direct Connect gateway association API/CLI with the TGW ID and allowed prefixes.
+For same-account ownership, create the association directly and include the TGW allowed prefixes:
 
-Conceptual intent:
-
-```text
-DXGW: corp-dxgw
-TGW:  tgw-0123456789abcdef0
-Allowed AWS prefix: 10.0.0.0/8
+```cli
+aws directconnect create-direct-connect-gateway-association \
+  --direct-connect-gateway-id DXGW_ID \
+  --gateway-id tgw-0123456789abcdef0 \
+  --add-allowed-prefixes-to-direct-connect-gateway cidr=10.0.0.0/8
 ```
+
+**What this does:** it associates the TGW with the DXGW and tells the DXGW to advertise `10.0.0.0/8` toward on-premises for this TGW association. It does **not** create `10.0.0.0/8` as a TGW forwarding route; TGW still needs routes to the actual destination attachments.
 
 Across accounts, AWS uses an association proposal workflow: the TGW owner creates the proposal and the DXGW owner accepts it.
 
