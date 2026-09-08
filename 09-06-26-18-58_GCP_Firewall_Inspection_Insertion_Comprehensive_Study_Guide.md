@@ -106,16 +106,16 @@ Google Cloud does not use one universal service-insertion construct. Depending o
 
 | # | Method | Steering point | Inline? | Best fit |
 |---|---|---|---|---|
-| 1 | Cloud NGFW distributed policy | Hierarchical/global/regional firewall policy | Yes, distributed | Broad stateful L3/L4 segmentation |
-| 2 | Cloud NGFW Enterprise firewall endpoints | `apply_security_profile_group` + packet intercept | Yes | Native IPS, URL filtering, TLS inspection |
-| 3 | Network Security Integration (NSI) in-band | Firewall policy + intercept endpoint | Yes | Transparent third-party inspection with GENEVE |
-| 4 | Policy-Based Route (PBR) → internal passthrough NLB → NVA | Source/destination/protocol policy | Yes | Fine-grained service insertion, including hybrid ingress |
-| 5 | Static route → internal passthrough NLB → NVA | Destination-prefix route | Yes | Default-route egress and transit firewall pools |
-| 6 | Direct next-hop VM / multi-NIC firewall | Static route/topology | Yes | Traditional trust-zone bridge/router design |
-| 7 | NCC Router Appliance + BGP | Dynamic BGP route exchange | Yes when routed through appliance | Hybrid/site-to-cloud/site-to-site transit |
-| 8 | NCC Gateway + Security Service Edge (SSE) | NCC spoke-group/gateway topology | Yes for eligible paths | Cloud-delivered security service insertion |
-| 9 | Load-balancer sandwich / proxy-fronted firewall | External/internal LB topology | Yes for application path | Published applications and proxy-centric security |
-| 10 | Packet Mirroring / NSI out-of-band / Cloud IDS | Mirroring policy | **No** | Passive detection and analysis |
+| 1 | [Cloud NGFW distributed policy](09-06-26-19-21_GCP_Cloud_NGFW_Distributed_Policy_Deep_Dive.md) | Hierarchical/global/regional firewall policy | Yes, distributed | Broad stateful L3/L4 segmentation |
+| 2 | [Cloud NGFW Enterprise firewall endpoints](09-07-26-07-05_GCP_Cloud_NGFW_Enterprise_Firewall_Endpoints_Deep_Dive.md) | `apply_security_profile_group` + packet intercept | Yes | Native IPS, URL filtering, TLS inspection |
+| 3 | [Network Security Integration (NSI) in-band](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md) | Firewall policy + intercept endpoint | Yes | Transparent third-party inspection with GENEVE |
+| 4 | [Policy-Based Route (PBR) → internal passthrough NLB → NVA](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md) | Source/destination/protocol policy | Yes | Fine-grained service insertion, including hybrid ingress |
+| 5 | [Static route → internal passthrough NLB → NVA](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md) | Destination-prefix route | Yes | Default-route egress and transit firewall pools |
+| 6 | [Direct next-hop VM / multi-NIC firewall](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md) | Static route/topology | Yes | Traditional trust-zone bridge/router design |
+| 7 | [NCC Router Appliance + BGP](09-07-26-09-03_GCP_NCC_Router_Appliance_BGP_Firewall_Insertion_Deep_Dive.md) | Dynamic BGP route exchange | Yes when routed through appliance | Hybrid/site-to-cloud/site-to-site transit |
+| 8 | [NCC Gateway + Security Service Edge (SSE)](09-06-26-19-15_GCP_Network_Connectivity_Center_Comprehensive_Study_Guide.md) | NCC spoke-group/gateway topology | Yes for eligible paths | Cloud-delivered security service insertion |
+| 9 | [Load-balancer sandwich / proxy-fronted firewall](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md) | External/internal LB topology | Yes for application path | Published applications and proxy-centric security |
+| 10 | [Packet Mirroring / NSI out-of-band / Cloud IDS](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md#10-packet-mirroring--nsi-out-of-band--cloud-ids--not-inline) | Mirroring policy | **No** | Passive detection and analysis |
 
 **Shared VPC is not a separate steering primitive.** It is an enterprise network architecture that can host or consume several of the methods above, especially PBR→internal passthrough NLB→NVA, Cloud NGFW Enterprise, NSI in-band, and NCC Router Appliance.
 
