@@ -38,6 +38,7 @@ A **transit VIF does not attach directly to a Transit Gateway**. The transit VIF
   - [1.2 Transit virtual interface](#12-transit-virtual-interface)
   - [1.3 Direct Connect gateway](#13-direct-connect-gateway)
   - [1.4 Transit Gateway](#14-transit-gateway)
+  - [1.5 VLANs, router subinterfaces, and multiple VIFs on one DX connection](#15-vlans-router-subinterfaces-and-multiple-vifs-on-one-dx-connection)
 - [2. Why transit VIF exists](#2-why-transit-vif-exists)
 - [3. Architecture](#3-architecture)
 - [4. Control-plane relationships](#4-control-plane-relationships)
@@ -48,14 +49,20 @@ A **transit VIF does not attach directly to a Transit Gateway**. The transit VIF
 - [6. VPC to on-premises return flow](#6-vpc-to-on-premises-return-flow)
 - [7. Where each route exists](#7-where-each-route-exists)
 - [8. Private VIF versus transit VIF versus public VIF](#8-private-vif-versus-transit-vif-versus-public-vif)
+  - [8.1 How all three VIF types can coexist on one physical connection](#81-how-all-three-vif-types-can-coexist-on-one-physical-connection)
+  - [8.2 What a public VIF does and does not provide](#82-what-a-public-vif-does-and-does-not-provide)
 - [9. Multi-VPC example](#9-multi-vpc-example)
 - [10. Multi-Region example](#10-multi-region-example)
 - [11. Multiple Direct Connect circuits and failover](#11-multiple-direct-connect-circuits-and-failover)
 - [12. AWS CLI build example](#12-aws-cli-build-example)
+  - [12.0 Optional: request a dedicated Direct Connect connection](#120-optional-request-a-dedicated-direct-connect-connection)
   - [12.1 Create the Direct Connect gateway](#121-create-the-direct-connect-gateway)
   - [12.2 Associate the Transit Gateway](#122-associate-the-transit-gateway)
   - [12.3 Create the transit VIF](#123-create-the-transit-vif)
   - [12.4 Enable TGW route propagation](#124-enable-tgw-route-propagation)
+  - [12.5 Create a public VIF on a different VLAN](#125-create-a-public-vif-on-a-different-vlan)
+  - [12.6 Create a private VIF on another VLAN](#126-create-a-private-vif-on-another-vlan)
+  - [12.7 Verify all VIFs and VLAN assignments](#127-verify-all-vifs-and-vlan-assignments)
 - [13. Verification](#13-verification)
 - [14. Troubleshooting by symptom](#14-troubleshooting-by-symptom)
 - [15. Common mistakes](#15-common-mistakes)
@@ -73,6 +80,8 @@ A **transit VIF does not attach directly to a Transit Gateway**. The transit VIF
 - https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-transit-vif-for-gateway.html
 - https://docs.aws.amazon.com/directconnect/latest/UserGuide/allowed-to-prefixes.html
 - https://docs.aws.amazon.com/directconnect/latest/UserGuide/associate-tgw-with-direct-connect-gateway.html
+- https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-public-vif.html
+- https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-private-vif.html
 
 ### AWS Transit Gateway
 - https://docs.aws.amazon.com/vpc/latest/tgw/tgw-dcg-attachments.html
@@ -83,6 +92,9 @@ A **transit VIF does not attach directly to a Transit Gateway**. The transit VIF
 ### AWS CLI
 - https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-direct-connect-gateway.html
 - https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-transit-virtual-interface.html
+- https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-public-virtual-interface.html
+- https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-private-virtual-interface.html
+- https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-connection.html
 - https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-direct-connect-gateway-associations.html
 - https://docs.aws.amazon.com/cli/latest/reference/ec2/search-transit-gateway-routes.html
 
@@ -150,6 +162,53 @@ Mental model:
 ```text
 DXGW gets you from Direct Connect into TGW.
 TGW route tables decide where inside the AWS transit domain the packet goes next.
+```
+
+---
+
+## 1.5 VLANs, router subinterfaces, and multiple VIFs on one DX connection
+
+A Direct Connect physical connection is an Ethernet handoff. AWS multiplexes logical services across that Ethernet link with **IEEE 802.1Q VLAN tags**. Each VIF uses one VLAN ID that is unique on that Direct Connect connection. AWS allows VLAN IDs from `1` through `4094`; once a VIF is created, its VLAN ID cannot be changed. For a hosted connection, the Direct Connect Partner normally supplies the VLAN value.
+
+Think of the customer router port as a trunk:
+
+```text
+Customer router physical DX port
+        |
+        |-- VLAN 100 -> Transit VIF -> DXGW -> TGW
+        |-- VLAN 200 -> Public VIF  -> AWS public service prefixes
+        |-- VLAN 300 -> Private VIF -> VGW or DXGW
+        |
+        +-- all carried over the SAME physical Direct Connect connection
+```
+
+A Cisco-like router mental model is:
+
+```text
+Ethernet1/1       = physical DX port
+Ethernet1/1.100   = 802.1Q tag 100 -> transit-VIF BGP session
+Ethernet1/1.200   = 802.1Q tag 200 -> public-VIF BGP session
+Ethernet1/1.300   = 802.1Q tag 300 -> private-VIF BGP session
+```
+
+The exact router syntax is vendor-specific, but the service separation is the same: **one physical port, multiple tagged logical Layer-3 interfaces, one BGP context per VIF/address family**.
+
+![One Direct Connect connection carrying transit, public, and private VIFs on different VLANs](images/09-08-26_aws_dx_multi_vif_vlan_trunk.svg)
+
+[Editable draw.io](images/09-08-26_aws_dx_multi_vif_vlan_trunk.drawio)
+
+**What this image shows:** one customer-router Ethernet handoff carrying three independent VIFs using VLAN IDs 100, 200, and 300.
+
+**What matters:** VLAN 100, 200, and 300 are tags on the same physical connection, not three separate Direct Connect circuits. Each VIF has its own BGP peering and its own AWS destination construct.
+
+**What to verify:** the VLAN is unique on the connection, your router subinterface uses the same tag AWS assigned/configured, each VIF has the correct BGP peer addresses/ASN, and the VIF type points to the intended AWS routing domain.
+
+A useful mnemonic is:
+
+```text
+DX port = trunk
+VLAN = service lane
+VIF = Layer-3/BGP service on that lane
 ```
 
 ---
@@ -383,13 +442,63 @@ VPC route tables answer:
 
 # 8. Private VIF versus transit VIF versus public VIF
 
-| VIF type | Main purpose | Typical AWS destination |
-|---|---|---|
-| Private VIF | Private VPC connectivity | VGW / DXGW private path |
-| Transit VIF | Multi-VPC/VPN connectivity through TGW | DXGW associated with TGW |
-| Public VIF | AWS public service prefixes | Public AWS services |
+| VIF type | Main purpose | Typical AWS destination | Example VLAN |
+|---|---|---|---:|
+| Private VIF | Private VPC connectivity | VGW or DXGW private path | 300 |
+| Transit VIF | Multi-VPC/VPN connectivity through TGW | DXGW associated with TGW | 100 |
+| Public VIF | Reach AWS public service prefixes over DX | AWS public services/public AWS endpoints | 200 |
 
-For a Transit Gateway-centric hybrid architecture, the transit VIF is normally the relevant choice.
+For a Transit Gateway-centric hybrid architecture, the transit VIF is normally the relevant private-routing choice, but that does **not** prevent the same physical DX connection from also carrying a public VIF or private VIF on different VLAN tags.
+
+## 8.1 How all three VIF types can coexist on one physical connection
+
+Example:
+
+```text
+Physical DX connection dxcon-EXAMPLE
+
+VLAN 100
+  -> transit VIF
+  -> customer ASN 65020
+  -> BGP session
+  -> Direct Connect gateway
+  -> Transit Gateway
+
+VLAN 200
+  -> public VIF
+  -> separate BGP session
+  -> AWS public prefixes
+
+VLAN 300
+  -> private VIF
+  -> separate BGP session
+  -> VGW or Direct Connect gateway
+```
+
+The VLAN tags are local Layer-2 demultiplexing identifiers on the Direct Connect Ethernet service. They do **not** mean that VLAN 100 can reach VLAN 200 or VLAN 300. Routing exchange is controlled independently by the VIF type and its BGP session.
+
+Because all VIFs share the same parent physical connection, a physical circuit failure affects all VIFs riding that connection. Using multiple VLANs is service separation, **not physical redundancy**.
+
+## 8.2 What a public VIF does and does not provide
+
+A public VIF is for reaching AWS services through their **public IP prefixes** over Direct Connect, such as Amazon S3 public endpoints and other AWS public services. AWS advertises appropriate Amazon public prefixes to you over the public-VIF BGP session.
+
+A public VIF is **not a general-purpose Internet transit service**. Do not treat it as a replacement for an ISP default route.
+
+For IPv4 public VIFs, AWS requires public BGP peer addresses and route prefixes that you are authorized to advertise. AWS validates public-VIF information, and AWS documentation notes that approval can take up to 72 business hours.
+
+This gives you three separate routing intents:
+
+```text
+Transit VIF
+= private hybrid routing through TGW
+
+Private VIF
+= private VPC routing through VGW/DXGW
+
+Public VIF
+= AWS public-service reachability over DX
+```
 
 ---
 
@@ -510,7 +619,39 @@ Do not assume BGP convergence alone guarantees stateful-firewall session surviva
 
 # 12. AWS CLI build example
 
-The following examples use placeholder resource IDs and addresses. Replace them with values from your environment.
+The following examples use placeholder resource IDs and addresses. Replace them with values from your environment. The example VLAN plan is:
+
+```text
+VLAN 100 = transit VIF
+VLAN 200 = public VIF
+VLAN 300 = private VIF
+```
+
+## 12.0 Optional: request a dedicated Direct Connect connection
+
+First list available Direct Connect locations:
+
+```cli
+aws directconnect describe-locations
+```
+
+For a dedicated connection, AWS CLI supports creating a connection request such as:
+
+```cli
+aws directconnect create-connection \
+  --location TIVIT \
+  --bandwidth 1Gbps \
+  --connection-name corp-dx-1
+```
+
+**Expected successful state:** the returned `connectionState` initially reflects the provisioning/request workflow; after physical provisioning and cross-connect completion, verify that the connection reaches an available/up operational state with `describe-connections`.
+
+```cli
+aws directconnect describe-connections \
+  --connection-id dxcon-EXAMPLE
+```
+
+A hosted Direct Connect connection is normally provisioned through a Direct Connect Partner instead of directly creating the physical hosted connection with this command.
 
 ## 12.1 Create the Direct Connect gateway
 
@@ -595,6 +736,83 @@ aws ec2 get-transit-gateway-route-table-propagations \
 ```
 
 **Success criteria:** the Direct Connect gateway resource type appears with propagation state `enabled`.
+
+
+## 12.5 Create a public VIF on a different VLAN
+
+The public VIF can use the **same physical Direct Connect connection** as the transit VIF, but it must use a different VLAN ID. This example uses VLAN `200`.
+
+For IPv4, replace the example documentation addresses with public BGP peer addresses and advertised prefixes that you own/control and that AWS accepts for the public VIF:
+
+```cli
+aws directconnect create-public-virtual-interface \
+  --connection-id dxcon-EXAMPLE \
+  --new-public-virtual-interface \
+'virtualInterfaceName=corp-public-vif,vlan=200,asn=65020,amazonAddress=203.0.113.1/30,customerAddress=203.0.113.2/30,addressFamily=ipv4,routeFilterPrefixes=[{cidr=203.0.113.0/30},{cidr=203.0.113.4/30}]'
+```
+
+The `203.0.113.0/24` space above is documentation space and must **not** be copied into production. The AWS CLI example is shown only to make the object relationships and required fields concrete.
+
+Important fields:
+
+- `vlan=200` — unique 802.1Q tag on this DX connection;
+- `asn=65020` — your customer BGP ASN;
+- `amazonAddress` / `customerAddress` — public IPv4 BGP peer addresses for an IPv4 public VIF;
+- `routeFilterPrefixes` — public prefixes you intend to advertise to AWS over this public VIF.
+
+Verify:
+
+```cli
+aws directconnect describe-virtual-interfaces \
+  --query 'virtualInterfaces[?virtualInterfaceType==`public`].[virtualInterfaceId,virtualInterfaceName,vlan,virtualInterfaceState,customerAddress,amazonAddress]' \
+  --output table
+```
+
+**Success criteria:** the public VIF progresses through AWS validation and reaches an available state, and the BGP peer becomes established after router configuration.
+
+## 12.6 Create a private VIF on another VLAN
+
+A private VIF can terminate on either a VGW or a Direct Connect gateway. The following example uses the same DX connection but VLAN `300` and points to a Direct Connect gateway:
+
+```cli
+aws directconnect create-private-virtual-interface \
+  --connection-id dxcon-EXAMPLE \
+  --new-private-virtual-interface \
+'virtualInterfaceName=corp-private-vif,vlan=300,asn=65020,mtu=1500,amazonAddress=169.254.101.1/30,customerAddress=169.254.101.2/30,addressFamily=ipv4,directConnectGatewayId=DXGW_ID'
+```
+
+If you instead want the private VIF to terminate directly on a Virtual Private Gateway, specify `virtualGatewayId=vgw-...` instead of `directConnectGatewayId=...`.
+
+Verify:
+
+```cli
+aws directconnect describe-virtual-interfaces \
+  --query 'virtualInterfaces[?virtualInterfaceType==`private`].[virtualInterfaceId,virtualInterfaceName,vlan,virtualInterfaceState,directConnectGatewayId,virtualGatewayId]' \
+  --output table
+```
+
+## 12.7 Verify all VIFs and VLAN assignments
+
+List all VIFs on the parent physical connection:
+
+```cli
+aws directconnect describe-virtual-interfaces \
+  --connection-id dxcon-EXAMPLE \
+  --query 'virtualInterfaces[].{Name:virtualInterfaceName,Type:virtualInterfaceType,VLAN:vlan,State:virtualInterfaceState,CustomerASN:asn,DXGW:directConnectGatewayId,VGW:virtualGatewayId}' \
+  --output table
+```
+
+For the example design, you should expect the logical mapping to be:
+
+```text
+corp-transit-vif  -> transit -> VLAN 100
+corp-public-vif   -> public  -> VLAN 200
+corp-private-vif  -> private -> VLAN 300
+```
+
+Do not expect those exact names or state values unless you configured them. The success criteria are that every VIF has a unique VLAN on the connection, the VIF type is correct, and its BGP peer is operational.
+
+On the customer router, verify that the physical DX port is carrying all expected tags and that the corresponding subinterfaces/BGP neighbors are up.
 
 ---
 
