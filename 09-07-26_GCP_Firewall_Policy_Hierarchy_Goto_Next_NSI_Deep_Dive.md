@@ -758,6 +758,58 @@ Walk:
 
 The organization policy did **not** allow the connection. It delegated the decision.
 
+### Matching gcloud commands
+
+Create the organization hierarchical policy and the `goto_next` rule:
+
+```cli
+gcloud compute firewall-policies create \
+  --organization=ORG_ID \
+  --short-name=corp-org-policy
+
+gcloud compute firewall-policies rules create 200 \
+  --organization=ORG_ID \
+  --firewall-policy=corp-org-policy \
+  --direction=INGRESS \
+  --action=goto_next \
+  --src-ip-ranges=10.0.0.0/8
+
+gcloud compute firewall-policies associations create \
+  --organization=ORG_ID \
+  --firewall-policy=corp-org-policy
+```
+
+Create the VPC global network firewall policy, attach it to `prod-vpc`, and invoke NSI for the application flow:
+
+```cli
+gcloud compute network-firewall-policies create pan-nsi-policy \
+  --project=app-prod-1 \
+  --global
+
+gcloud compute network-firewall-policies rules create 100 \
+  --project=app-prod-1 \
+  --firewall-policy=pan-nsi-policy \
+  --global-firewall-policy \
+  --direction=INGRESS \
+  --action=APPLY_SECURITY_PROFILE_GROUP \
+  --src-ip-ranges=10.10.0.0/16 \
+  --dest-ip-ranges=10.20.0.0/16 \
+  --layer4-configs=tcp:443 \
+  --security-profile-group=organizations/ORG_ID/locations/global/securityProfileGroups/pan-nsi-spg \
+  --enable-logging
+
+gcloud compute network-firewall-policies associations create \
+  --project=app-prod-1 \
+  --firewall-policy=pan-nsi-policy \
+  --network=prod-vpc \
+  --name=pan-nsi-prod-vpc \
+  --global-firewall-policy
+
+gcloud compute networks update prod-vpc \
+  --project=app-prod-1 \
+  --network-firewall-policy-enforcement-order=BEFORE_CLASSIC_FIREWALL
+```
+
 ---
 
 # 13. Worked example 2 — folder denies before NSI can run
@@ -799,6 +851,48 @@ Folder
 
 NSI is never invoked because a higher evaluation stage already made a final deny decision.
 
+### Matching gcloud commands
+
+Create an organization policy that delegates the private range, then a folder policy that denies the application flow:
+
+```cli
+gcloud compute firewall-policies create \
+  --organization=ORG_ID \
+  --short-name=corp-org-policy
+
+gcloud compute firewall-policies rules create 100 \
+  --organization=ORG_ID \
+  --firewall-policy=corp-org-policy \
+  --direction=INGRESS \
+  --action=goto_next \
+  --src-ip-ranges=10.0.0.0/8
+
+gcloud compute firewall-policies associations create \
+  --organization=ORG_ID \
+  --firewall-policy=corp-org-policy
+
+gcloud compute firewall-policies create \
+  --organization=ORG_ID \
+  --short-name=prod-folder-policy
+
+gcloud compute firewall-policies rules create 100 \
+  --organization=ORG_ID \
+  --firewall-policy=prod-folder-policy \
+  --direction=INGRESS \
+  --action=deny \
+  --src-ip-ranges=10.10.0.0/16 \
+  --dest-ip-ranges=10.20.0.0/16 \
+  --layer4-configs=tcp:443 \
+  --enable-logging
+
+gcloud compute firewall-policies associations create \
+  --organization=ORG_ID \
+  --folder=FOLDER_ID \
+  --firewall-policy=prod-folder-policy
+```
+
+Even if `prod-vpc` also has the NSI global network policy from example 1, the folder `deny` terminates evaluation first.
+
 ---
 
 # 14. Worked example 3 — hierarchical policy invokes NSI directly
@@ -827,6 +921,33 @@ Organization hierarchical policy
 ```
 
 The folder and VPC firewall policies do not get a later opportunity to override that intercepted connection because normal firewall-rule evaluation has already stopped.
+
+### Matching gcloud commands
+
+Create an organization hierarchical policy that invokes NSI directly:
+
+```cli
+gcloud compute firewall-policies create \
+  --organization=ORG_ID \
+  --short-name=org-nsi-policy
+
+gcloud compute firewall-policies rules create 100 \
+  --organization=ORG_ID \
+  --firewall-policy=org-nsi-policy \
+  --direction=INGRESS \
+  --action=apply_security_profile_group \
+  --src-ip-ranges=10.10.0.0/16 \
+  --dest-ip-ranges=10.20.0.0/16 \
+  --layer4-configs=tcp:443 \
+  --security-profile-group=//networksecurity.googleapis.com/organizations/ORG_ID/locations/global/securityProfileGroups/pan-nsi-spg \
+  --enable-logging
+
+gcloud compute firewall-policies associations create \
+  --organization=ORG_ID \
+  --firewall-policy=org-nsi-policy
+```
+
+A hierarchical NSI rule must reference an organization-level Security Profile Group.
 
 ---
 
@@ -863,6 +984,40 @@ The lower VPC policy is not evaluated for that new connection.
 Likewise, an organization-level `deny` cannot be overridden by a lower VPC `allow`.
 
 This is why central guardrails belong at the hierarchy level where you want them to be authoritative.
+
+### Matching gcloud commands
+
+Organization-level final allow:
+
+```cli
+gcloud compute firewall-policies create \
+  --organization=ORG_ID \
+  --short-name=org-authoritative-policy
+
+gcloud compute firewall-policies rules create 100 \
+  --organization=ORG_ID \
+  --firewall-policy=org-authoritative-policy \
+  --direction=INGRESS \
+  --action=allow \
+  --src-ip-ranges=10.10.0.0/16
+
+gcloud compute firewall-policies associations create \
+  --organization=ORG_ID \
+  --firewall-policy=org-authoritative-policy
+```
+
+A lower VPC global policy can contain a deny, but it is not reached for a connection already allowed by the higher hierarchical policy:
+
+```cli
+gcloud compute network-firewall-policies rules create 100 \
+  --project=app-prod-1 \
+  --firewall-policy=pan-nsi-policy \
+  --global-firewall-policy \
+  --direction=INGRESS \
+  --action=deny \
+  --src-ip-ranges=10.10.0.0/16 \
+  --layer4-configs=all
+```
 
 ---
 
@@ -908,29 +1063,109 @@ Priority  = WHICH RULE inside that policy gets first say
 
 # 17. Changing `BEFORE_CLASSIC_FIREWALL` versus `AFTER_CLASSIC_FIREWALL`
 
-Check or deliberately set the VPC enforcement order.
+## 17.1 Which one is the default?
 
-To set network policies before classic VPC firewall rules:
+`AFTER_CLASSIC_FIREWALL` is the Google Cloud default. If `networkFirewallPolicyEnforcementOrder` is not explicitly set on a VPC, Google treats it as `AFTER_CLASSIC_FIREWALL`.
+
+The setting belongs to the **VPC network**, not to an individual firewall policy. It determines whether VPC-level **global/regional network firewall policies** are evaluated before or after **classic VPC firewall rules**. It does not move hierarchical firewall policies; organization/folder hierarchical policies remain ahead of both models.
+
+Mnemonic:
+
+```text
+AFTER_CLASSIC_FIREWALL  = classic VPC rules get first VPC-level say
+BEFORE_CLASSIC_FIREWALL = network firewall policies get first VPC-level say
+```
+
+## 17.2 Exact evaluation order
+
+With the default `AFTER_CLASSIC_FIREWALL`:
+
+```text
+1. Hierarchical firewall policies
+   Organization -> folders top-down
+2. Regional system firewall policies
+3. Classic VPC firewall rules
+4. Global network firewall policy
+5. Regional network firewall policy
+6. Implied action
+```
+
+With `BEFORE_CLASSIC_FIREWALL`:
+
+```text
+1. Hierarchical firewall policies
+   Organization -> folders top-down
+2. Regional system firewall policies
+3. Global network firewall policy
+4. Regional network firewall policy
+5. Classic VPC firewall rules
+6. Implied action
+```
+
+The setting therefore changes only the relative ordering of the **classic VPC firewall rules** versus the **global/regional network firewall-policy stages**.
+
+## 17.3 Why NSI normally uses `BEFORE_CLASSIC_FIREWALL`
+
+Google's NSI consumer setup instructs participating VPCs to use `BEFORE_CLASSIC_FIREWALL`. The reason is simple: an NSI interception rule normally lives in a global network firewall policy and uses `apply_security_profile_group`. If the VPC remains at the default `AFTER_CLASSIC_FIREWALL`, a matching classic VPC rule can allow or deny the connection before the NSI interception rule is reached. In particular, a classic VPC deny can drop the flow before VM-Series ever sees it.
+
+For an NSI consumer VPC, think of the desired chain as:
+
+```text
+Org/folder guardrails
+        |
+        | goto_next / no match
+        v
+Global network firewall policy
+        |
+        | APPLY_SECURITY_PROFILE_GROUP
+        v
+NSI -> VM-Series
+```
+
+not:
+
+```text
+Classic VPC rule
+   |
+   | allow/deny terminates first
+   v
+Global NSI rule never reached
+```
+
+## 17.4 Configure and verify with gcloud
+
+Check the current VPC setting:
+
+```cli
+gcloud compute networks describe prod-vpc \
+  --project=app-prod-1 \
+  --format='value(networkFirewallPolicyEnforcementOrder)'
+```
+
+Set the NSI-friendly order:
 
 ```cli
 gcloud compute networks update prod-vpc \
-  --project app-prod-1 \
+  --project=app-prod-1 \
   --network-firewall-policy-enforcement-order=BEFORE_CLASSIC_FIREWALL
 ```
 
-To restore the default model:
+Restore the Google Cloud default:
 
 ```cli
 gcloud compute networks update prod-vpc \
-  --project app-prod-1 \
+  --project=app-prod-1 \
   --network-firewall-policy-enforcement-order=AFTER_CLASSIC_FIREWALL
 ```
 
-Why this matters for NSI:
+Verify the effective order:
 
-If your NSI interception rule lives in the global network firewall policy, `BEFORE_CLASSIC_FIREWALL` causes that network policy stage to be evaluated before classic VPC firewall rules.
+```cli
+gcloud compute networks get-effective-firewalls prod-vpc \
+  --project=app-prod-1
+```
 
-Hierarchical policies still remain ahead of both.
+**Success criterion for `BEFORE_CLASSIC_FIREWALL`:** the effective-firewall output lists the `network-firewall-policy` stage ahead of the classic `network-firewall` stage.
 
 ---
 
