@@ -6,6 +6,32 @@
 >
 > Primary sources: [GitHub Actions environments](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment), [GitHub Actions secure use](https://docs.github.com/en/actions/reference/security/secure-use), [GitHub Actions secrets](https://docs.github.com/actions/security-guides/using-secrets-in-github-actions), [Cisco automation with Ansible](https://developer.cisco.com/automation-ansible/), [Cisco infrastructure as code](https://developer.cisco.com/iac/)
 
+## Table of contents
+
+- [Overview](#overview)
+- [What GitHub is—and is not—in this design](#what-github-isand-is-notin-this-design)
+- [Recommended repository layout](#recommended-repository-layout)
+- [Control plane versus data plane](#control-plane-versus-data-plane)
+- [Cisco implementation choices](#cisco-implementation-choices)
+- [A safe deployment pattern](#a-safe-deployment-pattern)
+  - [1. Treat inventory and variables as intent](#1-treat-inventory-and-variables-as-intent)
+  - [2. Validate in pull requests](#2-validate-in-pull-requests)
+  - [3. Separate plan from apply](#3-separate-plan-from-apply)
+  - [4. Gate production deployments](#4-gate-production-deployments)
+  - [5. Use a private, disposable runner](#5-use-a-private-disposable-runner)
+- [Example: GitHub Actions calling Ansible for Cisco IOS XE](#example-github-actions-calling-ansible-for-cisco-ios-xe)
+  - [Illustrative Ansible task pattern](#illustrative-ansible-task-pattern)
+- [Change lifecycle and rollback](#change-lifecycle-and-rollback)
+  - [Rollback principles](#rollback-principles)
+- [Reconciliation and drift management](#reconciliation-and-drift-management)
+- [Secrets and identity](#secrets-and-identity)
+- [Common mistakes](#common-mistakes)
+- [Implementation roadmap](#implementation-roadmap)
+- [Key takeaways](#key-takeaways)
+- [Sources](#sources)
+
+---
+
 ## Overview
 
 Yes—GitHub can be the source of truth for Cisco network configurations, and GitHub Actions can safely initiate configuration changes. The important qualifier is that GitHub should orchestrate a controlled automation system, rather than blindly SSHing a full configuration to every device after each commit.
