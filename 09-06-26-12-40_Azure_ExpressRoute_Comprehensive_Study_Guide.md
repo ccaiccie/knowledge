@@ -1,8 +1,8 @@
 # Azure ExpressRoute — Comprehensive Routing, Multi-Circuit, Virtual WAN, and Route Server Study Guide
 
-> **Scope:** Azure ExpressRoute architecture, circuit models and SKUs, BGP routing, Azure private and Microsoft peering, multi-circuit/multi-site load balancing and failover, Virtual WAN integration, Azure Route Server integration, FastPath, Global Reach, configuration, verification, failure behavior, and troubleshooting.
+> **Scope:** Azure ExpressRoute architecture, circuit models and SKUs, BGP routing, Azure Private Peering and Microsoft Peering, multi-circuit/multi-site load balancing and failover, Virtual WAN integration, Azure Route Server integration, FastPath, Global Reach, configuration, verification, failure behavior, and troubleshooting.
 >
-> **Validated against Microsoft documentation:** September 6, 2026.
+> **Validated against current Microsoft documentation:** September 7, 2026.
 
 ## Source URLs
 
@@ -12,6 +12,10 @@ Primary Microsoft sources used for this guide:
 - https://learn.microsoft.com/azure/expressroute/expressroute-circuit-peerings
 - https://learn.microsoft.com/azure/expressroute/expressroute-connectivity-models
 - https://learn.microsoft.com/azure/expressroute/expressroute-routing
+- https://learn.microsoft.com/azure/expressroute/howto-circuit-cli
+- https://learn.microsoft.com/azure/expressroute/howto-routing-cli
+- https://learn.microsoft.com/azure/expressroute/expressroute-howto-linkvnet-cli
+- https://learn.microsoft.com/azure/expressroute/how-to-routefilter-portal
 - https://learn.microsoft.com/azure/expressroute/designing-for-disaster-recovery-with-expressroute-privatepeering
 - https://learn.microsoft.com/azure/expressroute/metro
 - https://learn.microsoft.com/azure/expressroute/expressroute-erdirect-about
@@ -24,259 +28,302 @@ Primary Microsoft sources used for this guide:
 - https://learn.microsoft.com/azure/route-server/quickstart-create-route-server-cli
 - https://learn.microsoft.com/cli/azure/network/express-route
 - https://learn.microsoft.com/cli/azure/network/express-route/peering
+- https://learn.microsoft.com/cli/azure/network/express-route/peering/connection
 - https://learn.microsoft.com/cli/azure/network/express-route/gateway
 - https://learn.microsoft.com/cli/azure/network/express-route/gateway/connection
+- https://learn.microsoft.com/cli/azure/network/vnet-gateway
+- https://learn.microsoft.com/cli/azure/network/vpn-connection
 - https://learn.microsoft.com/cli/azure/network/routeserver
 - https://learn.microsoft.com/cli/azure/network/routeserver/peering
+
+## Table of contents
+
+- [1. What ExpressRoute actually is](#1-what-expressroute-actually-is)
+  - [1.1 Redundancy inside one circuit](#11-redundancy-inside-one-circuit)
+- [2. ExpressRoute connectivity models and types](#2-expressroute-connectivity-models-and-types)
+  - [2.1 Connectivity models](#21-connectivity-models)
+  - [2.2 Circuit SKU](#22-circuit-sku)
+  - [2.3 Billing family](#23-billing-family)
+  - [2.4 Provider circuit versus ExpressRoute Direct](#24-provider-circuit-versus-expressroute-direct)
+  - [2.5 ExpressRoute Metro](#25-expressroute-metro)
+  - [2.6 ExpressRoute Global Reach](#26-expressroute-global-reach)
+- [3. Private Peering, Microsoft Peering, and legacy Public Peering](#3-private-peering-microsoft-peering-and-legacy-public-peering)
+  - [3.1 Azure Private Peering](#31-azure-private-peering)
+  - [3.2 Microsoft Peering](#32-microsoft-peering)
+  - [3.3 Azure CLI — Microsoft Peering](#33-azure-cli--microsoft-peering)
+  - [3.4 Azure CLI — route filter for Microsoft Peering](#34-azure-cli--route-filter-for-microsoft-peering)
+- [4. BGP mechanics you must understand](#4-bgp-mechanics-you-must-understand)
+- [5. ExpressRoute to a customer-managed VNet](#5-expressroute-to-a-customer-managed-vnet)
+  - [5.1 Control plane](#51-control-plane)
+  - [5.2 Data plane](#52-data-plane)
+  - [5.3 Azure CLI — create the ExpressRoute VNet gateway](#53-azure-cli--create-the-expressroute-vnet-gateway)
+  - [5.4 Azure CLI — connect the VNet gateway to the circuit](#54-azure-cli--connect-the-vnet-gateway-to-the-circuit)
+  - [5.5 Azure CLI — cross-subscription authorization](#55-azure-cli--cross-subscription-authorization)
+  - [5.6 FastPath](#56-fastpath)
+- [6. Multi-location, multi-circuit design](#6-multi-location-multi-circuit-design)
+  - [6.1 Active/active ECMP](#61-activeactive-ecmp)
+  - [6.2 Active/standby](#62-activestandby)
+  - [6.3 Azure CLI — attach two circuits and set connection weights](#63-azure-cli--attach-two-circuits-and-set-connection-weights)
+  - [6.4 Failure sequence and capacity](#64-failure-sequence-and-capacity)
+- [7. ExpressRoute with Azure Virtual WAN](#7-expressroute-with-azure-virtual-wan)
+  - [7.1 vHub route-table model](#71-vhub-route-table-model)
+  - [7.2 Azure CLI — vWAN ExpressRoute gateway and connection](#72-azure-cli--vwan-expressroute-gateway-and-connection)
+- [8. ExpressRoute with Azure Route Server and SD-WAN](#8-expressroute-with-azure-route-server-and-sd-wan)
+  - [8.1 Branch-to-branch route exchange](#81-branch-to-branch-route-exchange)
+  - [8.2 Azure CLI — Route Server integration](#82-azure-cli--route-server-integration)
+  - [8.3 Vendor integration models](#83-vendor-integration-models)
+- [9. Packet-flow examples](#9-packet-flow-examples)
+- [10. Azure CLI — provider circuit and Private Peering](#10-azure-cli--provider-circuit-and-private-peering)
+- [11. Azure CLI — Global Reach](#11-azure-cli--global-reach)
+- [12. Azure CLI — hub/spoke gateway transit](#12-azure-cli--hubspoke-gateway-transit)
+- [13. Multi-circuit BGP policy examples](#13-multi-circuit-bgp-policy-examples)
+- [14. Connection weight versus AS-path prepending](#14-connection-weight-versus-as-path-prepending)
+- [15. Security and firewall insertion](#15-security-and-firewall-insertion)
+- [16. High-availability hierarchy](#16-high-availability-hierarchy)
+- [17. Verification checklist](#17-verification-checklist)
+  - [17.1 Circuit and peering](#171-circuit-and-peering)
+  - [17.2 Traditional VNet gateway connection](#172-traditional-vnet-gateway-connection)
+  - [17.3 Gateway resiliency and route information](#173-gateway-resiliency-and-route-information)
+  - [17.4 Virtual WAN](#174-virtual-wan)
+  - [17.5 Route Server](#175-route-server)
+  - [17.6 Global Reach](#176-global-reach)
+- [18. Troubleshooting by symptom](#18-troubleshooting-by-symptom)
+- [19. Common mistakes](#19-common-mistakes)
+- [20. Design recommendations](#20-design-recommendations)
+- [21. Decision table](#21-decision-table)
+- [22. Final mental model](#22-final-mental-model)
+- [Sources](#sources)
 
 ---
 
 ## 1. What ExpressRoute actually is
 
-**Source information:** ExpressRoute provides private Layer-3 connectivity from a customer network to the Microsoft cloud through a provider, exchange, or direct connection. Dynamic route exchange uses external Border Gateway Protocol (**eBGP**). Microsoft uses autonomous system (**AS**) 12076 on ExpressRoute private and Microsoft peerings.
+**Source information:** Azure ExpressRoute provides private Layer-3 connectivity from a customer network to Microsoft through a connectivity provider, exchange, or ExpressRoute Direct. Dynamic route exchange uses external Border Gateway Protocol (**eBGP**). Microsoft uses autonomous system (**AS**) 12076 on ExpressRoute Private and Microsoft peerings.
 
 ExpressRoute has three different layers that are often incorrectly collapsed into one concept:
 
 1. **Physical/provider connectivity** — how your router reaches the Microsoft Enterprise Edge (**MSEE**) routers at an ExpressRoute peering location.
-2. **ExpressRoute circuit** — a logical Azure resource, identified by a service key, with a fixed purchased bandwidth.
-3. **Peering/routing domain** — the BGP routing context carried over that circuit:
-   - **Azure private peering** for private VNet connectivity.
-   - **Microsoft peering** for supported Microsoft public services over public IP space.
+2. **ExpressRoute circuit** — a logical Azure resource with a service key and purchased bandwidth.
+3. **Peering/routing domain** — BGP routing carried over the circuit:
+   - **Azure Private Peering** for private VNet connectivity.
+   - **Microsoft Peering** for supported Microsoft public services.
 
-A circuit is therefore not equivalent to a single cable and is not equivalent to a single BGP neighbor.
+A circuit is therefore not equivalent to one cable and is not equivalent to one BGP neighbor.
 
 ### 1.1 Redundancy inside one circuit
 
-Every ExpressRoute peering is designed around **two independent BGP sessions**, one to each MSEE. Microsoft requires both sessions for the availability SLA.
+Every ExpressRoute peering is designed around **two independent BGP sessions**, one to each MSEE. Microsoft requires both sessions for the availability design/SLA requirements.
 
-For IPv4 private peering, allocate either:
-
-- one `/29`, split into two `/30`s; or
-- two independent `/30`s.
-
-For each `/30`:
-
-- customer/provider edge uses the **first usable** address;
-- Microsoft MSEE uses the **second usable** address.
-
-Example:
+For IPv4 Private Peering, allocate either one `/29` split into two `/30`s or two independent `/30`s.
 
 | Link | Subnet | Customer/PE | Microsoft MSEE |
 |---|---|---:|---:|
 | Primary | `192.168.100.128/30` | `192.168.100.129` | `192.168.100.130` |
 | Secondary | `192.168.100.132/30` | `192.168.100.133` | `192.168.100.134` |
 
-Microsoft does **not** rely on HSRP or VRRP between your routers and its routers. High availability is BGP-based.
+Microsoft does **not** rely on HSRP or VRRP between your routers and MSEE. High availability is BGP-based.
 
 ![ExpressRoute circuit anatomy](images/09-06-26-12-40_expressroute_circuit_anatomy.svg)
 
 [Download/edit the matching draw.io source](images/09-06-26-12-40_expressroute_circuit_anatomy.drawio)
 
-**What this image shows:** One ExpressRoute circuit implemented as redundant primary and secondary Layer-2/provider paths into two MSEEs, with private and Microsoft peering as separate routing domains.
+**What this image shows:** One circuit with redundant primary/secondary provider paths to two MSEEs and separate Private/Microsoft peering routing domains.
 
-**What matters:** A single circuit already contains two redundant BGP paths, but both terminate in the same ExpressRoute peering location. This protects against a router/link failure, not every metro/site-wide failure.
+**What matters:** One circuit protects against a single MSEE/link failure but both paths still share the same ExpressRoute peering-location failure domain unless you use Metro or a separate geographically diverse circuit.
 
-**What to verify:** Both BGP sessions are Established, the service provider provisioning state is Provisioned, and the intended peerings are enabled.
+**What to verify:** Both BGP sessions are established, provider provisioning state is `Provisioned`, and the intended peering is enabled.
 
 ---
 
-## 2. ExpressRoute connectivity models and “types”
+## 2. ExpressRoute connectivity models and types
 
-The word *type* can mean several different things. Keep these categories separate.
-
-### 2.1 Connectivity model: how you physically reach Microsoft
+### 2.1 Connectivity models
 
 | Model | What it is | Typical use |
 |---|---|---|
-| Cloud exchange / Ethernet exchange | Virtual cross-connect through an exchange provider | Colocation customers who already have exchange presence |
-| Point-to-point Ethernet | Dedicated Ethernet from premises/provider to an ExpressRoute peering location | Simple private WAN extension |
-| Any-to-any IP VPN | Managed Layer-3 WAN, commonly MPLS/IP-VPN, integrated by a provider | Enterprises wanting all branches connected through an existing carrier WAN |
-| ExpressRoute Direct | Customer/service-provider routers connect directly to Microsoft dual ports | High scale, dedicated capacity, physical isolation, many circuits |
+| Cloud/Ethernet exchange | Virtual cross-connect through an exchange provider | Colocation customers |
+| Point-to-point Ethernet | Dedicated Ethernet into an ER peering location | Simple private WAN extension |
+| Any-to-any IP VPN | Provider-managed L3 WAN such as MPLS/IP-VPN | Existing carrier WAN integration |
+| ExpressRoute Direct | Customer/provider routers connect directly to Microsoft dual ports | High scale, physical isolation, many logical circuits |
 
-### 2.2 Circuit SKU: how far the circuit can reach
+To see provider, peering-location, and bandwidth combinations:
+
+```cli
+az network express-route list-service-providers --output table
+```
+
+### 2.2 Circuit SKU
 
 | SKU | Reach | Key purpose |
 |---|---|---|
-| **Local** | Only designated Azure region(s) near the peering location | Cost-efficient local/regional connectivity; separate egress treatment |
-| **Standard** | Azure regions within the geopolitical area | Normal enterprise regional/geopolitical deployment |
-| **Premium** | Global Azure reach and higher route/connectivity limits | Multinational/global networks, cross-geopolitical Global Reach |
-
-**Additional explanation:** The SKU does not change BGP into a different protocol. It changes reach and service limits.
+| **Local** | Local designated Azure region(s) for the peering location | Localized, cost-conscious designs |
+| **Standard** | Regions within the geopolitical area | Normal enterprise deployments |
+| **Premium** | Global Azure reach plus higher limits | Multinational/global designs |
 
 ### 2.3 Billing family
 
-A circuit also has a billing family such as `MeteredData` or `UnlimitedData` where supported. This is a commercial/data-transfer choice, not a routing behavior.
+Provider circuits use a billing family such as `MeteredData` or `UnlimitedData` where supported. This affects billing, not BGP route selection.
+
+Microsoft documents that moving from `MeteredData` to `UnlimitedData` is supported, while reversing from Unlimited to Metered is not generally available through the normal workflow. Local circuits use Unlimited Data.
 
 ### 2.4 Provider circuit versus ExpressRoute Direct
 
-**Provider circuit**
+A provider-backed circuit is created with a provider and peering location. ExpressRoute Direct instead uses a Microsoft-facing ExpressRoute Port resource, and logical circuits reference that port.
 
-- Purchased as a logical circuit from an ExpressRoute connectivity provider.
-- Common supported circuit bandwidths: 50 Mbps, 100 Mbps, 200 Mbps, 500 Mbps, 1 Gbps, 2 Gbps, 5 Gbps, and 10 Gbps.
-- Provider may manage Layer 3/BGP for you or may hand off the VLAN so you configure BGP.
+Current core CLI exposes both the port resource and the circuit association:
 
-**ExpressRoute Direct**
+```cli
+az network express-route port list --output table
+```
 
-- Dedicated dual Microsoft-facing ports.
-- Current ExpressRoute Direct port options include dual 10-Gbps, 100-Gbps, or 400-Gbps connectivity.
-- Multiple logical ExpressRoute circuits can be created on the port pair.
-- Useful for very high-scale data ingestion, regulated physical-isolation requirements, or dividing circuits among business units/tenants.
-- Supports Dot1Q or QinQ encapsulation, selected at Direct resource creation.
+```cli
+az network express-route create \
+  --resource-group RG-Network \
+  --name ER-Direct-Circuit-01 \
+  --location <azure-resource-location> \
+  --express-route-port <express-route-port-name-or-id> \
+  --bandwidth 10Gbps \
+  --sku-tier Premium \
+  --sku-family UnlimitedData
+```
+
+**Important:** Do not copy a bandwidth value blindly. It must be valid for the selected Direct resource/circuit configuration.
 
 ### 2.5 ExpressRoute Metro
 
-**Source information:** ExpressRoute Metro is a high-resiliency topology where a circuit is dual-homed to **two distinct ExpressRoute peering locations within the same city/metro**.
+ExpressRoute Metro dual-homes a circuit across **two distinct ExpressRoute peering locations in the same metro**. It reduces the single-peering-location failure domain.
 
-Use Metro when you want to reduce the peering-location failure domain without necessarily building two entirely separate circuits in different metros.
+Microsoft's current Metro documentation still directs you to create the circuit using a Metro-supported provider/peering-location combination. Discover the currently offered provider/location combinations first:
+
+```cli
+az network express-route list-service-providers --output json
+```
+
+Do not invent a Metro location string; use a value returned by Azure for the selected provider.
 
 ### 2.6 ExpressRoute Global Reach
 
-Global Reach links **two ExpressRoute circuits** so the on-premises networks behind those circuits can communicate over the Microsoft backbone.
+Global Reach connects **two ExpressRoute circuits** so on-premises networks behind those circuits can communicate over Microsoft's backbone.
 
-Use it for:
-
-- site-to-site private WAN transit between offices attached to different circuits;
-- replacing or supplementing a carrier backbone between those offices.
-
-Do **not** confuse this with Route Server. Azure Route Server does not provide circuit-to-circuit transit.
+Do not confuse it with Route Server. ARS does not provide ExpressRoute-circuit-to-circuit transit. Section 11 contains the exact Azure CLI pattern.
 
 ---
 
-## 3. Private peering, Microsoft peering, and the legacy Public Peering name
+## 3. Private Peering, Microsoft Peering, and legacy Public Peering
 
-### 3.1 First: what happened to Azure Public Peering?
+New ExpressRoute designs use **Azure Private Peering** and **Microsoft Peering**. The old Azure Public Peering routing domain is legacy/deprecated for new design work.
 
-**Source information:** New ExpressRoute circuits support **two** peering/routing domains: **Azure Private Peering** and **Microsoft Peering**. The older **Azure Public Peering** routing domain is deprecated and should not be designed into new deployments.
+### 3.1 Azure Private Peering
 
-This causes terminology confusion because engineers still sometimes say “public peering” when they really mean **Microsoft Peering**.
+Use Private Peering for Azure resources reached by private IP, including VMs, internal load balancers, NVAs, and Private Endpoints.
 
-| Term | Current status | What it means |
-|---|---|---|
-| **Azure Private Peering** | Current | Private connectivity to Azure VNets and resources reachable through private VNet addressing |
-| **Microsoft Peering** | Current | Connectivity over ExpressRoute to supported Microsoft services that expose public IP endpoints |
-| **Azure Public Peering / Public Peering** | Legacy/deprecated | Historical ExpressRoute routing domain; do not use it as the current design name |
-
-**Important:** Microsoft Peering uses public addressing, but the customer-to-Microsoft-edge path still traverses the ExpressRoute circuit rather than general Internet transit.
-
-### 3.2 Azure Private Peering — private addressing into your VNets
-
-Use **Azure Private Peering** when the destination is a private resource inside an Azure virtual network.
-
-Typical destinations include Azure VMs, internal load balancers, private IPs on Azure appliances, Private Endpoints/Private Link, and hub-and-spoke VNets reached through an ExpressRoute VNet gateway or Virtual WAN ExpressRoute gateway.
-
-Typical route exchange:
-
-- Customer advertises on-premises prefixes to Microsoft.
-- Azure advertises VNet prefixes reachable through the ExpressRoute gateway.
-- A default route may be advertised **only** on private peering.
-
-Example:
+Typical path:
 
 ```text
-10.10.10.25
-   -> enterprise router
-   -> ExpressRoute private peering
-   -> MSEE
-   -> Microsoft backbone
-   -> ER gateway / eligible FastPath path
-   -> Azure VNet
-   -> 10.50.20.10
+On-premises
+  -> CE/PE router
+  -> ExpressRoute Private Peering
+  -> MSEE
+  -> Microsoft backbone
+  -> ER VNet gateway / eligible FastPath
+  -> Azure VNet private IP
 ```
 
-No Internet routing or SNAT is inherently required.
+No NAT is inherently required.
 
-### 3.3 Microsoft Peering — public Microsoft service endpoints over ExpressRoute
+### 3.2 Microsoft Peering
 
-Use **Microsoft Peering** when the destination is a supported Microsoft service reached by a public IP address but you want the WAN-to-Microsoft path to use ExpressRoute.
+Use Microsoft Peering for supported Microsoft public service endpoints over ExpressRoute.
 
 Typical requirements include:
 
-- two redundant BGP sessions;
-- public peering link addressing;
-- validated public prefixes;
-- public source addressing before entering the Microsoft public-service routing domain, commonly through SNAT;
-- route filters/BGP communities for the Microsoft service routes you intend to receive.
+- redundant BGP sessions;
+- peering-link IP addressing;
+- public prefixes registered to you/your ASN or an appropriate customer ASN;
+- public source address before entering Microsoft Peering, commonly via SNAT;
+- route filters selecting the Microsoft BGP communities you want to receive.
 
-Example:
+Microsoft Peering is **not general Internet transit**.
 
-```text
-10.10.10.25
-   -> enterprise firewall/proxy
-   -> SNAT to enterprise-owned public IP
-   -> ExpressRoute Microsoft peering
-   -> MSEE
-   -> Microsoft network
-   -> supported Microsoft public service
+### 3.3 Azure CLI — Microsoft Peering
+
+Example only; use public prefixes that are actually registered/validated for your organization.
+
+```cli
+az network express-route peering create \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-type MicrosoftPeering \
+  --peer-asn 65010 \
+  --vlan-id 300 \
+  --primary-peer-subnet 192.0.2.0/30 \
+  --secondary-peer-subnet 192.0.2.4/30 \
+  --advertised-public-prefixes 203.0.113.0/24
 ```
 
-### 3.4 Why enable both on one circuit?
+If the public prefixes are registered to a different customer ASN, review the current `--customer-asn` option and Microsoft routing requirements before applying it.
 
-Because they solve different reachability problems:
+Verify:
 
-```text
-Datacenter -> Azure VM private IP
-           -> Azure Private Peering
-
-Datacenter -> Azure Private Endpoint
-           -> Azure Private Peering
-
-Datacenter -> supported Microsoft public SaaS/PaaS endpoint
-           -> Microsoft Peering
+```cli
+az network express-route peering show \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --name MicrosoftPeering \
+  --query '{state:state,peerASN:peerASN,vlan:vlanId,advertised:advertisedPublicPrefixes}' \
+  --output json
 ```
 
-One ExpressRoute circuit can carry both routing domains and shares its purchased bandwidth across enabled peerings.
+### 3.4 Azure CLI — route filter for Microsoft Peering
 
-### 3.5 Private Endpoint versus public PaaS endpoint
+For circuits configured on or after August 1, 2017, Microsoft documents that Microsoft Peering does not advertise service routes until an appropriate route filter is attached.
 
-The same Azure service can use different routing domains depending on DNS and the resulting destination IP.
+List current service communities:
 
-```text
-Storage public endpoint
-   -> Microsoft Peering when supported/selected
-
-Storage Private Endpoint 10.50.40.5
-   -> Azure Private Peering
+```cli
+az network route-filter rule list-service-communities --output table
 ```
 
-### 3.6 Security-zone separation
+Create a route filter:
 
-A strong enterprise design typically places:
-
-- **Private Peering** toward the private/core routing domain.
-- **Microsoft Peering** toward a controlled DMZ/perimeter with firewall, proxy, NAT, and route filtering.
-
-Do not redistribute all Microsoft-Peering routes blindly into the private core.
-
-### 3.7 SNAT and asymmetric-routing caution
-
-For a private client reaching Microsoft Peering:
-
-```text
-Before SNAT:
-Src 10.10.10.25:53000
-Dst <Microsoft-public-IP>:443
-
-After SNAT:
-Src <customer-owned-public-IP>:62001
-Dst <Microsoft-public-IP>:443
+```cli
+az network route-filter create \
+  --resource-group RG-Network \
+  --name RF-MicrosoftServices \
+  --location westus
 ```
 
-Avoid advertising the same public NAT prefix with identical specificity to both the Internet and Microsoft Peering unless you have explicitly engineered the return path. Otherwise stateful devices can see asymmetric traffic.
+Add the allowed community values. The value below is only an example from Microsoft documentation; select the communities that correspond to the services you require:
 
-### 3.8 Microsoft Peering is not general Internet transit
+```cli
+az network route-filter rule create \
+  --resource-group RG-Network \
+  --filter-name RF-MicrosoftServices \
+  --name Allow-Selected-Microsoft-Services \
+  --access Allow \
+  --communities 12076:5040
+```
 
-Microsoft Peering carries supported Microsoft service prefixes; it is not a generic private Internet service. General Internet destinations still use normal Internet connectivity unless another architecture provides them.
+Attach the route filter to Microsoft Peering:
 
-### 3.9 Practical decision table
+```cli
+az network express-route peering update \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --name MicrosoftPeering \
+  --route-filter RF-MicrosoftServices
+```
 
-| Destination/use case | Peering to use | Source addressing |
-|---|---|---|
-| Azure VM private IP | **Private** | Private |
-| Internal Load Balancer | **Private** | Private |
-| Azure Private Endpoint | **Private** | Private |
-| Supported Azure PaaS public endpoint | **Microsoft** | Public/SNAT |
-| Microsoft 365 approved ExpressRoute scenario | **Microsoft** | Public/SNAT |
-| General Internet website | Neither as generic transit | Public/NAT |
+Verify the attachment:
+
+```cli
+az network express-route peering show \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  -n MicrosoftPeering \
+  --query '{state:state,routeFilter:routeFilter.id}' \
+  -o json
+```
 
 ---
 
@@ -286,704 +333,540 @@ Microsoft Peering carries supported Microsoft service prefixes; it is not a gene
 
 - Microsoft ExpressRoute ASN: **12076**
 - Azure Route Server ASN: **65515**
-- Customer ASN can be 16-bit or 32-bit, subject to reserved-value restrictions.
+- Customer ASN can be 16-bit or 32-bit subject to reserved ASN restrictions.
 
 ### 4.2 Prefix limits
 
-Current documented private-peering limits include:
+Current documented Private Peering limits include up to 4,000 IPv4 prefixes normally and up to 10,000 with ExpressRoute Premium. Microsoft Peering has a much smaller advertised-prefix limit. Always verify current limits before a large migration.
 
-- up to **4,000 IPv4 prefixes** advertised to Microsoft with normal private peering;
-- up to **10,000 IPv4 prefixes** with ExpressRoute Premium;
-- up to **100 IPv6 prefixes** for private peering.
-
-Microsoft peering accepts up to **200 prefixes per BGP session**.
-
-If the limit is exceeded, the BGP session can be dropped. Summarize intentionally.
+Exceeding prefix limits can cause BGP session failure. Aggregate deliberately.
 
 ### 4.3 Default route
 
-A default route can be advertised only through private peering. If on-premises advertises `0.0.0.0/0`, Azure workloads attached to that routing domain can be forced toward on-premises.
-
-That is often used for centralized Internet inspection, but it has side effects and must be tested carefully. Azure platform/service reachability can require explicit design.
+A default `0.0.0.0/0` can be advertised through **Private Peering** to force Azure workload Internet traffic toward on-premises. That does not make ExpressRoute Microsoft Peering a general Internet path.
 
 ### 4.4 BGP communities
 
-Microsoft tags routes it advertises with regional and service communities. For private peering, regional community values can help identify where Azure prefixes originate. Microsoft does **not** honor arbitrary communities you attach to routes advertised toward Microsoft as a generic inbound traffic-engineering mechanism.
+Microsoft tags routes with regional/service communities. Do not assume arbitrary customer communities sent to Microsoft are honored as a generic inbound traffic-engineering control.
 
-### 4.5 Longest-prefix match still wins first
+### 4.5 Longest prefix wins first
 
-Before debating AS path or connection weight, remember IP routing selects the **most specific prefix** first. BGP attributes compare paths to the same NLRI/prefix.
-
-Example:
-
-- Circuit 1 advertises `10.10.0.0/16`.
-- Circuit 2 advertises `10.10.10.0/24`.
-
-Traffic to `10.10.10.25` follows the `/24` even if Circuit 1 otherwise has a more preferred BGP policy.
+If one circuit advertises `10.10.0.0/16` and another advertises `10.10.10.0/24`, traffic to `10.10.10.25` follows the `/24` before AS-path or connection-weight comparisons for equal prefixes are relevant.
 
 ---
 
 ## 5. ExpressRoute to a customer-managed VNet
 
-The conventional non-Virtual-WAN design has:
+The conventional non-vWAN design has:
 
-1. ExpressRoute circuit and private peering at the peering location.
-2. ExpressRoute virtual network gateway in a VNet `GatewaySubnet`.
-3. Connection object linking the VNet gateway to the circuit.
-4. Optional hub-spoke VNet peering using gateway transit.
+1. ExpressRoute circuit + Private Peering.
+2. ExpressRoute virtual network gateway in `GatewaySubnet`.
+3. Azure connection object between the VNet gateway and circuit.
+4. Optional hub/spoke peering with gateway transit.
 
 ### 5.1 Control plane
 
-The ExpressRoute gateway is the bridge between:
-
-- routes learned on the circuit, and
-- Azure VNet/system route propagation.
+The ExpressRoute VNet gateway exchanges routes between the ExpressRoute circuit and Azure VNet routing.
 
 ### 5.2 Data plane
 
 Without FastPath:
 
-`VM -> VNet routing -> ExpressRoute VNet gateway -> Microsoft backbone -> MSEE -> provider/customer edge -> on-premises`
+```text
+VM
+ -> VNet routing
+ -> ExpressRoute VNet gateway
+ -> Microsoft backbone
+ -> MSEE
+ -> provider/customer edge
+ -> on-premises
+```
 
-Return traffic follows the inverse logical path, subject to routing policy.
-
-### 5.3 FastPath
-
-FastPath keeps the ExpressRoute gateway for route exchange/control plane, but allows eligible traffic to bypass the gateway in the data plane.
-
-**Source information:** Current FastPath support differs by provider circuit vs Direct and by feature. For example, Virtual WAN FastPath is enabled by default for eligible ExpressRoute Direct circuits when the vWAN ExpressRoute gateway has at least the documented minimum scale.
-
-**Operational consequence:** Do not remove the gateway because “FastPath bypasses it.” The gateway still participates in routing and acts as the fallback path if FastPath is unavailable.
-
----
-
-## 6. Multi-location, multi-circuit design
-
-This is the design most enterprises mean when they ask for “ExpressRoute redundancy.”
+### 5.3 Azure CLI — create the ExpressRoute VNet gateway
 
 Assume:
 
-- **Site A / Los Angeles** — `10.10.0.0/16`
-- **Site B / Dallas** — `10.20.0.0/16`
-- **Circuit 1** — peering location A
-- **Circuit 2** — peering location B
-- **Azure VNet** — `10.50.0.0/16`
-- Enterprise ASN — `65010`
-
-![Two circuits and BGP path control](images/09-06-26-12-40_expressroute_multi_circuit_bgp.svg)
-
-[Download/edit the matching draw.io source](images/09-06-26-12-40_expressroute_multi_circuit_bgp.drawio)
-
-**What this image shows:** Two on-premises sites and two independent ExpressRoute circuits reaching the same Azure routing domain, with a separate enterprise WAN path between the sites.
-
-**What matters:** Azure-to-on-premises and on-premises-to-Azure directions are controlled by different policy knobs. You must design both.
-
-**What to verify:** The same prefix has the intended number of BGP paths, Azure and on-premises agree on primary versus backup, and the surviving circuit has sufficient failover capacity.
-
-### 6.1 Active/active ECMP design
-
-**Source information:** When identical routes are advertised through multiple ExpressRoute circuits, Azure can load-balance on-premises-bound traffic over equal-cost paths across a maximum of four ExpressRoute circuits.
-
-To make true active/active behavior possible:
-
-- advertise the same prefix from both circuits;
-- avoid AS-path prepending on one circuit for that prefix;
-- keep Azure connection/routing weights equivalent where applicable;
-- on-premises, use equivalent BGP policy for Azure routes if you also want load sharing in the reverse direction.
-
-**Important:** BGP/ECMP generally hashes flows; it does not send packets round-robin per packet. A single elephant flow is normally pinned to one path, while many flows distribute better.
-
-### 6.2 Active/standby design
-
-If you want Circuit 1 primary and Circuit 2 backup:
-
-**Toward Azure (for Azure -> on-premises traffic):**
-
-Advertise the same on-premises prefix on both circuits, but prepend your ASN on Circuit 2.
-
-Conceptual route advertisements:
-
 ```text
-Circuit 1: 10.10.0.0/16  AS_PATH 65010
-Circuit 2: 10.10.0.0/16  AS_PATH 65010 65010 65010
+VNet:       VNet-Hub
+Address:    10.0.0.0/16
+GatewaySubnet: 10.0.255.0/27
+Gateway:    ERGW-Hub
+SKU:        ErGw2AZ
 ```
 
-Azure prefers the shorter path while both exist. If Circuit 1 disappears, Circuit 2 remains and wins by availability.
-
-**Toward on-premises (for on-premises -> Azure traffic):**
-
-Use BGP `LOCAL_PREF` inside your enterprise network:
-
-```text
-Routes learned from Circuit 1: LOCAL_PREF 200
-Routes learned from Circuit 2: LOCAL_PREF 100
-```
-
-Higher local preference wins within the customer AS.
-
-### 6.3 Why both directions must be engineered
-
-A common mistake is to prepend Circuit 2 toward Azure but do nothing to customer-side route selection.
-
-That can produce:
-
-- outbound: Site A -> Azure through Circuit 2;
-- return: Azure -> Site A through Circuit 1.
-
-Azure does not require strict symmetry for the ExpressRoute service itself, but **stateful firewalls/NAT devices in your path may require it**. If inspection exists, align both directions.
-
-### 6.4 Local-site preference versus global ECMP
-
-There are two common goals:
-
-**Goal A — each site uses its nearest circuit**
-
-- Site A advertises `10.10.0.0/16` normally on Circuit 1 and prepended on Circuit 2.
-- Site B advertises `10.20.0.0/16` normally on Circuit 2 and prepended on Circuit 1.
-- Customer WAN sets local preference so each site exits through its local circuit.
-
-**Goal B — all sites share both circuits**
-
-- Advertise identical aggregate(s) equally.
-- Use equal local preference.
-- Ensure the WAN core can deliver traffic to either site from either circuit.
-- Ensure any stateful middleboxes support this topology.
-
-### 6.5 Failover sequence
-
-Example: Circuit 1 fails.
-
-1. Physical or BGP failure is detected.
-2. BGP session(s) on Circuit 1 drop.
-3. Routes learned only through Circuit 1 are withdrawn.
-4. If Circuit 2 advertises the same prefixes, its path becomes best.
-5. Azure FIB and customer routing converge.
-6. New flows use Circuit 2.
-7. Existing TCP sessions may survive or reset depending on application timeout, firewall/NAT state, and convergence duration.
-
-**Source information:** Bidirectional Forwarding Detection (**BFD**) can accelerate failure detection on ExpressRoute, but end-to-end failover can still take significantly longer under some failure conditions; Microsoft documents that convergence to a redundant site can take up to 180 seconds in certain scenarios.
-
-### 6.6 Capacity rule
-
-If two 5-Gbps circuits normally carry 4 Gbps each, failover does **not** magically create a 10-Gbps surviving path. One 5-Gbps circuit must carry the post-failure offered load or traffic will congest.
-
-Design the surviving path for the required business-critical load.
-
----
-
-## 7. ExpressRoute with Azure Virtual WAN
-
-Azure Virtual WAN (**vWAN**) changes the Azure-side hub architecture.
-
-You no longer build a customer-managed hub VNet with a `GatewaySubnet` for ExpressRoute. Instead:
-
-- create a **Standard** Virtual WAN;
-- deploy one or more regional virtual hubs;
-- deploy an **ExpressRoute gateway inside each required virtual hub**;
-- connect the circuit private peering to the vWAN ExpressRoute gateway;
-- associate/propagate routes through vHub route tables.
-
-![ExpressRoute with Virtual WAN](images/09-06-26-12-40_expressroute_vwan_integration.svg)
-
-[Download/edit the matching draw.io source](images/09-06-26-12-40_expressroute_vwan_integration.drawio)
-
-**What this image shows:** ExpressRoute terminates into a managed vWAN ExpressRoute gateway, then the virtual hub router distributes routes to spoke VNets and other hubs.
-
-**What matters:** The hub route table, connection association, and route propagation replace much of the manual hub-spoke gateway-transit plumbing.
-
-**What to verify:** The circuit is connected to the intended vHub gateway, the connection associates to the expected route table, and branch/VNet prefixes propagate to the correct labels/tables.
-
-### 7.1 Supported circuit SKUs
-
-Virtual WAN supports ExpressRoute Local, Standard, and Premium circuits, including ExpressRoute Direct-backed circuits where supported.
-
-A Local circuit must connect to an ExpressRoute gateway in the appropriate local region, but vWAN routing can then provide access to connected spoke VNets according to the documented routing model.
-
-### 7.2 vHub route-table model
-
-Every vHub has a default route table and can have custom route tables.
-
-Each connection has two different relationships:
-
-- **Association** — which route table is used to look up traffic arriving from that connection.
-- **Propagation** — which route tables learn the routes originating from that connection.
-
-This distinction is essential.
-
-Example:
-
-```text
-ExpressRoute connection
-  associates -> defaultRouteTable
-  propagates -> defaultRouteTable + label "Default"
-```
-
-Routes learned from on-premises can then be available to VNet connections that use that table.
-
-### 7.3 Multiple hubs and multiple circuits
-
-A strong global design is:
-
-- West US vHub + West Coast ExpressRoute circuit
-- East US vHub + East Coast ExpressRoute circuit
-- Both hubs in one Standard Virtual WAN
-- Inter-hub transit over Microsoft's backbone
-
-You can then control which on-premises prefixes prefer which circuit using BGP and which vWAN connections receive/consume those routes using vHub route association/propagation.
-
-### 7.4 vWAN routing weight
-
-The ExpressRoute gateway connection resource supports a routing weight. Use it only with a clear understanding of how competing connections are selected; do not treat it as a universal replacement for BGP policy.
-
-### 7.5 FastPath in Virtual WAN
-
-Current Microsoft guidance states that FastPath is enabled automatically for eligible **ExpressRoute Direct** circuits connected to a Virtual WAN ExpressRoute gateway with the documented minimum scale units.
-
----
-
-## 8. ExpressRoute with Azure Route Server, branch-to-branch, and SD-WAN
-
-Azure Route Server (**ARS**) is a managed **BGP control-plane** service for a customer-managed VNet. It is especially useful when the hub contains both:
-
-- an ExpressRoute and/or VPN virtual network gateway; and
-- BGP-speaking network virtual appliances (**NVAs**) such as SD-WAN routers or firewalls.
-
-Route Server does **not** forward user packets. It learns and advertises routes; the data plane flows directly through the gateway or NVA selected by Azure routing.
-
-![ExpressRoute, Route Server, and SD-WAN branch-to-branch](images/09-06-26-13-15_expressroute_sdwan_branch_to_branch.svg)
-
-[Download/edit the matching draw.io source](images/09-06-26-13-15_expressroute_sdwan_branch_to_branch.drawio)
-
-**What this image shows:** Branch A reaches Azure through ExpressRoute while Branch B reaches an SD-WAN NVA through the vendor overlay. Route Server exchanges the two branch route sets with the ExpressRoute gateway and SD-WAN NVA after branch-to-branch is enabled.
-
-**What matters:** Route Server is not in the packet path. It makes the ExpressRoute gateway aware of SD-WAN prefixes and makes the SD-WAN NVA aware of ExpressRoute prefixes.
-
-**What to verify:** Both NVA-to-Route-Server BGP sessions are Established, `allowBranchToBranchTraffic` is enabled, Branch A's prefixes are advertised toward the NVA, Branch B's prefixes are advertised toward the ExpressRoute gateway, and forwarding/security policy permits the actual traffic.
-
-### 8.1 What “branch-to-branch” means
-
-The name can be misleading. In Route Server, **branch-to-branch** means **route exchange between different routing peers attached to the hub**, such as:
-
-- NVA ↔ ExpressRoute gateway
-- NVA ↔ VPN gateway
-- ExpressRoute gateway ↔ VPN gateway
-
-By default, Route Server does **not** propagate the routes learned from an NVA into a virtual network gateway, nor gateway-learned routes toward the NVA.
-
-When branch-to-branch is enabled, Route Server can re-advertise those routes.
-
-Example:
-
-```text
-Branch A behind ExpressRoute:
-10.10.0.0/16
-
-Branch B behind SD-WAN:
-10.20.0.0/16
-```
-
-Control plane:
-
-```text
-Branch A advertises 10.10.0.0/16
-  -> ExpressRoute circuit
-  -> ExpressRoute gateway
-  -> Route Server learns the route
-
-Branch B advertises 10.20.0.0/16
-  -> SD-WAN overlay
-  -> Azure SD-WAN NVA
-  -> eBGP to Route Server
-  -> Route Server learns the route
-```
-
-With branch-to-branch enabled:
-
-```text
-Route Server advertises 10.20.0.0/16
-  -> ExpressRoute gateway
-  -> ExpressRoute
-  -> Branch A
-
-Route Server advertises 10.10.0.0/16
-  -> SD-WAN NVA
-  -> SD-WAN overlay
-  -> Branch B
-```
-
-The result is that both branches can have a route to each other through the Azure hub.
-
-### 8.2 Actual Branch A -> Branch B packet path
-
-For a packet:
-
-```text
-Source:      10.10.10.25
-Destination: 10.20.20.25
-```
-
-a representative path is:
-
-```text
-Branch A
-  -> customer CE
-  -> ExpressRoute private peering
-  -> MSEE
-  -> ExpressRoute VNet gateway
-  -> Azure VNet forwarding
-  -> SD-WAN NVA
-  -> vendor SD-WAN tunnel
-  -> Branch B edge
-  -> 10.20.20.25
-```
-
-**Route Server is absent from that data path.**
-
-The return packet follows the corresponding reverse route:
-
-```text
-Branch B
-  -> SD-WAN edge
-  -> SD-WAN tunnel
-  -> Azure SD-WAN NVA
-  -> Azure VNet forwarding
-  -> ExpressRoute VNet gateway
-  -> ExpressRoute
-  -> Branch A
-```
-
-Stateful firewalls/NAT inserted in either direction must see a symmetric path.
-
-### 8.3 Why branch-to-branch is disabled by default
-
-Automatic route leaking between an ExpressRoute gateway, VPN gateway, and third-party NVAs could unintentionally create transit paths.
-
-For example, without deliberate policy you could accidentally turn Azure into:
-
-- SD-WAN-to-ExpressRoute transit;
-- VPN-to-ExpressRoute transit;
-- a bypass around an inspection firewall;
-- a route-leak point between otherwise segmented branch domains.
-
-Enable branch-to-branch only when the topology intentionally requires this route exchange.
-
-### 8.4 Enable branch-to-branch
+Create the required subnet:
 
 ```cli
-az network routeserver update \
-  --name ARS-Hub \
+az network vnet subnet create \
   --resource-group RG-Hub \
-  --allow-b2b-traffic true
+  --vnet-name VNet-Hub \
+  --name GatewaySubnet \
+  --address-prefixes 10.0.255.0/27
+```
+
+Create the public IP resource used by the gateway control plane:
+
+```cli
+az network public-ip create \
+  --resource-group RG-Hub \
+  --name ERGW-Hub-PIP \
+  --sku Standard \
+  --allocation-method Static
+```
+
+Create the ExpressRoute VNet gateway:
+
+```cli
+az network vnet-gateway create \
+  --resource-group RG-Hub \
+  --name ERGW-Hub \
+  --vnet VNet-Hub \
+  --gateway-type ExpressRoute \
+  --sku ErGw2AZ \
+  --public-ip-address ERGW-Hub-PIP
 ```
 
 Verify:
 
 ```cli
-az network routeserver show \
+az network vnet-gateway show \
   --resource-group RG-Hub \
-  --name ARS-Hub \
-  --query "{asn:virtualRouterAsn,peerIPs:virtualRouterIps,allowB2B:allowBranchToBranchTraffic,preference:hubRoutingPreference}" \
+  --name ERGW-Hub \
+  --query '{name:name,type:gatewayType,sku:sku.name,state:provisioningState}' \
+  --output table
+```
+
+**Success criteria:** gateway type `ExpressRoute`, expected SKU, provisioning state `Succeeded`.
+
+### 5.4 Azure CLI — connect the VNet gateway to the circuit
+
+Same subscription:
+
+```cli
+az network vpn-connection create \
+  --resource-group RG-Hub \
+  --name Conn-ER-LA-01 \
+  --vnet-gateway1 ERGW-Hub \
+  --express-route-circuit2 /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/RG-Network/providers/Microsoft.Network/expressRouteCircuits/ER-LA-01
+```
+
+Despite the command group name `vpn-connection`, the destination argument `--express-route-circuit2` creates an ExpressRoute-type connection.
+
+Verify:
+
+```cli
+az network vpn-connection show \
+  --resource-group RG-Hub \
+  --name Conn-ER-LA-01 \
+  --query '{type:connectionType,state:connectionStatus,weight:routingWeight,fastPath:expressRouteGatewayBypass}' \
   --output json
 ```
 
-**Success criteria:** `allowB2B` is `true`.
+### 5.5 Azure CLI — cross-subscription authorization
 
-### 8.5 Verify what the NVA learns and advertises
+The circuit owner creates an authorization:
+
+```cli
+az network express-route auth create \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --name Auth-Spoke-Subscription
+```
+
+Retrieve the authorization key:
+
+```cli
+AUTH_KEY=$(az network express-route auth show \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  -n Auth-Spoke-Subscription \
+  --query authorizationKey \
+  -o tsv)
+```
+
+The circuit user creates the connection using that authorization:
+
+```cli
+az network vpn-connection create \
+  --resource-group RG-Hub \
+  --name Conn-Shared-ER \
+  --vnet-gateway1 ERGW-Hub \
+  --express-route-circuit2 /subscriptions/<CIRCUIT_SUBSCRIPTION>/resourceGroups/RG-Network/providers/Microsoft.Network/expressRouteCircuits/ER-LA-01 \
+  --authorization-key "$AUTH_KEY"
+```
+
+Verify authorization use state:
+
+```cli
+az network express-route auth show \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  -n Auth-Spoke-Subscription \
+  -o json
+```
+
+### 5.6 FastPath
+
+FastPath keeps the gateway for the control plane while eligible data traffic bypasses the gateway data plane.
+
+Enable FastPath on a new traditional VNet connection where the gateway/SKU and feature combination supports it:
+
+```cli
+az network vpn-connection create \
+  --resource-group RG-Hub \
+  --name Conn-ER-FastPath \
+  --vnet-gateway1 ERGW-Hub \
+  --express-route-circuit2 /subscriptions/<SUB_ID>/resourceGroups/RG-Network/providers/Microsoft.Network/expressRouteCircuits/ER-LA-01 \
+  --express-route-gateway-bypass true
+```
+
+Or update an existing connection:
+
+```cli
+az network vpn-connection update \
+  --resource-group RG-Hub \
+  --name Conn-ER-LA-01 \
+  --express-route-gateway-bypass true
+```
+
+Do not enable this blindly. FastPath support depends on gateway SKU and feature/topology.
+
+---
+
+## 6. Multi-location, multi-circuit design
+
+Assume:
+
+- Site A / LA: `10.10.0.0/16`
+- Site B / Dallas: `10.20.0.0/16`
+- Circuit 1: west peering location
+- Circuit 2: central/east peering location
+- Azure VNet: `10.50.0.0/16`
+- Customer ASN: `65010`
+
+![Two circuits and BGP path control](images/09-06-26-12-40_expressroute_multi_circuit_bgp.svg)
+
+[Download/edit the matching draw.io source](images/09-06-26-12-40_expressroute_multi_circuit_bgp.drawio)
+
+### 6.1 Active/active ECMP
+
+For equal-cost behavior, advertise the same prefix on both circuits with equivalent policy. Azure can ECMP identical routes across multiple eligible ExpressRoute circuits.
+
+Do not expect per-packet round robin. ECMP is flow-oriented.
+
+### 6.2 Active/standby
+
+For Azure -> on-premises path preference, use AS-path prepending toward Microsoft:
+
+```text
+Circuit 1: 10.10.0.0/16 AS_PATH 65010
+Circuit 2: 10.10.0.0/16 AS_PATH 65010 65010 65010
+```
+
+For on-premises -> Azure preference, use your own BGP `LOCAL_PREF` internally:
+
+```text
+Circuit 1 learned Azure routes -> LOCAL_PREF 200
+Circuit 2 learned Azure routes -> LOCAL_PREF 100
+```
+
+### 6.3 Azure CLI — attach two circuits and set connection weights
+
+A traditional VNet gateway can have separate connection objects to multiple circuits.
+
+```cli
+az network vpn-connection create \
+  -g RG-Hub \
+  -n Conn-ER-West \
+  --vnet-gateway1 ERGW-Hub \
+  --express-route-circuit2 /subscriptions/<SUB_ID>/resourceGroups/RG-Network/providers/Microsoft.Network/expressRouteCircuits/ER-West
+```
+
+```cli
+az network vpn-connection create \
+  -g RG-Hub \
+  -n Conn-ER-East \
+  --vnet-gateway1 ERGW-Hub \
+  --express-route-circuit2 /subscriptions/<SUB_ID>/resourceGroups/RG-Network/providers/Microsoft.Network/expressRouteCircuits/ER-East
+```
+
+Azure CLI exposes routing weight on the connection. Microsoft documents a range of 0–32000, with higher weight preferred when the same destination prefix is learned through multiple ExpressRoute connections to the VNet gateway.
+
+```cli
+az network vpn-connection update \
+  -g RG-Hub \
+  -n Conn-ER-West \
+  --routing-weight 200
+
+az network vpn-connection update \
+  -g RG-Hub \
+  -n Conn-ER-East \
+  --routing-weight 100
+```
+
+**Important:** Connection weight influences the Azure-side selection layer. It does not replace customer-side `LOCAL_PREF`, AS-path design, or longest-prefix match.
+
+### 6.4 Failure sequence and capacity
+
+When Circuit 1 fails:
+
+1. physical/BGP failure is detected;
+2. BGP routes are withdrawn;
+3. alternate circuit route becomes active;
+4. Azure/customer FIBs converge;
+5. new flows use Circuit 2;
+6. existing stateful sessions may survive or reset depending on middleboxes/application timers.
+
+BFD can improve detection, but do not assume subsecond end-to-end convergence. Microsoft documents scenarios where failover can take considerably longer.
+
+A 5-Gbps backup circuit cannot carry 8 Gbps simply because the primary failed. Size the surviving path for business-critical failure load.
+
+---
+
+## 7. ExpressRoute with Azure Virtual WAN
+
+Virtual WAN changes the Azure-side termination model. Instead of a customer-managed `GatewaySubnet`, create an ExpressRoute gateway in the managed virtual hub.
+
+![ExpressRoute with Virtual WAN](images/09-06-26-12-40_expressroute_vwan_integration.svg)
+
+[Download/edit the matching draw.io source](images/09-06-26-12-40_expressroute_vwan_integration.drawio)
+
+### 7.1 vHub route-table model
+
+Each connection has:
+
+- **association** — which vHub route table is used to look up traffic arriving on that connection;
+- **propagation** — which route tables learn prefixes from that connection.
+
+This replaces much of the traditional hub VNet/gateway-transit plumbing.
+
+### 7.2 Azure CLI — vWAN ExpressRoute gateway and connection
+
+Create the vWAN ExpressRoute gateway:
+
+```cli
+az network express-route gateway create \
+  --name ERGW-vHub-West \
+  --resource-group RG-vWAN \
+  --virtual-hub vHub-West \
+  --min-val 5
+```
+
+Get the Private Peering resource ID:
+
+```cli
+ER_PEERING_ID=$(az network express-route peering show \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  -n AzurePrivatePeering \
+  --query id -o tsv)
+```
+
+Create the connection:
+
+```cli
+az network express-route gateway connection create \
+  --resource-group RG-vWAN \
+  --gateway-name ERGW-vHub-West \
+  --name Conn-ER-LA-01 \
+  --peering "$ER_PEERING_ID"
+```
+
+For segmented routing, specify the actual vHub route-table IDs:
+
+```cli
+az network express-route gateway connection create \
+  --resource-group RG-vWAN \
+  --gateway-name ERGW-vHub-West \
+  --name Conn-ER-Segmented \
+  --peering "$ER_PEERING_ID" \
+  --associated-route-table <VHUB_ROUTE_TABLE_ID> \
+  --propagated-route-tables <VHUB_ROUTE_TABLE_ID> \
+  --labels Default \
+  --routing-weight 100
+```
+
+Verify:
+
+```cli
+az network express-route gateway connection show \
+  -g RG-vWAN \
+  --gateway-name ERGW-vHub-West \
+  -n Conn-ER-LA-01 \
+  -o json
+```
+
+---
+
+## 8. ExpressRoute with Azure Route Server and SD-WAN
+
+Azure Route Server (**ARS**) is a managed BGP control plane inside a customer-managed VNet. It is not a packet-forwarding appliance.
+
+![ExpressRoute, Route Server, and SD-WAN branch-to-branch](images/09-06-26-13-15_expressroute_sdwan_branch_to_branch.svg)
+
+[Download/edit the matching draw.io source](images/09-06-26-13-15_expressroute_sdwan_branch_to_branch.drawio)
+
+### 8.1 Branch-to-branch route exchange
+
+When enabled, ARS can exchange routes between BGP-speaking NVAs and VNet gateways such as ExpressRoute/VPN gateways in supported designs.
+
+Representative data path:
+
+```text
+Branch A
+ -> ExpressRoute
+ -> ER VNet gateway
+ -> Azure VNet forwarding
+ -> SD-WAN NVA
+ -> SD-WAN overlay
+ -> Branch B
+```
+
+ARS is absent from the packet path.
+
+### 8.2 Azure CLI — Route Server integration
+
+Create the required subnet:
+
+```cli
+az network vnet subnet create \
+  -g RG-Hub \
+  --vnet-name VNet-Hub \
+  -n RouteServerSubnet \
+  --address-prefixes 10.0.1.0/27
+```
+
+Create the Standard public IP:
+
+```cli
+az network public-ip create \
+  -g RG-Hub \
+  -n RouteServerIP \
+  --sku Standard \
+  --version IPv4
+```
+
+Create ARS:
+
+```cli
+SUBNET_ID=$(az network vnet subnet show \
+  -g RG-Hub \
+  --vnet-name VNet-Hub \
+  -n RouteServerSubnet \
+  --query id -o tsv)
+
+az network routeserver create \
+  -g RG-Hub \
+  -n ARS-Hub \
+  --hosted-subnet "$SUBNET_ID" \
+  --public-ip-address RouteServerIP
+```
+
+Peer an NVA:
+
+```cli
+az network routeserver peering create \
+  -g RG-Hub \
+  --routeserver ARS-Hub \
+  -n SDWAN-NVA \
+  --peer-asn 65050 \
+  --peer-ip 10.0.2.4
+```
+
+Enable branch-to-branch route exchange when required:
+
+```cli
+az network routeserver update \
+  -g RG-Hub \
+  -n ARS-Hub \
+  --allow-b2b-traffic true
+```
+
+Verify ARS endpoints and state:
+
+```cli
+az network routeserver show \
+  -g RG-Hub \
+  -n ARS-Hub \
+  --query '{asn:virtualRouterAsn,peerIPs:virtualRouterIps,allowB2B:allowBranchToBranchTraffic,preference:hubRoutingPreference}' \
+  -o json
+```
+
+Verify learned/advertised routes:
 
 ```cli
 az network routeserver peering list-learned-routes \
-  --resource-group RG-Hub \
+  -g RG-Hub \
   --routeserver ARS-Hub \
-  --name SDWAN-NVA \
-  --output table
+  -n SDWAN-NVA \
+  -o table
 ```
 
 ```cli
 az network routeserver peering list-advertised-routes \
-  --resource-group RG-Hub \
+  -g RG-Hub \
   --routeserver ARS-Hub \
-  --name SDWAN-NVA \
-  --output table
+  -n SDWAN-NVA \
+  -o table
 ```
 
-**Expected state:**
+### 8.3 Vendor integration models
 
-- NVA-originated branch prefixes appear as learned routes.
-- ExpressRoute/on-premises prefixes intended for the NVA appear in advertised routes.
+Three common models exist:
 
-### 8.6 Route preference when the same prefix exists on ExpressRoute and SD-WAN
+1. **Customer-managed hub + ARS + BGP-capable NVA** — broad vendor flexibility.
+2. **Integrated NVA in Virtual WAN** — Azure-managed vHub route exchange with supported vendor integrations.
+3. **NVA in a regular VNet connected to vWAN** — more customer control but more lifecycle/routing responsibility.
 
-If Route Server learns the same destination through multiple connection types, selection matters.
+Vendor examples include Fortinet FortiGate, Palo Alto Prisma SD-WAN/VM-Series architectures, and Cisco Catalyst SD-WAN/C8000V. Do not assume all vendors use the same Azure attachment or HA model.
 
-Microsoft documents that, by default, ExpressRoute-learned routes have preference over VPN/SD-WAN-learned routes. Route Server hub routing preference can be configured to influence this behavior.
-
-This matters for designs such as:
-
-```text
-Primary: ExpressRoute
-Backup:  SD-WAN Internet overlay
-```
-
-or the reverse.
-
-Do not assume that advertising a backup route is enough. Verify the selected effective route and the failure behavior.
-
-### 8.7 AS-path nuance
-
-Route Server preserves the AS path it receives from NVA peers. However, when routes ultimately traverse the ExpressRoute gateway and are advertised toward on-premises, ExpressRoute has specific AS-path behavior and may remove private ASN information before presenting the route to the customer.
-
-Therefore, validate the **actual route seen by the on-premises router** rather than assuming every NVA-side AS prepend will remain visible end to end.
-
-### 8.8 Route Server is not ExpressRoute-circuit-to-circuit transit
-
-This restriction is critical:
-
-```text
-ExpressRoute Circuit 1
-      X
-Azure Route Server
-      X
-ExpressRoute Circuit 2
-```
-
-Route Server does not provide ExpressRoute-circuit-to-circuit transit.
-
-For site-to-site connectivity between networks attached to separate ExpressRoute circuits, evaluate **ExpressRoute Global Reach**.
-
-### 8.9 Can ExpressRoute be integrated with Fortinet, Palo Alto, and Cisco SD-WAN?
-
-**Yes — but ExpressRoute does not directly “speak the vendor SD-WAN protocol.”** Integration happens by combining Azure routing with a vendor NVA/SD-WAN gateway.
-
-There are three common architectures.
-
-#### Model A — Customer-managed hub VNet + Route Server
-
-```text
-ExpressRoute
-    |
-ER VNet Gateway
-    |
-Azure Route Server <--- eBGP ---> SD-WAN NVA
-                                /    |     \
-                         Fortinet  Palo Alto  Cisco
-                                |
-                         SD-WAN overlay
-                                |
-                             branches
-```
-
-This is the most general architecture.
-
-Requirements:
-
-- NVA supports BGP, including the Route Server peering requirements.
-- NVA peers with **both** Route Server instance IPs.
-- NVA ASN differs from Route Server ASN 65515.
-- Branch-to-branch is enabled if ExpressRoute routes and SD-WAN routes must be exchanged.
-- Security/UDR/effective-route design sends data to the intended NVA.
-- NVA HA and stateful symmetry are handled by the vendor architecture.
-
-#### Model B — Integrated NVA in Azure Virtual WAN
-
-Some vendors support deployment directly into a Virtual WAN hub.
-
-```text
-ExpressRoute branch
-      |
-vWAN ExpressRoute Gateway
-      |
-Azure Virtual Hub Router
-      |
-Integrated SD-WAN / NGFW NVA
-      |
-SD-WAN branches
-```
-
-The virtual hub provides Azure route exchange and Microsoft-backbone connectivity between hub-connected spokes.
-
-This is often cleaner for multi-region SD-WAN because you avoid building and maintaining a separate transit VNet.
-
-#### Model C — SD-WAN NVA in a normal VNet connected to Virtual WAN
-
-A vendor virtual CPE can also be deployed in an enterprise VNet and connected toward Virtual WAN, commonly using IPsec/BGP depending on the architecture.
-
-This gives the customer more direct control of the NVA but also more responsibility for scale, HA, routing, and lifecycle.
-
-### 8.10 Fortinet
-
-Fortinet documents FortiGate-VM NVAs deployed **inside Azure Virtual WAN hubs** for combined SD-WAN and next-generation firewall functionality.
-
-```text
-FortiGate branch
-   -> Fortinet SD-WAN overlay
-   -> FortiGate-VM NVA in Azure vHub
-   -> vHub route exchange
-   -> Azure VNet / ExpressRoute-connected site
-```
-
-FortiManager can manage the FortiGate hub NVAs and branch FortiGates.
-
-This means an ExpressRoute-connected datacenter can coexist with Fortinet SD-WAN branches through the Azure routing fabric, provided the relevant hub route tables/route exchange are configured.
-
-Fortinet also supports ordinary FortiGate VMs in customer-managed VNets, where BGP to Azure Route Server is another valid integration pattern.
-
-### 8.11 Palo Alto Networks
-
-Palo Alto Networks supports Azure integration through **Prisma SD-WAN virtual ION (vION)** architectures and VM-Series firewall/NVA designs.
-
-Prisma SD-WAN documents Azure Virtual WAN integration where vION connectivity extends branch SD-WAN into the Azure hub-and-spoke transit architecture.
-
-```text
-Prisma SD-WAN branch
-   -> Prisma SD-WAN overlay
-   -> vION / Palo Alto cloud NVA
-   -> Azure routing
-   -> VNet or ExpressRoute-connected network
-```
-
-For a customer-managed VNet, a BGP-capable Palo Alto NVA can also exchange dynamic routes with Azure Route Server when deployed according to Route Server requirements.
-
-Do not confuse:
-
-- **Prisma SD-WAN** — branch/connectivity overlay; and
-- **VM-Series NGFW** — firewall/NVA.
-
-They can participate in the same Azure architecture but serve different functions.
-
-### 8.12 Cisco
-
-Cisco has a documented, automated **Catalyst SD-WAN + Azure Virtual WAN** integration using **Catalyst 8000V** NVAs deployed inside Azure virtual hubs.
-
-Cisco SD-WAN Manager/Cloud OnRamp can automate the deployment and mapping between branch VPNs and Azure VNets.
-
-```text
-Cisco branch / Catalyst SD-WAN edge
-   -> Catalyst SD-WAN overlay
-   -> Catalyst 8000V in Azure vHub
-   -> Azure vHub routing
-   -> Azure VNet or ExpressRoute-connected site
-```
-
-Cisco documents branch-to-VNet and inter-region vHub connectivity, plus service chaining with Azure Firewall in supported designs.
-
-A manually deployed Catalyst 8000V in a customer-managed hub can also use BGP with Route Server where the chosen design satisfies Route Server requirements.
-
-### 8.13 Vendor comparison
-
-| Vendor | Azure SD-WAN integration examples | ExpressRoute coexistence model |
-|---|---|---|
-| **Fortinet** | FortiGate-VM SD-WAN/NGFW NVA in vWAN hub; FortiGate in customer VNet | vHub routing or Route Server BGP |
-| **Palo Alto Networks** | Prisma SD-WAN vION Azure integration; VM-Series NVA | vWAN/vION architecture or Route Server with BGP-capable NVA |
-| **Cisco** | Catalyst SD-WAN Cloud OnRamp + Catalyst 8000V in vWAN hub | vHub routing or customer-hub Route Server BGP |
-
-### 8.14 Example hybrid design: ExpressRoute as primary, SD-WAN as backup
-
-```text
-Branch/datacenter
-   |\
-   | \__ Internet -> SD-WAN tunnel -> Azure NVA
-   |
-   +---- ExpressRoute ----------------> Azure
-```
-
-For the same Azure prefix:
-
-- ExpressRoute can be preferred during normal operation.
-- SD-WAN remains a backup path.
-- If ExpressRoute is withdrawn, the SD-WAN route becomes active.
-
-You must coordinate Route Server hub routing preference, NVA BGP advertisements, on-premises BGP/SD-WAN policy, firewall state/symmetry, and convergence timers.
-
-### 8.15 Common mistakes with SD-WAN + ExpressRoute
-
-1. **Assuming Route Server carries packets.** It only exchanges routes.
-2. **Enabling branch-to-branch without understanding the new transit paths.**
-3. **Expecting Route Server to provide ExpressRoute-circuit-to-circuit transit.**
-4. **Advertising the same prefix from ER and SD-WAN without defining preference.**
-5. **Forgetting that stateful firewalls need a symmetric forwarding design.**
-6. **Using one NVA BGP session instead of peering to both Route Server instances.**
-7. **Assuming all vendors use the same Azure integration model.**
-8. **Confusing Virtual WAN integrated NVA routing with a normal NVA VM in a VNet.**
-
-### 8.16 Sources for this section
-
-- Microsoft: https://learn.microsoft.com/azure/route-server/expressroute-vpn-support
-- Microsoft: https://learn.microsoft.com/azure/route-server/route-server-faq
-- Microsoft: https://learn.microsoft.com/azure/route-server/configure-route-server
-- Microsoft: https://learn.microsoft.com/azure/virtual-wan/about-nva-hub
-- Microsoft: https://learn.microsoft.com/azure/virtual-wan/sd-wan-connectivity-architecture
-- Fortinet: https://docs.fortinet.com/document/fortigate-public-cloud/7.6.0/azure-vwan-sd-wan-ngfw-deployment-guide/372408
-- Palo Alto Networks: https://docs.paloaltonetworks.com/prisma-sd-wan/cloudblades/cloudblade-integrations/azure-virtual-wan-with-vion-cloudblade-integration
-- Cisco: https://www.cisco.com/c/en/us/td/docs/routers/sdwan/26x-later/cloud-onramp/cloud-onramp-configuration-guide/cloud-onramp-multi-cloud-azure.html
+ARS is not ExpressRoute-circuit-to-circuit transit. Use Global Reach for that requirement.
 
 ---
 
-## 9. Packet flow examples
+## 9. Packet-flow examples
 
 ### 9.1 On-premises to Azure through traditional ExpressRoute
-
-Example packet:
 
 ```text
 Source:      10.10.10.25:53000
 Destination: 10.50.20.10:443
 ```
 
-Flow:
+1. Enterprise routing selects an Azure prefix learned from ExpressRoute.
+2. Customer BGP policy selects Circuit 1 or Circuit 2.
+3. Packet traverses provider handoff/private-peering VLAN to MSEE.
+4. Microsoft backbone delivers toward the Azure region.
+5. ER gateway or eligible FastPath delivers into the VNet.
+6. Azure routing delivers to `10.50.20.10`.
+7. Return path uses the route to `10.10.0.0/16` learned through Private Peering.
 
-1. Host forwards toward the enterprise default/router.
-2. Enterprise routing matches `10.50.0.0/16` learned from ExpressRoute.
-3. BGP policy chooses Circuit 1 or Circuit 2.
-4. Customer/provider PE forwards over the private-peering VLAN.
-5. Packet reaches the selected MSEE.
-6. Microsoft backbone forwards toward the Azure region.
-7. ExpressRoute gateway (or eligible FastPath data path) forwards into the VNet.
-8. Azure VNet routing forwards to `10.50.20.10`.
-9. Return route to `10.10.0.0/16` is selected from private-peering-learned routes.
+No NAT is inherently required for Private Peering.
 
-**NAT:** No NAT is inherently required for private peering. Private source and destination IPs are preserved unless your own NVA/firewall performs NAT.
+### 9.2 Azure to on-premises with equal circuits
 
-### 9.2 Azure to on-premises with two equal circuits
+If Azure sees identical prefixes with equivalent attributes, it can use eligible equal-cost ExpressRoute paths.
 
-Suppose Azure knows:
+### 9.3 Azure to on-premises with AS prepend
 
 ```text
-10.10.0.0/16 via Circuit 1, AS_PATH 65010
-10.10.0.0/16 via Circuit 2, AS_PATH 65010
+10.10.0.0/16 via Circuit 1: AS_PATH 65010
+10.10.0.0/16 via Circuit 2: AS_PATH 65010 65010 65010
 ```
 
-If all relevant attributes are equal and the topology is eligible for ECMP, Azure can place flows across both paths.
-
-### 9.3 Azure to on-premises with Circuit 2 prepended
-
-```text
-10.10.0.0/16 via Circuit 1, AS_PATH 65010
-10.10.0.0/16 via Circuit 2, AS_PATH 65010 65010 65010
-```
-
-Circuit 1 becomes preferred. Circuit 2 is retained as backup.
+Circuit 1 is preferred while both paths are available.
 
 ---
 
-## 10. Azure CLI — provider circuit and private peering
+## 10. Azure CLI — provider circuit and Private Peering
 
-> These examples use documentation-supported Azure CLI syntax. Replace example values with your provider, peering location, address plan, and ASN.
-
-### 10.1 Discover providers and peering locations
+Discover providers and peering locations:
 
 ```cli
 az network express-route list-service-providers --output table
 ```
 
-**What it tests/configures:** Lists service providers, peering locations, and bandwidths Azure knows about.
-
-**Expected successful state:** Your provider and required peering location are present.
-
-**Failure indicator:** Provider/location combination is absent or desired bandwidth is not offered.
-
-**Next action:** Choose a supported pairing or work with the provider/Microsoft to confirm availability.
-
-### 10.2 Create a Standard provider circuit
+Create a provider circuit:
 
 ```cli
 az network express-route create \
@@ -997,37 +880,23 @@ az network express-route create \
   --sku-family MeteredData
 ```
 
-**Important:** The Azure resource `--location` is where the circuit resource metadata is stored. The `--peering-location` is the physical/logical Microsoft edge location where the circuit connects. They are not the same concept.
+> **Billing warning:** Microsoft bills the circuit once the service key is issued. Create it when the provider is ready to provision.
 
-### 10.3 Get the service key
+Retrieve the service key and states:
 
 ```cli
 az network express-route show \
-  --name ER-LA-01 \
-  --resource-group RG-Network \
-  --query "{serviceKey:serviceKey,providerState:serviceProviderProvisioningState,circuitState:circuitProvisioningState}" \
-  --output table
+  -g RG-Network \
+  -n ER-LA-01 \
+  --query '{serviceKey:serviceKey,providerState:serviceProviderProvisioningState,circuitState:circuitProvisioningState,provisioning:provisioningState}' \
+  -o table
 ```
 
-Give the service key to the connectivity provider.
-
-**Success criteria:**
-
-- provider provisioning state becomes `Provisioned`;
-- circuit provisioning state is enabled/succeeded as documented by the command output.
-
-### 10.4 Create Azure private peering
-
-Example addressing:
-
-- primary `/30`: `192.168.100.128/30`
-- secondary `/30`: `192.168.100.132/30`
-- customer ASN: `65010`
-- VLAN: `200`
+Create Azure Private Peering:
 
 ```cli
 az network express-route peering create \
-  --resource-group RG-Network \
+  -g RG-Network \
   --circuit-name ER-LA-01 \
   --peering-type AzurePrivatePeering \
   --peer-asn 65010 \
@@ -1036,635 +905,518 @@ az network express-route peering create \
   --secondary-peer-subnet 192.168.100.132/30
 ```
 
-### 10.5 Verify private peering
+Verify:
 
 ```cli
 az network express-route peering show \
-  --resource-group RG-Network \
+  -g RG-Network \
   --circuit-name ER-LA-01 \
-  --name AzurePrivatePeering \
-  --output json
+  -n AzurePrivatePeering \
+  --query '{state:state,azureASN:azureASN,peerASN:peerASN,vlan:vlanId,primary:primaryPeerAddressPrefix,secondary:secondaryPeerAddressPrefix}' \
+  -o json
 ```
 
-Microsoft's documented output includes fields such as:
-
-```text
-azureASN: 12076
-peeringType: AzurePrivatePeering
-primaryPeerAddressPrefix: <primary /30>
-secondaryPeerAddressPrefix: <secondary /30>
-state: Enabled
-```
-
-Exact JSON shape can change with CLI/API versions; validate the semantic fields rather than depending on field order.
-
-### 10.6 Check ARP and route/BGP state
-
-Use the ExpressRoute peering statistics/route commands appropriate to the current CLI and portal to verify:
-
-- both BGP peer sessions;
-- prefixes received from Azure;
-- prefixes Azure receives from you;
-- ARP/MAC resolution on the peering VLANs.
+Current CLI exposes `az network express-route peering get-stats`, but Microsoft marks that command **Preview**. Do not build production automation that assumes Preview behavior is stable without validating the CLI/API version.
 
 ---
 
-## 11. Azure CLI — connect ExpressRoute to Virtual WAN
+## 11. Azure CLI — Global Reach
+
+Global Reach creates an ExpressRoute circuit connection under Azure Private Peering.
 
 Assume:
 
-- vWAN resource: `VWAN-Global`
-- vHub: `vHub-West`
-- ExpressRoute gateway: `ERGW-vHub-West`
-- circuit: `ER-LA-01`
+- Circuit 1: `ER-LA-01`
+- Circuit 2: `ER-DAL-01`
+- Global Reach interconnect prefix: `10.254.0.0/29`
 
-### 11.1 Create the vWAN ExpressRoute gateway
-
-```cli
-az network express-route gateway create \
-  --name ERGW-vHub-West \
-  --resource-group RG-vWAN \
-  --virtual-hub vHub-West \
-  --min-val 5
-```
-
-The current CLI also supports minimum/maximum values for scalable gateway behavior where applicable.
-
-### 11.2 Get the private-peering resource ID
+Create the circuit-to-circuit connection:
 
 ```cli
-ER_PEERING_ID=$(az network express-route peering show \
+az network express-route peering connection create \
   --resource-group RG-Network \
   --circuit-name ER-LA-01 \
-  --name AzurePrivatePeering \
-  --query id -o tsv)
+  --peering-name AzurePrivatePeering \
+  --name GR-LA-to-DAL \
+  --peer-circuit /subscriptions/<SUB_ID>/resourceGroups/RG-Network/providers/Microsoft.Network/expressRouteCircuits/ER-DAL-01 \
+  --address-prefix 10.254.0.0/29
 ```
 
-### 11.3 Create the vWAN ExpressRoute connection
+Verify:
 
 ```cli
-az network express-route gateway connection create \
-  --resource-group RG-vWAN \
-  --gateway-name ERGW-vHub-West \
-  --name Conn-ER-LA-01 \
-  --peering "$ER_PEERING_ID"
+az network express-route peering connection show \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  -n GR-LA-to-DAL \
+  -o json
 ```
 
-For advanced segmentation, use the supported `--associated-route-table`, `--propagated-route-tables`, `--labels`, and `--routing-weight` parameters.
-
-### 11.4 Verify the connection
+List all Global Reach connections under the peering:
 
 ```cli
-az network express-route gateway connection show \
-  --resource-group RG-vWAN \
-  --gateway-name ERGW-vHub-West \
-  --name Conn-ER-LA-01 \
-  --output json
+az network express-route peering connection list \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  -o table
 ```
 
-**Success criteria:**
-
-- provisioning state succeeded;
-- peering points at the intended `AzurePrivatePeering`;
-- associated and propagated route tables match the design.
-
-**Failure indicators:**
-
-- wrong circuit peering resource ID;
-- route propagation omitted from the table consumed by spokes;
-- Local circuit connected in an unsupported regional combination.
+For cross-subscription/cross-tenant circuit ownership, use the current authorization workflow documented for the applicable Global Reach topology instead of assuming the same-subscription command is sufficient.
 
 ---
 
-## 12. Azure CLI — Route Server with ExpressRoute gateway and NVA
+## 12. Azure CLI — hub/spoke gateway transit
 
-### 12.1 Create the dedicated subnet
+If the ExpressRoute gateway is in a customer-managed hub VNet, spoke VNets consume it through normal VNet peering gateway transit.
 
-Route Server requires a subnet named `RouteServerSubnet`.
-
-```cli
-az network vnet subnet create \
-  --resource-group RG-Hub \
-  --vnet-name VNet-Hub \
-  --name RouteServerSubnet \
-  --address-prefixes 10.0.1.0/27
-```
-
-### 12.2 Create the Standard public IP used by Route Server management
+Hub -> spoke:
 
 ```cli
-az network public-ip create \
-  --resource-group RG-Hub \
-  --name RouteServerIP \
-  --sku Standard \
-  --version IPv4
-```
-
-### 12.3 Create Route Server
-
-```cli
-SUBNET_ID=$(az network vnet subnet show \
-  --resource-group RG-Hub \
-  --vnet-name VNet-Hub \
-  --name RouteServerSubnet \
+SPOKE_ID=$(az network vnet show \
+  -g RG-Spoke \
+  -n VNet-SpokeA \
   --query id -o tsv)
 
-az network routeserver create \
-  --name ARS-Hub \
-  --resource-group RG-Hub \
-  --hosted-subnet "$SUBNET_ID" \
-  --public-ip-address RouteServerIP
+az network vnet peering create \
+  -g RG-Hub \
+  --vnet-name VNet-Hub \
+  -n Hub-to-SpokeA \
+  --remote-vnet "$SPOKE_ID" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic \
+  --allow-gateway-transit
 ```
 
-### 12.4 Peer the NVA
-
-Assume NVA ASN `65050` and NVA inside IP `10.0.2.4`.
+Spoke -> hub:
 
 ```cli
-az network routeserver peering create \
-  --name NVA-01 \
-  --resource-group RG-Hub \
-  --routeserver ARS-Hub \
-  --peer-asn 65050 \
-  --peer-ip 10.0.2.4
+HUB_ID=$(az network vnet show \
+  -g RG-Hub \
+  -n VNet-Hub \
+  --query id -o tsv)
+
+az network vnet peering create \
+  -g RG-Spoke \
+  --vnet-name VNet-SpokeA \
+  -n SpokeA-to-Hub \
+  --remote-vnet "$HUB_ID" \
+  --allow-vnet-access \
+  --allow-forwarded-traffic \
+  --use-remote-gateways
 ```
 
-### 12.5 Retrieve Route Server BGP endpoints
+**Control-plane meaning:**
+
+- hub `--allow-gateway-transit` allows the hub gateway to be consumed across peering;
+- spoke `--use-remote-gateways` tells the spoke to use the remote hub gateway;
+- `--allow-forwarded-traffic` permits forwarded traffic crossing the peering and is relevant when traffic is forwarded by gateways/NVAs.
+
+Verify spoke effective routes:
 
 ```cli
-az network routeserver show \
-  --resource-group RG-Hub \
-  --name ARS-Hub \
-  --query "{asn:virtualRouterAsn,peerIPs:virtualRouterIps,allowB2B:allowBranchToBranchTraffic,preference:hubRoutingPreference}" \
-  --output json
+az network nic show-effective-route-table \
+  -g RG-Spoke \
+  -n <SPOKE_VM_NIC> \
+  -o table
 ```
 
-Microsoft's current documentation shows Route Server ASN `65515` and two instance IP addresses. Configure the NVA to peer with **both** IPs.
-
-### 12.6 Enable route exchange / branch-to-branch
-
-```cli
-az network routeserver update \
-  --name ARS-Hub \
-  --resource-group RG-Hub \
-  --allow-b2b-traffic true
-```
-
-### 12.7 Verify learned routes
-
-```cli
-az network routeserver peering list-learned-routes \
-  --resource-group RG-Hub \
-  --routeserver ARS-Hub \
-  --name NVA-01 \
-  --output table
-```
-
-```cli
-az network routeserver peering list-advertised-routes \
-  --resource-group RG-Hub \
-  --routeserver ARS-Hub \
-  --name NVA-01 \
-  --output table
-```
-
-**Success criteria:**
-
-- expected on-premises/ExpressRoute prefixes appear on the NVA-facing advertisement where supported by route-exchange rules;
-- expected NVA prefixes appear as learned;
-- NVA has two Established BGP sessions to the ARS IPs.
+**Success criteria:** expected on-premises prefixes appear with a virtual-network-gateway learned path.
 
 ---
 
 ## 13. Multi-circuit BGP policy examples
 
-The actual syntax belongs on your customer routers, not in Azure CLI. The examples below are **vendor-neutral policy logic**, not a claim of exact syntax for every platform.
-
-### 13.1 Equal-active circuits
+### Equal-active
 
 ```text
-OUTBOUND TO AZURE:
-  advertise 10.10.0.0/16 on Circuit 1 with normal AS path
-  advertise 10.10.0.0/16 on Circuit 2 with normal AS path
+To Azure:
+  advertise the same on-premises aggregate equally on both circuits
 
-INBOUND FROM AZURE:
-  set same LOCAL_PREF for Azure routes learned from Circuit 1 and Circuit 2
+From Azure:
+  use the same LOCAL_PREF internally for Azure routes learned via both circuits
 ```
 
-Result: both directions can use multiple equal routes if the rest of the network supports ECMP.
-
-### 13.2 Primary/backup circuits
+### Primary/backup
 
 ```text
-OUTBOUND TO AZURE:
-  Circuit 1: advertise 10.10.0.0/16 normally
-  Circuit 2: prepend ASN 65010 two additional times
+To Azure:
+  Circuit 1: normal AS path
+  Circuit 2: prepend customer ASN
 
-INBOUND FROM AZURE:
-  Circuit 1 learned routes -> LOCAL_PREF 200
-  Circuit 2 learned routes -> LOCAL_PREF 100
+From Azure:
+  Circuit 1-learned Azure routes: LOCAL_PREF 200
+  Circuit 2-learned Azure routes: LOCAL_PREF 100
 ```
 
-Result: Circuit 1 is normally preferred in both directions.
-
-### 13.3 Per-site primary
+### Per-site primary
 
 ```text
-10.10.0.0/16:
-  prefer Circuit 1
-  Circuit 2 = backup
-
-10.20.0.0/16:
-  prefer Circuit 2
-  Circuit 1 = backup
+10.10.0.0/16: prefer Circuit 1, Circuit 2 backup
+10.20.0.0/16: prefer Circuit 2, Circuit 1 backup
 ```
 
-This is often the best balance of:
-
-- low latency;
-- bandwidth utilization;
-- deterministic failure behavior.
+This often balances latency, bandwidth use, and deterministic failover better than global all-path ECMP.
 
 ---
 
 ## 14. Connection weight versus AS-path prepending
 
-For private peering designs with multiple VNet/circuit connections, Azure also exposes **connection weight/routing weight** mechanisms in certain connection resources.
+Keep the layers separate:
 
-Think of them as different layers:
+- **Longest-prefix match** selects the most-specific route.
+- **AS-path prepending** changes the BGP path Microsoft sees for on-premises prefixes.
+- **Azure connection/routing weight** influences Azure choice among connection objects where supported.
+- **LOCAL_PREF** is your enterprise-side BGP policy.
 
-- **AS-path prepending** changes the BGP path seen through the circuit.
-- **Connection/routing weight** influences Azure's choice among Azure-side connection objects where that feature applies.
-- **LOCAL_PREF** is your on-premises iBGP policy.
-- **Longest prefix** precedes these comparisons.
-
-Do not configure conflicting policies at all four layers unless you can explain which one should win.
+Do not configure conflicting preferences at every layer without documenting which one should win.
 
 ---
 
-## 15. ExpressRoute and VNet peering
+## 15. Security and firewall insertion
 
-A single circuit can connect to multiple VNets through gateways.
+ExpressRoute is private connectivity; it is **not a firewall** and does not automatically provide payload encryption.
 
-Although traffic can sometimes transit between VNets through ExpressRoute-related paths, Microsoft recommends using **VNet peering** for VNet-to-VNet connectivity because it is the native Azure path.
+Inspection options include:
 
-For hub-spoke:
+- Azure Firewall or NVA in a customer-managed hub;
+- Virtual WAN Routing Intent/security provider designs;
+- on-premises firewalls before CE routers;
+- IPsec overlays when required/supported;
+- UDR/BGP-based service insertion.
 
-- Hub VNet has ExpressRoute gateway.
-- Hub-to-spoke peering allows gateway transit.
-- Spoke-to-hub peering uses remote gateway.
+### Stateful symmetry
 
-Do not configure a spoke to use remote gateways from two different hubs simultaneously.
-
----
-
-## 16. Security and firewall insertion
-
-ExpressRoute is private connectivity; it is **not a firewall** and it does not automatically encrypt payloads.
-
-Security options include:
-
-- NVA/Azure Firewall in the Azure hub path;
-- on-premises firewalls before customer edge;
-- IPsec overlays where supported and required;
-- route-based service insertion using UDRs, Virtual WAN routing intent, or an NVA architecture.
-
-### 16.1 Stateful symmetry
-
-If a stateful firewall is inserted, make your BGP strategy preserve a predictable return path.
-
-For example:
-
-- Azure -> Site A uses Circuit 1 through Firewall A.
-- Site A -> Azure should normally return through Circuit 1/Firewall A.
-
-ECMP across two independent stateful appliances can break sessions unless the vendor architecture provides state synchronization and symmetric flow steering.
+If Azure -> Site A traverses Firewall A/Circuit 1, make the return path predictable enough that the same stateful security context sees the reverse flow. ECMP across independent firewalls without state sharing can break sessions.
 
 ---
 
-## 17. High availability hierarchy
+## 16. High-availability hierarchy
 
-Think in failure domains.
+### Level 1 — one circuit, two BGP sessions
 
-### Level 1 — single circuit, dual BGP sessions
-
-Protects against:
-
-- one MSEE failure;
-- one customer/provider link failure;
-- planned maintenance of one side.
-
-Does not fully protect against:
-
-- complete peering-location outage;
-- provider metro failure;
-- regional disaster.
+Protects against one MSEE/link failure but not the entire peering location.
 
 ### Level 2 — ExpressRoute Metro
 
-Protects against a broader failure by dual-homing across two peering locations in the same metro.
+Dual peering locations inside the metro reduce the local failure domain.
 
 ### Level 3 — two circuits in different peering locations
 
-Microsoft explicitly recommends geographically diverse circuits for disaster recovery.
-
-Prefer:
-
-- different peering locations;
-- independent provider access where possible;
-- independent customer-edge power/routers;
-- different fiber paths;
-- tested BGP failover.
+Best for broader DR. Prefer diverse carrier/local-loop paths and customer-edge infrastructure.
 
 ### Level 4 — alternate technology
 
-For some workloads, add site-to-site VPN over Internet as emergency failover for **private peering** traffic.
-
-Microsoft documents that ExpressRoute is normally preferred over VPN for equal private prefixes. Still, test exact effective routes and on-premises policy.
+For some Private Peering workloads, a site-to-site VPN can provide emergency backup. Verify actual route preference and application behavior instead of assuming coexistence equals automatic failover.
 
 ---
 
-## 18. Verification checklist
+## 17. Verification checklist
 
-### 18.1 Circuit object
+### 17.1 Circuit and peering
 
 ```cli
 az network express-route show \
-  --resource-group RG-Network \
-  --name ER-LA-01 \
-  --output json
+  -g RG-Network \
+  -n ER-LA-01 \
+  --query '{providerState:serviceProviderProvisioningState,circuitState:circuitProvisioningState,provisioning:provisioningState,sku:sku.name,serviceKey:serviceKey}' \
+  -o json
 ```
 
-**Important fields**
+Success indicators:
 
-- `serviceProviderProvisioningState`
-- `circuitProvisioningState`
-- `bandwidthInMbps` or equivalent current bandwidth property
-- `sku`
-- `peerings`
-- `serviceKey`
+- `serviceProviderProvisioningState = Provisioned`
+- `circuitProvisioningState = Enabled`
+- Azure resource `provisioningState = Succeeded`
 
-**Success:** provider side provisioned, Azure resource enabled/succeeded.
-
-### 18.2 Peering
+Peering:
 
 ```cli
 az network express-route peering show \
-  --resource-group RG-Network \
+  -g RG-Network \
   --circuit-name ER-LA-01 \
-  --name AzurePrivatePeering \
+  -n AzurePrivatePeering \
+  -o json
+```
+
+### 17.2 Traditional VNet gateway connection
+
+```cli
+az network vpn-connection show \
+  -g RG-Hub \
+  -n Conn-ER-LA-01 \
+  --query '{type:connectionType,status:connectionStatus,weight:routingWeight,fastPath:expressRouteGatewayBypass,provisioning:provisioningState}' \
+  -o json
+```
+
+Expected: ExpressRoute connection type, successful provisioning, connected/healthy status as applicable.
+
+### 17.3 Gateway resiliency and route information
+
+Current Azure CLI includes GA resiliency commands for ExpressRoute VNet gateways.
+
+Retrieve the resiliency assessment:
+
+```cli
+az network vnet-gateway get-resiliency-information \
+  --resource-group RG-Hub \
+  --virtual-network-gateway-name ERGW-Hub \
+  --attempt-refresh true \
   --output json
 ```
 
-**Success:** private peering enabled and addresses/ASN/VLAN match the router/provider handoff.
-
-### 18.3 Two-circuit route validation
-
-On the customer routers, verify:
-
-```text
-show BGP route for 10.50.0.0/16
-```
-
-Expected conceptual result for active/active:
-
-```text
-Path 1 via Circuit 1  LOCAL_PREF 100
-Path 2 via Circuit 2  LOCAL_PREF 100
-```
-
-Expected conceptual result for primary/backup:
-
-```text
-Best path via Circuit 1  LOCAL_PREF 200
-Backup via Circuit 2     LOCAL_PREF 100
-```
-
-This output is **simulated vendor-neutral output**, not Azure CLI output.
-
-### 18.4 Route Server
+Retrieve route-set/resiliency information:
 
 ```cli
-az network routeserver peering list-learned-routes \
+az network vnet-gateway get-routes-information \
   --resource-group RG-Hub \
-  --routeserver ARS-Hub \
-  --name NVA-01 \
-  --output table
+  --virtual-network-gateway-name ERGW-Hub \
+  --attempt-refresh true \
+  --output json
 ```
 
-**Success:** NVA-originated prefixes are present with the intended next hop/AS path.
+**What to inspect:** current resiliency state/recommendations and route-set information reported by Azure. Do not hard-code exact JSON fields in automation until you confirm the API/CLI version used in your environment.
 
-### 18.5 Virtual WAN
+### 17.4 Virtual WAN
 
 ```cli
 az network express-route gateway connection show \
-  --resource-group RG-vWAN \
+  -g RG-vWAN \
   --gateway-name ERGW-vHub-West \
-  --name Conn-ER-LA-01 \
-  --output json
+  -n Conn-ER-LA-01 \
+  -o json
 ```
 
-**Success:** connection is provisioned and route association/propagation is correct.
+Verify the intended peering, route-table association, propagation, and routing weight.
+
+### 17.5 Route Server
+
+```cli
+az network routeserver peering list-learned-routes \
+  -g RG-Hub \
+  --routeserver ARS-Hub \
+  -n SDWAN-NVA \
+  -o table
+```
+
+```cli
+az network routeserver peering list-advertised-routes \
+  -g RG-Hub \
+  --routeserver ARS-Hub \
+  -n SDWAN-NVA \
+  -o table
+```
+
+### 17.6 Global Reach
+
+```cli
+az network express-route peering connection list \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  -o table
+```
+
+Then verify the actual on-premises BGP route table on both sides. Azure resource state alone does not prove the desired site-to-site route is installed on the CE routers.
 
 ---
 
-## 19. Troubleshooting by symptom
+## 18. Troubleshooting by symptom
 
-### Symptom: only one of the two BGP sessions is up
+### Symptom: one of two BGP sessions is down
 
-**Where:** Customer/provider edge and ExpressRoute peering status.
+**Where:** CE/provider edge and ExpressRoute peering.
 
-**What to test:**
+**Check:** primary/secondary `/30`, VLAN ID, ASN, Layer-2 cross-connect, MD5 key if used, provider provisioning.
 
-- primary and secondary `/30` addressing;
-- VLAN ID;
-- ASN;
-- Layer-2 cross-connect;
-- MD5 key if configured;
-- provider provisioning.
+**Success:** both sessions established.
 
-**Expected:** Both peer sessions Established.
+### Symptom: circuit exists but BGP never comes up
 
-**Failure meaning:** You have lost circuit redundancy and may not meet the availability design/SLA prerequisites.
+First verify provider provisioning:
 
-**Next action:** Fix the specific primary/secondary handoff before testing higher-level routing.
+```cli
+az network express-route show \
+  -g RG-Network \
+  -n ER-LA-01 \
+  --query '{provider:serviceProviderProvisioningState,circuit:circuitProvisioningState}' \
+  -o table
+```
 
-### Symptom: BGP is Established but Azure cannot reach on-premises
+If provider state is not `Provisioned`, fix provisioning before debugging BGP policy.
 
-**Where:** MSEE-learned route view, customer BGP advertisements, effective route table.
+### Symptom: BGP is established but Azure cannot reach on-premises
 
-**What it tests:** Whether the desired on-premises prefix is actually advertised and accepted.
+Check customer advertisements, prefix limits, AS-loop prevention, more-specific routes, and whether a UDR/NVA is overriding gateway-propagated routes.
 
-**Failure causes:**
+### Symptom: VNet is not receiving ExpressRoute routes
 
-- prefix not in outbound policy;
-- prefix summarized incorrectly;
-- route limit exceeded;
-- AS loop prevention;
-- competing more-specific route;
-- NVA/UDR overriding propagated gateway route.
+For a traditional hub/spoke design:
 
-### Symptom: Site A traffic unexpectedly exits through Site B
+1. Verify `Conn-ER-*` exists and is healthy.
+2. Verify hub peering has `allowGatewayTransit`.
+3. Verify spoke peering has `useRemoteGateways`.
+4. Check the spoke VM NIC effective route table.
 
-**Where:** Customer BGP table.
-
-**What to inspect:**
-
-- LOCAL_PREF;
-- AS path;
-- IGP cost to BGP next hop;
-- more-specific advertisements;
-- route-reflector policy.
-
-**Next action:** Decide whether the requirement is “nearest exit,” “ECMP,” or “primary/backup,” then make policy consistent.
+```cli
+az network nic show-effective-route-table \
+  -g RG-Spoke \
+  -n <NIC_NAME> \
+  -o table
+```
 
 ### Symptom: Azure sends traffic through the wrong circuit
 
-**Where:** ExpressRoute path advertisements and Azure connection settings.
+Check, in order:
 
-**What to inspect:**
+1. prefix specificity;
+2. AS-path difference for the on-premises destination;
+3. Azure connection routing weight;
+4. whether both circuits are actually linked to the same VNet/vHub routing domain.
 
-- AS-path prepends on the on-premises prefix;
-- whether one circuit advertises a more specific route;
-- connection/routing weight;
-- whether both paths are attached to the same relevant VNet/vHub routing domain.
+### Symptom: Site A exits through Site B unexpectedly
 
-### Symptom: failover works but takes too long
+Inspect customer `LOCAL_PREF`, AS path, IGP cost to BGP next hop, more-specific routes, and route-reflector policy.
 
-**Where:** Physical interface, BGP, BFD, enterprise IGP/iBGP, firewall session logs.
+### Symptom: Microsoft Peering is up but no Microsoft service routes are learned
 
-**What to test:**
+Check whether a route filter is attached:
 
-1. Time from fault to BGP-down.
-2. Time from BGP-down to withdrawal.
-3. Time for alternate BGP route to become best.
-4. Time for FIB programming.
-5. Time for remote sites to converge.
-6. Application retry/session timeout.
+```cli
+az network express-route peering show \
+  -g RG-Network \
+  --circuit-name ER-LA-01 \
+  -n MicrosoftPeering \
+  --query '{state:state,routeFilter:routeFilter.id}' \
+  -o json
+```
 
-**Next action:** Enable/tune BFD where supported, remove unnecessarily long upstream failure-detection timers, and retest complete end-to-end convergence.
+Then inspect the route-filter rule/community list.
 
-### Symptom: Route Server NVA learns VNet routes but not ExpressRoute routes
+### Symptom: FastPath was enabled but traffic does not behave as expected
 
-**Where:** Route Server configuration.
+Verify:
 
-**Check:**
+```cli
+az network vpn-connection show \
+  -g RG-Hub \
+  -n Conn-ER-LA-01 \
+  --query expressRouteGatewayBypass \
+  -o tsv
+```
 
-- ExpressRoute gateway and ARS are in the same VNet;
-- branch-to-branch route exchange is enabled when required;
-- NVA peers with both ARS IPs;
-- no unsupported circuit-to-circuit expectation.
+Then confirm that the selected gateway SKU and resource type support FastPath for the exact feature/path. FastPath eligibility is not universal.
+
+### Symptom: failover takes too long
+
+Measure separately:
+
+1. physical failure detection;
+2. BFD/BGP-down;
+3. route withdrawal;
+4. alternate BGP best-path selection;
+5. FIB update;
+6. remote-site convergence;
+7. firewall/NAT state behavior;
+8. application retry.
+
+### Symptom: Route Server NVA learns VNet routes but not ER routes
+
+Check that ER gateway and ARS are in the same supported VNet topology, branch-to-branch is enabled when required, NVA peers with both ARS IPs, and you are not expecting unsupported ER-circuit-to-ER-circuit transit.
 
 ### Symptom: vWAN spoke cannot reach on-premises
 
-**Where:** vHub route tables.
+Check ER gateway connection, route-table association, propagation labels/tables, VNet connection route-table association, and Routing Intent/security policy if present.
 
-**Check:**
+### Symptom: Global Reach resource exists but sites cannot communicate
 
-- ExpressRoute connection association;
-- propagation target/labels;
-- spoke connection association;
-- custom route table isolation;
-- routing intent/security configuration if present.
+Check:
 
----
-
-## 20. Common mistakes
-
-1. **Calling the two BGP sessions “two circuits.”**  
-   They are redundant paths inside one circuit.
-
-2. **Assuming one circuit is disaster-proof because it has two MSEEs.**  
-   A peering location can still be a failure domain.
-
-3. **Treating Local/Standard/Premium as different physical circuit technologies.**  
-   They are reach/SKU choices.
-
-4. **Treating ExpressRoute Direct as one giant circuit.**  
-   Direct provides dedicated port pairs on which logical circuits are provisioned.
-
-5. **Using AS-path prepending only in one direction and forgetting LOCAL_PREF.**  
-   This can create asymmetric traffic.
-
-6. **Expecting per-packet load balancing.**  
-   ECMP is normally flow-based.
-
-7. **Assuming a 5-Gbps backup circuit can absorb 8 Gbps of failed-over traffic.**  
-   Failover capacity must be engineered.
-
-8. **Using Route Server to connect two ExpressRoute circuits to each other.**  
-   Use Global Reach for circuit-to-circuit private WAN connectivity.
-
-9. **Ignoring vWAN route association versus propagation.**  
-   They answer different routing questions.
-
-10. **Putting a firewall in one path while allowing the return path to bypass it.**  
-    Stateful inspection fails even if BGP reachability looks correct.
-
-11. **Advertising thousands of host routes without aggregation.**  
-    Prefix limits are finite and exceeding them can drop BGP sessions.
-
-12. **Confusing Azure region with ExpressRoute peering location.**  
-    A peering location is the network edge entry point; an Azure region is where workloads run.
+- both circuits have Private Peering operational;
+- Global Reach connection state;
+- interconnect address prefix correctness;
+- CE BGP advertisements and filters on both sites;
+- route overlap;
+- firewall policy between sites.
 
 ---
 
-## 21. Design recommendations
+## 19. Common mistakes
+
+1. Calling the two BGP sessions inside one circuit “two circuits.”
+2. Assuming one circuit is disaster-proof because it has two MSEEs.
+3. Confusing Local/Standard/Premium with different physical technologies.
+4. Treating ExpressRoute Direct as one giant circuit rather than dedicated ports hosting logical circuits.
+5. Configuring AS-path prepending toward Azure but forgetting customer-side `LOCAL_PREF`.
+6. Expecting per-packet ECMP.
+7. Under-sizing the surviving circuit for failover load.
+8. Using Route Server for ER circuit-to-circuit transit instead of Global Reach.
+9. Confusing vWAN route association with propagation.
+10. Putting a stateful firewall in one direction while allowing the reverse path to bypass it.
+11. Advertising excessive host routes instead of summarizing.
+12. Confusing Azure resource region with ExpressRoute peering location.
+13. Creating Microsoft Peering but forgetting the route filter.
+14. Assuming a VNet gateway is automatically connected to a circuit once both resources exist; a connection object is required.
+15. Assuming hub/spoke gateway transit is automatic; `allow-gateway-transit` and `use-remote-gateways` are explicit peering properties.
+16. Assuming FastPath removes the ExpressRoute gateway from the architecture; the gateway remains the control-plane component.
+
+---
+
+## 20. Design recommendations
 
 ### Small enterprise / one geography
 
-- One provider circuit can be acceptable for noncritical workloads.
-- Use both redundant BGP sessions.
+- One provider circuit may be acceptable for noncritical workloads.
+- Bring up both BGP sessions.
 - Consider VPN backup.
 
 ### Mission-critical regional enterprise
 
-- Two circuits in different peering locations.
-- Prefer distinct carrier/local-loop paths.
-- Decide explicitly between ECMP and primary/backup.
-- Size each circuit for failure load.
-- Test failover at least periodically.
+- Use geographically/operationally diverse circuits or Metro where appropriate.
+- Prefer independent carrier/local-loop paths.
+- Explicitly choose active/active or primary/backup.
+- Size each surviving path for failure load.
+- Test failover.
 
 ### Large multi-region enterprise
 
-- Multiple circuits aligned to major on-premises regions.
-- Per-site BGP policy for nearest-exit under normal conditions.
-- Secondary advertisements over remote circuits.
-- Virtual WAN when managed multi-region transit and route-table segmentation are desired.
-- Global Reach when Microsoft backbone should provide site-to-site transit between ExpressRoute-attached locations.
+- Align circuits to major on-premises regions.
+- Prefer nearest circuit under normal operation.
+- Advertise backup routes through remote circuits.
+- Use Virtual WAN when managed multi-region transit and route-table segmentation are desired.
+- Use Global Reach for site-to-site transit between ER-attached locations.
 
 ### NVA/SD-WAN-heavy hub
 
-- Customer-managed hub VNet.
-- ExpressRoute gateway + Azure Route Server.
+- Customer-managed hub VNet + ExpressRoute gateway + ARS is a strong general pattern.
 - Peer each NVA with both ARS instances.
-- Enable route exchange only with a documented reason.
-- Validate that the NVA does not accidentally re-advertise routes back toward their origin.
+- Enable branch-to-branch only with a deliberate transit requirement.
+- Verify no route re-advertisement loop or inspection bypass is introduced.
 
 ---
 
-## 22. Decision table
+## 21. Decision table
 
 | Requirement | Best-fit feature |
 |---|---|
-| Private connection from premises to Azure VNets | ExpressRoute private peering |
-| Private reach to supported Microsoft public services | Microsoft peering |
-| Dedicated Microsoft-facing physical ports | ExpressRoute Direct |
-| Low-cost/localized Azure reach | Local SKU |
-| Reach within geopolitical region | Standard SKU |
-| Global Azure reach / larger limits | Premium |
-| Two peering locations in same metro | ExpressRoute Metro |
+| Private connection from premises to Azure VNets | ExpressRoute Private Peering |
+| Reach supported Microsoft public services over ER | Microsoft Peering + route filter |
+| Dedicated Microsoft-facing ports | ExpressRoute Direct |
+| Localized Azure reach | Local SKU |
+| Geopolitical-area Azure reach | Standard SKU |
+| Global Azure reach/higher limits | Premium SKU |
+| Two peering locations in one metro | ExpressRoute Metro |
 | On-premises site-to-site transit between ER circuits | Global Reach |
 | Managed global Azure hub routing | Virtual WAN + vHub ER gateway |
-| Dynamic NVA + ER/VPN gateway route exchange in a VNet | Azure Route Server |
-| Reduced gateway data-plane hop | FastPath |
-| Backup private-peering path over Internet | Site-to-site VPN coexistence |
+| Dynamic NVA + ER/VPN gateway route exchange | Azure Route Server |
+| Reduced ER VNet gateway data-plane hop | FastPath |
+| Cross-subscription circuit sharing | ExpressRoute circuit authorization |
+| Spoke consumes hub ER gateway | VNet peering gateway transit |
 
 ---
 
-## 23. Final mental model
-
-If you remember only one model, use this:
+## 22. Final mental model
 
 ```text
 Physical/provider access
@@ -1673,23 +1425,38 @@ ExpressRoute circuit
         ↓
 Two redundant BGP sessions per peering
         ↓
-Private peering or Microsoft peering
+Private Peering or Microsoft Peering
         ↓
-Azure-side termination:
-  - VNet ExpressRoute gateway, or
-  - Virtual WAN ExpressRoute gateway
+Azure-side termination
+  ├─ VNet ExpressRoute gateway
+  └─ Virtual WAN ExpressRoute gateway
         ↓
 Azure route distribution
         ↓
 Workload
 ```
 
-For multiple circuits, add a second independent copy of the path and answer two questions separately:
+For a **traditional customer-managed VNet** remember the extra Azure object that is easy to miss:
+
+```text
+ExpressRoute circuit
+      |
+      | Azure Private Peering
+      v
+ExpressRoute VNet gateway
+      ^
+      |
+      | az network vpn-connection ... --express-route-circuit2
+      |
+VNet / spokes using gateway transit
+```
+
+For multiple circuits, answer two questions separately:
 
 1. **How does Azure choose the route toward on-premises?**
 2. **How does on-premises choose the route toward Azure?**
 
-Then verify what happens when either path disappears.
+Then test what happens when either path disappears.
 
 ---
 
@@ -1699,20 +1466,27 @@ Then verify what happens when either path disappears.
 - Microsoft, **ExpressRoute circuits and peering**: https://learn.microsoft.com/azure/expressroute/expressroute-circuit-peerings
 - Microsoft, **ExpressRoute connectivity models**: https://learn.microsoft.com/azure/expressroute/expressroute-connectivity-models
 - Microsoft, **ExpressRoute routing requirements**: https://learn.microsoft.com/azure/expressroute/expressroute-routing
-- Microsoft, **Designing for disaster recovery with ExpressRoute private peering**: https://learn.microsoft.com/azure/expressroute/designing-for-disaster-recovery-with-expressroute-privatepeering
+- Microsoft, **Create/modify circuit with Azure CLI**: https://learn.microsoft.com/azure/expressroute/howto-circuit-cli
+- Microsoft, **Create/modify peering with Azure CLI**: https://learn.microsoft.com/azure/expressroute/howto-routing-cli
+- Microsoft, **Link a VNet to an ExpressRoute circuit with Azure CLI**: https://learn.microsoft.com/azure/expressroute/expressroute-howto-linkvnet-cli
+- Microsoft, **Configure route filters for Microsoft Peering**: https://learn.microsoft.com/azure/expressroute/how-to-routefilter-portal
+- Microsoft, **Designing for disaster recovery**: https://learn.microsoft.com/azure/expressroute/designing-for-disaster-recovery-with-expressroute-privatepeering
 - Microsoft, **ExpressRoute Metro**: https://learn.microsoft.com/azure/expressroute/metro
 - Microsoft, **ExpressRoute Direct**: https://learn.microsoft.com/azure/expressroute/expressroute-erdirect-about
 - Microsoft, **ExpressRoute FastPath**: https://learn.microsoft.com/azure/expressroute/about-fastpath
 - Microsoft, **ExpressRoute Global Reach**: https://learn.microsoft.com/azure/expressroute/expressroute-global-reach
-- Microsoft, **ExpressRoute virtual network gateways**: https://learn.microsoft.com/azure/expressroute/expressroute-about-virtual-network-gateways
-- Microsoft, **ExpressRoute connections in Virtual WAN**: https://learn.microsoft.com/azure/virtual-wan/virtual-wan-expressroute-about
+- Microsoft, **ExpressRoute VNet gateways**: https://learn.microsoft.com/azure/expressroute/expressroute-about-virtual-network-gateways
+- Microsoft, **ExpressRoute in Virtual WAN**: https://learn.microsoft.com/azure/virtual-wan/virtual-wan-expressroute-about
 - Microsoft, **Virtual hub routing**: https://learn.microsoft.com/azure/virtual-wan/about-virtual-hub-routing
-- Microsoft, **Route Server support for ExpressRoute and VPN**: https://learn.microsoft.com/azure/route-server/expressroute-vpn-support
+- Microsoft, **Route Server support for ExpressRoute/VPN**: https://learn.microsoft.com/azure/route-server/expressroute-vpn-support
 - Microsoft, **Route Server CLI quickstart**: https://learn.microsoft.com/azure/route-server/quickstart-create-route-server-cli
 - Microsoft, **Azure CLI — ExpressRoute**: https://learn.microsoft.com/cli/azure/network/express-route
-- Microsoft, **Azure CLI — ExpressRoute peering**: https://learn.microsoft.com/cli/azure/network/express-route/peering
+- Microsoft, **Azure CLI — ExpressRoute Peering**: https://learn.microsoft.com/cli/azure/network/express-route/peering
+- Microsoft, **Azure CLI — ExpressRoute peering connections / Global Reach**: https://learn.microsoft.com/cli/azure/network/express-route/peering/connection
 - Microsoft, **Azure CLI — Virtual WAN ExpressRoute gateway**: https://learn.microsoft.com/cli/azure/network/express-route/gateway
 - Microsoft, **Azure CLI — Virtual WAN ExpressRoute connection**: https://learn.microsoft.com/cli/azure/network/express-route/gateway/connection
+- Microsoft, **Azure CLI — VNet gateway**: https://learn.microsoft.com/cli/azure/network/vnet-gateway
+- Microsoft, **Azure CLI — VPN/ExpressRoute connection object**: https://learn.microsoft.com/cli/azure/network/vpn-connection
 - Microsoft, **Azure CLI — Route Server**: https://learn.microsoft.com/cli/azure/network/routeserver
 - Microsoft, **Azure CLI — Route Server peering**: https://learn.microsoft.com/cli/azure/network/routeserver/peering
 
@@ -1721,5 +1495,5 @@ Then verify what happens when either path disappears.
 ## Information-quality labels used in this guide
 
 - **Source information** — behavior stated directly in Microsoft documentation.
-- **Additional explanation** — networking explanation that follows established BGP/IP behavior and is used to make the Microsoft design easier to understand.
-- **Reasonable inference** — architecture conclusion derived from documented behavior; where used, it is not presented as a Microsoft product guarantee.
+- **Additional explanation** — networking explanation following documented Azure/BGP/IP behavior.
+- **Reasonable inference** — architecture conclusion derived from documented behavior; not presented as a Microsoft product guarantee.
