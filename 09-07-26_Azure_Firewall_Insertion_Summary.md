@@ -448,6 +448,11 @@ Deep dive: [Azure Gateway Load Balancer for Transparent NVA Insertion](09-05-26-
 
 ## 11. Internet egress through a customer-managed firewall
 
+This section is the Internet-egress application of the two customer-managed hub patterns described earlier:
+
+- [Azure Firewall in a Customer-Managed Hub VNet — Method 1](09-05-26-18-55_Azure_Firewall_Customer_Managed_Hub_VNet_Method_1_Deep_Dive.md)
+- [Third-Party NGFW/NVA in a Customer-Managed Hub VNet — Method 2](09-05-26-19-45_Third_Party_NGFW_NVA_Customer_Managed_Hub_VNet_Method_2_Deep_Dive.md)
+
 ### Azure Firewall
 
 ```text
@@ -481,6 +486,11 @@ The firewall or NVA becomes part of the Internet egress data path and state/NAT 
 **Memorize:**
 
 > Traditional Azure egress = default route to the security next hop.
+
+**Deep dives:**
+
+- [Azure Firewall in a Customer-Managed Hub VNet — Method 1](09-05-26-18-55_Azure_Firewall_Customer_Managed_Hub_VNet_Method_1_Deep_Dive.md)
+- [Third-Party NGFW/NVA in a Customer-Managed Hub VNet — Method 2](09-05-26-19-45_Third_Party_NGFW_NVA_Customer_Managed_Hub_VNet_Method_2_Deep_Dive.md)
 
 ---
 
