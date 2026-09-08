@@ -1,169 +1,266 @@
 # GCP Firewall Insertion Summary
 
-## Purpose
+> **Last validated:** 2026-09-07  
+> **Purpose:** Decision-oriented summary of the major Google Cloud firewall insertion and inspection patterns, including Cloud NGFW, Network Security Integration (NSI), Policy-Based Routing (PBR), internal passthrough Network Load Balancers, Network Connectivity Center (NCC), Shared VPC, hybrid connectivity, and Palo Alto Networks VM-Series.
 
-This guide condenses the major Google Cloud firewall insertion methods into a single decision-oriented reference. The goal is to make it easy to distinguish **Google-managed firewalling**, **transparent VM-Series interception**, **route-based VM-Series service insertion**, **same-VPC versus inter-VPC steering**, **hybrid inspection**, and **Internet ingress/egress**.
+---
 
-## Core mental model
+## Table of contents
 
-There are four primary buckets:
+- [1. Core mental model](#1-core-mental-model)
+- [2. Firewall policy enforcement order matters](#2-firewall-policy-enforcement-order-matters)
+- [3. Cloud NGFW Enterprise](#3-cloud-ngfw-enterprise)
+- [4. VM-Series + Network Security Integration](#4-vm-series--network-security-integration)
+- [5. NSI Internet egress variants](#5-nsi-internet-egress-variants)
+- [6. Traditional VM-Series + internal passthrough NLB](#6-traditional-vm-series--internal-passthrough-nlb)
+- [7. PBR versus static route](#7-pbr-versus-static-route)
+- [8. ILB protocol behavior: PBR versus static route](#8-ilb-protocol-behavior-pbr-versus-static-route)
+- [9. Same-VPC east-west inspection](#9-same-vpc-east-west-inspection)
+- [10. Inter-VPC inspection with VPC Network Peering](#10-inter-vpc-inspection-with-vpc-network-peering)
+- [11. Network Connectivity Center + Router Appliance](#11-network-connectivity-center--router-appliance)
+- [12. Shared VPC centralized firewall architecture — Method 11](#12-shared-vpc-centralized-firewall-architecture--method-11)
+- [13. Cloud Interconnect inspection](#13-cloud-interconnect-inspection)
+- [14. HA VPN inspection](#14-ha-vpn-inspection)
+- [15. Traditional Internet egress](#15-traditional-internet-egress)
+- [16. Internet ingress](#16-internet-ingress)
+- [17. PBR recursion and bypass](#17-pbr-recursion-and-bypass)
+- [18. State, symmetry, and hashing](#18-state-symmetry-and-hashing)
+- [19. One-page cheat sheet](#19-one-page-cheat-sheet)
+- [20. Decision tree](#20-decision-tree)
+- [Sources](#sources)
 
-| Method | What selects traffic? | Where is the firewall? | Routing change required? | Best mental label |
-|---|---|---|---:|---|
-| **Cloud NGFW Enterprise** | Google firewall policy | Google-managed distributed service | No | **Google-native firewall** |
-| **VM-Series + NSI** | Google firewall policy → security profile | Palo Alto VM-Series in producer VPC | No normal route steering | **Transparent service insertion** |
-| **VM-Series + PBR + internal passthrough ILB** | Policy-Based Route | Palo Alto VM-Series behind ILB | Yes | **Selective routed insertion** |
-| **VM-Series + static route + internal passthrough ILB** | Destination route | Palo Alto VM-Series behind ILB | Yes | **Destination-based routed insertion** |
+---
 
-A useful shorthand is:
+## 1. Core mental model
+
+The easiest way to understand GCP firewall insertion is to separate **policy interception**, **route steering**, **inspection**, and **architecture scope**.
+
+| Pattern | What selects traffic? | Inspection engine | Normal route steering required? | Best mental label | Deep dive |
+|---|---|---|---:|---|---|
+| **Cloud NGFW Enterprise** | Google firewall policy | Google-managed Cloud NGFW firewall endpoint | No | **Google-native managed inspection** | [Cloud NGFW Enterprise](09-07-26-07-05_GCP_Cloud_NGFW_Enterprise_Firewall_Endpoints_Deep_Dive.md) |
+| **VM-Series + NSI** | Hierarchical or global network firewall policy + `apply_security_profile_group` | Third-party appliance service such as VM-Series | No normal destination-route insertion | **Transparent policy-driven insertion** | [Palo Alto Networks Firewalling in GCP](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md) |
+| **VM-Series + PBR + internal passthrough NLB** | Policy-Based Route | VM-Series/NVA behind internal passthrough NLB | Yes | **Selective routed insertion** | [PBR Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md) |
+| **VM-Series + static route + internal passthrough NLB** | Destination route | VM-Series/NVA behind internal passthrough NLB | Yes | **Destination-prefix insertion** | [Comprehensive GCP Firewall Insertion Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md) |
+| **NCC Router Appliance + BGP** | Dynamically learned routes | Router Appliance / NVA | Yes | **Dynamic routed insertion** | [NCC Router Appliance + BGP](09-07-26-09-03_GCP_NCC_Router_Appliance_BGP_Firewall_Insertion_Deep_Dive.md) |
+| **Shared VPC centralized architecture** | Shared routing/policy domain + one of the steering methods above | Central security service/NVA | Depends on insertion method | **Centralized enterprise wrapper** | [Shared VPC Method 11](09-07-26_GCP_Shared_VPC_Centralized_Firewall_Insertion_Method_11_Deep_Dive.md) |
 
 ```text
-Cloud NGFW = Google-managed firewall
-NSI        = policy-driven transparent interception
-PBR        = selective routing
-Static     = destination routing
-ILB        = highly available firewall next hop
-PAN-OS     = actual firewall session/security/NAT state on VM-Series
+Cloud NGFW = Google-managed inspection
+NSI        = firewall-policy interception
+PBR        = selective route steering
+Static     = destination-prefix route steering
+NCC        = dynamic route exchange
+Shared VPC = common routing/policy domain
+ILB        = HA appliance next hop
+PAN-OS     = stateful inspection + session + optional NAT
+```
+
+The most important distinction is:
+
+```text
+Shared VPC / NCC
+= architecture and route-domain constructs
+
+PBR / static route / firewall policy
+= traffic selection or steering
+
+ILB / NSI endpoint / firewall endpoint
+= insertion point
+
+Cloud NGFW / VM-Series / NVA
+= inspection engine
 ```
 
 ---
 
-## 1. Cloud NGFW Enterprise
+## 2. Firewall policy enforcement order matters
 
-Use this when you want Google-managed firewalling and do not want to operate firewall VMs.
+Google Cloud supports two enforcement orders for network firewall policies relative to classic VPC firewall rules.
+
+### Default: `AFTER_CLASSIC_FIREWALL`
 
 ```text
-VM
- |
- v
+1. Hierarchical firewall policies
+2. Regional system firewall policies
+3. Classic VPC firewall rules
+4. Global network firewall policy
+5. Regional network firewall policy
+6. Implied action
+```
+
+### `BEFORE_CLASSIC_FIREWALL`
+
+```text
+1. Hierarchical firewall policies
+2. Regional system firewall policies
+3. Global network firewall policy
+4. Regional network firewall policy
+5. Classic VPC firewall rules
+6. Implied action
+```
+
+For NSI consumer networks, Google recommends setting participating VPCs to `BEFORE_CLASSIC_FIREWALL` so a classic VPC rule does not deny a packet before the interception rule can run.
+
+```cli
+gcloud compute networks update prod-vpc \
+  --project=app-prod-1 \
+  --network-firewall-policy-enforcement-order=BEFORE_CLASSIC_FIREWALL
+```
+
+Important:
+
+```text
+BEFORE / AFTER
+does not move hierarchical policies
+and does not move regional system firewall policies.
+```
+
+Regional system firewall policies are Google-managed, read-only policies used by Google services. They are always evaluated immediately after hierarchical policies.
+
+### `goto_next`
+
+`goto_next` means:
+
+> Stop evaluating the current policy and continue to the next policy/stage.
+
+It does **not** mean "continue to the next lower-priority rule in this same policy."
+
+### `apply_security_profile_group`
+
+When a hierarchical or global network firewall policy rule matches with:
+
+```text
+apply_security_profile_group
+```
+
+normal firewall rule evaluation stops and the packet is handed to the configured security inspection service.
+
+**Deep dive:** [GCP Firewall Policy Hierarchy, `goto_next`, and NSI](09-07-26_GCP_Firewall_Policy_Hierarchy_Goto_Next_NSI_Deep_Dive.md)
+
+---
+
+## 3. Cloud NGFW Enterprise
+
+Use this when you want Google-managed Layer 7 inspection without operating firewall VMs.
+
+```text
+Workload
+   |
+   v
 Google VPC fabric
- |
- v
-Cloud NGFW policy / inspection
- |
- v
+   |
+   v
+Firewall policy
+   |
+   v
+Cloud NGFW firewall endpoint
+   |
+   v
 Destination
 ```
 
 Key points:
 
-- Google owns and operates the firewall service.
-- You configure Google firewall policies and security resources rather than PAN-OS policy.
-- Palo Alto Networks technology powers advanced threat prevention, but this is not a customer-managed VM-Series firewall.
-- There is no routed service-chain hop through a firewall VM.
+- Google owns and operates the firewall endpoint service.
+- You configure Google firewall policies, security profiles, and security profile groups.
+- It is not a customer-managed VM-Series firewall.
+- Firewall endpoints and endpoint associations are zonal, so multi-zone designs require appropriate zonal coverage.
+- `apply_security_profile_group` can invoke inspection from supported hierarchical or global network firewall policies.
 
 **Memorize:**
 
-> Cloud NGFW Enterprise = Google-managed firewalling in the VPC fabric.
+> Cloud NGFW Enterprise = Google-managed inspection integrated into the VPC firewall-policy path.
 
 **Deep dive:** [Google Cloud NGFW Enterprise Firewall Endpoints — Deep Dive](09-07-26-07-05_GCP_Cloud_NGFW_Enterprise_Firewall_Endpoints_Deep_Dive.md)
 
 ---
 
-## 2. VM-Series + Network Security Integration (NSI)
+## 4. VM-Series + Network Security Integration
 
-NSI is the main transparent VM-Series insertion model.
-
-The key distinction is:
-
-> **NSI is selected by firewall policy, not by normal routing.**
-
-Packet flow:
+NSI provides transparent third-party service insertion.
 
 ```text
-Workload
-   |
-   | normal VPC routing
-   v
-Google firewall policy
-   |
-   | APPLY_SECURITY_PROFILE_GROUP
-   v
-NSI
-   |
-   | GENEVE
-   v
-Internal passthrough ILB
-   |
-   v
-VM-Series
-   |
-   | inspection verdict
-   v
-GENEVE reinjection
-   |
-   v
-original GCP forwarding path
+Consumer workload
+      |
+      v
+Firewall policy
+apply_security_profile_group
+      |
+      v
+NSI consumer endpoint group
+      |
+      | GENEVE
+      v
+Producer deployment
+      |
+      v
+Internal passthrough NLB
+      |
+      v
+VM-Series / NVA
+      |
+      v
+inspection verdict
+      |
+      v
+reinjection into original forwarding path
 ```
 
-Key points:
+Important current behavior:
 
-- The consumer VPC does not need a route such as `10.0.0.0/8 -> firewall` merely to invoke inspection.
-- Google firewall policy chooses the flow.
-- NSI transports the original packet to VM-Series using GENEVE.
-- PAN-OS performs stateful inspection of the inner flow.
-- Allowed traffic is reinjected into the Google forwarding path.
+- In-band NSI rules can be in **hierarchical firewall policies** or **global network firewall policies**.
+- Hierarchical policies associate with an **organization/folder**.
+- Global network firewall policies associate with **VPC networks**.
+- Hierarchical interception rules can reference only **organization-level security profile groups**.
+- Global network firewall policies can reference **organization-level or project-level security profile groups**.
+- Regional network firewall policies do not provide the `apply_security_profile_group` interception action.
+- NSI consumer VPCs should normally use `BEFORE_CLASSIC_FIREWALL`.
 
 **Memorize:**
 
-> NSI = policy, not routing.
+> NSI = firewall policy selects the traffic; normal destination routing does not insert the firewall.
 
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
 
 ---
 
-## 3. NSI Internet egress: two variants
+## 5. NSI Internet egress variants
 
-### 3.1 Standard NSI Internet egress
-
-VM-Series inspects the flow and gives it back to the consumer VPC.
+### Standard NSI egress
 
 ```text
 Consumer VM
    |
    v
-NSI / GENEVE
+NSI
    |
    v
 VM-Series
    |
    v
-reinject into consumer VPC
+reinject
    |
    v
-consumer routing / Cloud NAT
+consumer VPC route / Cloud NAT
    |
    v
 Internet
 ```
 
-Key points:
+VM-Series inspects but the consumer VPC can remain responsible for the final Internet path and SNAT.
 
-- VM-Series is the inspection engine, not the final Internet router.
-- Consumer VPC routing still decides Internet egress after reinjection.
-- Cloud NAT can remain the SNAT owner.
-- Return packets for an established intercepted session are automatically re-intercepted as part of NSI state.
-
-**Memorize:**
-
-> Standard NSI = inspect and give it back.
-
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
-
-### 3.2 NSI direct Internet egress / Overlay
-
-Here VM-Series becomes the actual Internet egress device for the selected flow.
+### Direct/overlay egress
 
 ```text
 Consumer VM
    |
    v
-NSI / GENEVE
+NSI
    |
    v
 VM-Series Trust
    |
-   | PAN-OS route + Security + NAT
+   | PAN-OS route + policy + NAT
    v
 VM-Series Untrust
    |
@@ -171,681 +268,617 @@ VM-Series Untrust
 Internet
 ```
 
-Return:
-
-```text
-Internet
-   |
-   v
-VM-Series Untrust
-   |
-   | reverse NAT / stateful inspection
-   v
-GENEVE
-   |
-   v
-Consumer VM
-```
-
-Key points:
-
-- VM-Series owns the Internet route/NAT for the selected flow.
-- Consumer Cloud NAT is not required for that direct-egress flow.
-- PAN-OS routing and NAT become part of the data path.
+Here the firewall becomes the actual egress router/NAT owner for the selected flow.
 
 **Memorize:**
 
-> NSI direct egress = VM-Series becomes the Internet router/NAT device.
-
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+```text
+Standard NSI = inspect and give it back
+Direct NSI   = firewall owns final egress/NAT
+```
 
 ---
 
-## 4. Traditional VM-Series + internal passthrough ILB
+## 6. Traditional VM-Series + internal passthrough NLB
 
 This is explicit routed service insertion.
 
 ```text
 Source
- |
- | PBR or static route
- v
-Internal passthrough ILB
- |
- v
+  |
+  | PBR or static route
+  v
+Internal passthrough NLB
+  |
+  v
 VM-Series
- |
- | PAN-OS routing/security/NAT
- v
+  |
+  | Security / App-ID / NAT / routing
+  v
 Destination
 ```
 
-The internal passthrough ILB acts as a **highly available next hop**, not as the final application VIP.
+The internal passthrough NLB is an HA **next-hop abstraction**. It is not acting as an application VIP in this design.
 
 Important behavior:
 
-- Google delivers the original packet to a selected firewall backend.
-- The original source and destination tuple are preserved.
-- PAN-OS performs session lookup, Security policy, App-ID, threat inspection, optional NAT, and routing.
-- After VM-Series forwards the packet, it re-enters the Google VPC data plane and another route lookup occurs.
-
-**Memorize:**
-
-> Traditional VM-Series insertion = routed service chain through an ILB-backed firewall fleet.
-
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+- Appliance backends must have IP forwarding enabled.
+- Google delivers the original packet tuple to the selected backend.
+- After the firewall forwards the packet, the packet re-enters the VPC routing process.
+- Return-path design must preserve the stateful firewall session.
 
 ---
 
-## 5. PBR versus static route
-
-This distinction removes a lot of confusion.
+## 7. PBR versus static route
 
 ### PBR = selective steering
 
-Use a Policy-Based Route when you care about more than just destination prefix.
-
-Examples:
-
-```text
-source      = app subnet
-destination = DB subnet
-protocol    = TCP
-tag         = inspect
-             |
-             v
-firewall ILB
-```
-
-PBR can select based on:
+PBR can match:
 
 - source prefix;
 - destination prefix;
-- protocol;
+- protocol (`ALL`, `TCP`, or `UDP`);
 - VM network tags;
-- Cloud Interconnect attachment region.
+- Cloud Interconnect VLAN attachments in a selected region.
 
-**Memorize:**
+The default protocol match is `ALL`.
 
-> PBR = selective routing.
+If neither VM tags nor an Interconnect attachment region is specified, the PBR can apply broadly to eligible network endpoints in the VPC, including VMs, VPN tunnels, and Interconnect attachments.
 
-**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+PBRs are evaluated before subnet, static, and dynamic routes.
 
-### Static route = destination steering
-
-Use a static route when the destination prefix alone is sufficient.
-
-Examples:
-
-```text
-10.20.0.0/16 -> VM-Series ILB
-0.0.0.0/0    -> VM-Series ILB
+```cli
+gcloud network-connectivity policy-based-routes create app-to-db-inspection \
+  --project=network-host-prod \
+  --network=projects/network-host-prod/global/networks/prod-shared-vpc \
+  --priority=1000 \
+  --source-range=10.10.0.0/16 \
+  --destination-range=10.20.0.0/16 \
+  --ip-protocol=ALL \
+  --protocol-version=IPV4 \
+  --next-hop-ilb-ip=10.100.10.10
 ```
 
-**Memorize:**
+The PBR next-hop ILB must be a valid global-access-enabled internal passthrough Network Load Balancer.
 
-> Static route = destination-based routing.
+### Static route = destination-prefix steering
 
-**Deep dive:** [Google Cloud Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
-
----
-
-## 6. Same-VPC east-west inspection
-
-If two subnets are in the same VPC, use PBR when you need to force traffic through VM-Series.
+Static routes select by destination prefix.
 
 ```text
-10.10.1.0/24
-     |
-     | PBR
-     v
-ILB
- |
- v
-VM-Series
- |
- v
-10.10.2.0/24
-```
-
-Return traffic needs the corresponding steering path:
-
-```text
-10.10.2.0/24
-     |
-     | reverse PBR
-     v
-ILB
- |
- v
-VM-Series
- |
- v
-10.10.1.0/24
-```
-
-Why PBR?
-
-Because normal subnet routing already knows how to reach the other subnet directly. PBR lets the firewall service override that direct path for the selected traffic.
-
-**Memorize:**
-
-> Same VPC = PBR.
-
-**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
-
----
-
-## 7. Inter-VPC inspection with VPC Network Peering
-
-You do **not** need Network Connectivity Center for this specific design.
-
-Architecture:
-
-```text
-Spoke A VPC
-   |
-   | VPC Peering
-   v
-Security / Hub VPC
-   |
-   | internal passthrough ILB
-   v
-VM-Series
-   |
-   | VPC Peering
-   v
-Spoke B VPC
-```
-
-Important fact:
-
-> VPC Network Peering is non-transitive.
-
-This means:
-
-```text
-A peers with Hub
-B peers with Hub
-```
-
-does not mean:
-
-```text
-A automatically learns B
-```
-
-The common pattern is to export an **untagged custom static route** from the hub and import it into the spokes.
-
-Example:
-
-```text
+0.0.0.0/0 -> firewall ILB
 10.0.0.0/8 -> firewall ILB
 ```
 
-Spoke A imports the route. Traffic to a remote spoke destination such as `10.20.1.20` matches that aggregate and is sent to the hub firewall.
+But an ILB next-hop static route has important limitations:
 
-After VM-Series forwards the packet into the hub, the hub's more-specific directly learned peering subnet route toward Spoke B wins:
-
-```text
-10.20.0.0/16 via hub-to-spoke-b peering
-```
-
-That prevents the packet from looping back into the firewall route.
+- its destination cannot be equal to or more specific than an existing subnet route;
+- an `L3_DEFAULT` forwarding rule cannot be the next hop of a static route;
+- unless global access is enabled, the next-hop ILB is effectively limited to clients in the ILB's region.
 
 **Memorize:**
 
-> Different VPCs with simple peering = exported static route through the firewall.
-
-And:
-
-> Peering is non-transitive; the firewall route creates the deliberate transit path.
-
-**Deep dive:** [Google Cloud Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
+```text
+PBR    = source + destination + protocol + endpoint scope
+Static = destination prefix
+```
 
 ---
 
-## 8. Where Network Connectivity Center fits
+## 8. ILB protocol behavior: PBR versus static route
 
-NCC is a different architecture, not a requirement for the peering design above.
+This is an important appliance-design nuance.
 
-Use NCC when you want a more scalable, dynamic routing fabric, especially with:
+### Multi-protocol PBR appliance pattern
 
-- BGP;
-- Router Appliance spokes;
-- many VPCs;
-- hybrid connectivity;
-- centralized route exchange;
-- dynamic route propagation.
+For a firewall ILB intended to accept multiple protocols, the clearest frontend/backend configuration is:
 
-Conceptually:
+```cli
+gcloud compute backend-services create fw-ilb-be \
+  --project=network-host-prod \
+  --region=us-central1 \
+  --load-balancing-scheme=INTERNAL \
+  --protocol=UNSPECIFIED \
+  --network=prod-shared-vpc \
+  --health-checks=fw-hc \
+  --health-checks-region=us-central1
+```
+
+```cli
+gcloud compute forwarding-rules create fw-ilb-fr \
+  --project=network-host-prod \
+  --region=us-central1 \
+  --load-balancing-scheme=INTERNAL \
+  --network=prod-shared-vpc \
+  --subnet=firewall-subnet \
+  --address=10.100.10.10 \
+  --ip-protocol=L3_DEFAULT \
+  --ports=ALL \
+  --allow-global-access \
+  --backend-service=fw-ilb-be \
+  --backend-service-region=us-central1
+```
+
+`L3_DEFAULT` + `ALL` with backend protocol `UNSPECIFIED` supports the documented multi-protocol internal passthrough NLB model, including TCP, UDP, ICMP, SCTP, ESP, AH, and GRE.
+
+A TCP health check can still be used; the health-check protocol does not limit the data-plane protocol set.
+
+### Static-route next-hop ILB
+
+Do **not** reuse `L3_DEFAULT` for an ILB that is the next hop of a static route.
+
+Google documents:
 
 ```text
-              NCC Hub
-          /      |       \
-       VPC      VPC    Router Appliance
-                         |
-                         v
-                      VM-Series
-                         |
-                         BGP
+L3_DEFAULT forwarding rule
++ static route next-hop ILB
+= unsupported; traffic is silently dropped
 ```
+
+For static-route next-hop ILBs, use a supported TCP/UDP forwarding-rule configuration.
+
+However, when an internal passthrough NLB is actually used as a route next hop, Google forwards supported VPC protocol traffic on all ports to the backends regardless of the forwarding rule/backend-service protocol and port configuration.
 
 **Memorize:**
 
-> Peering design = static route exchange.
+```text
+PBR appliance ILB:
+L3_DEFAULT + ALL
+backend = UNSPECIFIED
 
-> NCC Router Appliance design = dynamic BGP route exchange.
-
-**Deep dive:** [GCP Firewall Insertion with NCC Router Appliance + BGP — Deep Dive](09-07-26-09-03_GCP_NCC_Router_Appliance_BGP_Firewall_Insertion_Deep_Dive.md)
+Static-route next-hop ILB:
+do NOT use L3_DEFAULT
+```
 
 ---
 
-## 9. On-premises inspection through Cloud Interconnect
+## 9. Same-VPC east-west inspection
 
-Cloud Interconnect traffic can be steered through VM-Series with PBR.
+For two subnets in the same VPC, ordinary subnet routes already provide direct reachability.
+
+```text
+App subnet
+   |
+   | PBR
+   v
+Firewall ILB
+   |
+   v
+VM-Series
+   |
+   v
+DB subnet
+```
+
+This is why PBR is the classic route-based same-VPC insertion mechanism.
+
+A static route cannot replace an equal or more-specific directly connected subnet route.
+
+Return traffic must also be deliberately steered through the same stateful inspection domain.
+
+**Memorize:**
+
+> Same VPC routed insertion = PBR.
+
+---
+
+## 10. Inter-VPC inspection with VPC Network Peering
+
+A simple hub-and-spoke design can use VPC Network Peering plus exported/imported custom routes.
+
+```text
+Spoke A
+   |
+ VPC Peering
+   |
+Security VPC
+   |
+Firewall ILB
+   |
+VM-Series
+   |
+ VPC Peering
+   |
+Spoke B
+```
+
+VPC Network Peering is non-transitive.
+
+```text
+A <-> Hub
+B <-> Hub
+
+does not automatically create:
+A <-> B transit
+```
+
+A deliberate custom route toward the firewall can create the service path, while a more-specific peering subnet route can carry post-inspection traffic toward the destination spoke.
+
+**Deep dive:** [Comprehensive GCP Firewall Insertion Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
+
+---
+
+## 11. Network Connectivity Center + Router Appliance
+
+NCC Router Appliance is for dynamic routing/service insertion using BGP.
+
+```text
+VPC / Hybrid attachments
+        |
+        v
+      NCC hub
+        |
+        v
+Router Appliance spoke
+        |
+        v
+Cloud Router BGP
+        |
+        v
+VM-Series / NVA
+```
+
+Important distinction:
+
+```text
+Cloud Router / NCC
+= control plane / route exchange
+
+Router Appliance VM
+= data plane / packet forwarding
+```
+
+NCC Router Appliance does not magically force arbitrary same-VPC subnet-to-subnet flows through the appliance. If traffic already has a direct subnet route inside one VPC, use a supported interception/steering mechanism such as PBR or NSI.
+
+**Deep dive:** [NCC Router Appliance + BGP](09-07-26-09-03_GCP_NCC_Router_Appliance_BGP_Firewall_Insertion_Deep_Dive.md)
+
+---
+
+## 12. Shared VPC centralized firewall architecture — Method 11
+
+Shared VPC deserves its own architecture pattern, but Shared VPC itself is not the steering primitive.
+
+```text
+Organization
+   |
+   +-- Network/Security host project
+   |      |
+   |      +-- Shared VPC
+   |      +-- app/db/firewall subnets
+   |      +-- PBR / firewall policies
+   |      +-- ILB / Cloud NGFW / NCC
+   |      +-- hybrid connectivity
+   |
+   +-- Service project A
+   |      +-- workload NIC in shared subnet
+   |
+   +-- Service project B
+          +-- workload NIC in shared subnet
+```
+
+Mental model:
+
+```text
+Shared VPC
+= common routing / policy domain
+
+PBR / NSI / Cloud NGFW / NCC
+= actual insertion mechanism
+
+Firewall / NVA / endpoint
+= inspection
+
+return routing
+= symmetry
+```
+
+Why it matters:
+
+- host project owns shared routes and centralized security constructs;
+- service projects own workloads while consuming shared subnets;
+- same-VPC east-west still requires explicit interception, commonly PBR or NSI;
+- hybrid ingress can use PBR;
+- Internet egress can use PBR or an appropriate static-route ILB pattern;
+- Cloud NGFW Enterprise can be associated with the shared VPC;
+- NCC Router Appliance can provide dynamic route exchange for routed domains.
+
+**Deep dive:** [GCP Shared VPC Centralized Firewall Insertion — Method 11](09-07-26_GCP_Shared_VPC_Centralized_Firewall_Insertion_Method_11_Deep_Dive.md)
+
+---
+
+## 13. Cloud Interconnect inspection
+
+PBR can apply to Cloud Interconnect VLAN attachments in a selected region.
 
 ```text
 On-prem
    |
-   v
 Cloud Interconnect
    |
-   v
 VLAN attachment
    |
    | PBR
    v
-ILB
+Firewall ILB
    |
-   v
 VM-Series
    |
-   v
 Workload
 ```
 
-A PBR can be scoped to Cloud Interconnect VLAN attachments by region.
+You cannot target one individual VLAN attachment with a PBR. The Interconnect target scope is regional.
 
-Important concept:
-
-- The PBR belongs to the VPC.
-- It is not attached to an AWS-style route table or a subnet.
-- Scope determines where the route applies.
+Forward and return directions often use different PBR scopes because the return flow originates from a VM endpoint rather than an Interconnect attachment.
 
 **Memorize:**
 
-> Interconnect inbound = PBR can apply at the VLAN attachment ingress context.
-
-**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+> Interconnect ingress PBR scope is regional, not per individual attachment.
 
 ---
 
-## 10. Return traffic to Cloud Interconnect
+## 14. HA VPN inspection
 
-The inbound PBR and return PBR often need different scopes because the packet source context changes.
-
-Forward:
-
-```text
-Interconnect attachment
-   |
-   | Interconnect-scoped PBR
-   v
-VM-Series
-   |
-   v
-Workload
-```
-
-Return:
-
-```text
-Workload VM
-   |
-   | VM-tag or appropriate workload PBR
-   v
-ILB
-   |
-   v
-VM-Series
-   |
-   v
-Cloud Router
-   |
-   v
-Interconnect
-   |
-   v
-On-prem
-```
-
-**Memorize:**
-
-> Forward and return directions can have different PBR scopes because they originate from different GCP endpoint types.
-
-**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
-
----
-
-## 11. HA VPN inspection
-
-The overall concept is similar to Interconnect, but PBR scoping differs.
+HA VPN can also be subject to a broadly applicable VPC PBR.
 
 ```text
 On-prem
- |
- v
+   |
 HA VPN
- |
- v
+   |
 VPC
- |
- | network-wide PBR
- v
-ILB
- |
- v
+   |
+PBR
+   |
+Firewall ILB
+   |
 VM-Series
- |
- v
+   |
 Workload
 ```
 
-Key distinction:
-
-- Interconnect supports attachment-region-aware PBR scoping.
-- HA VPN typically relies on broader VPC PBR applicability.
-
-**Memorize:**
-
-> Interconnect can have attachment-region-specific PBR scope; HA VPN generally uses broader VPC scope.
-
-**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+Unlike Interconnect, PBR does not provide a per-VPN-tunnel target selector. If no VM tags or Interconnect scope is set, matching PBRs can apply broadly across eligible endpoints, including VPN tunnels.
 
 ---
 
-## 12. Traditional Internet egress through VM-Series
+## 15. Traditional Internet egress
 
 ```text
 Workload
- |
- | default route / PBR
- v
+   |
+default route / PBR
+   |
 Trust ILB
- |
- v
-VM-Series Trust
- |
- | Security
- | routing
- | SNAT
- v
-VM-Series Untrust
- |
- v
+   |
+VM-Series
+   |
+Security + route + SNAT
+   |
 Internet
 ```
 
 In this model PAN-OS can own Internet NAT state.
 
-This differs from standard NSI, where the packet is normally reinjected into the consumer VPC and Cloud NAT can remain the translator.
-
-**Memorize:**
-
-> Traditional routed model = PAN-OS can be the actual Internet gateway/NAT device.
-
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+This differs from standard NSI reinjection, where Cloud NAT can remain the SNAT owner.
 
 ---
 
-## 13. Internet ingress through VM-Series
+## 16. Internet ingress
 
-Typical pattern:
+Typical routed NVA pattern:
 
 ```text
 Internet
- |
- v
-External passthrough / supported external LB
- |
- v
+   |
+external passthrough / supported external LB
+   |
 VM-Series Untrust
- |
- | DNAT / Security
- v
+   |
+DNAT + Security
+   |
 Trust
- |
- v
+   |
 Application
 ```
 
-Return:
+Return traffic must re-enter the firewall state/NAT domain that owns the session.
 
-```text
-Application
- |
- v
-VM-Series
- |
- | reverse NAT / existing session
- v
-Internet
-```
-
-The important principle is state symmetry:
-
-> Return traffic must come back through the firewall that owns the relevant state/NAT relationship.
-
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+For Cloud NGFW Enterprise, inbound inspection is also possible when the traffic and target type are supported by the applicable firewall policy/firewall endpoint architecture; do not assume the service is egress-only.
 
 ---
 
-## 14. PBR recursion and firewall bypass
+## 17. PBR recursion and bypass
 
-A broad PBR can accidentally catch packets emitted by the firewall after inspection.
-
-Bad path:
+A broad PBR can catch packets emitted by the firewall after inspection and send them back to the same ILB.
 
 ```text
-VM-Series
- |
- | same PBR again
- v
-ILB
- |
- v
-VM-Series
- |
- v
-loop
+Workload
+   |
+PBR
+   |
+Firewall
+   |
+same PBR again
+   |
+Firewall
+   |
+LOOP
 ```
 
-Typical solution:
+Use a higher-priority bypass PBR for the firewall VMs or otherwise design the post-inspection flow so the firewall does not re-match the insertion rule.
 
 ```text
-firewall VM tag = pan-fw
-```
-
-Create a higher-priority PBR for firewall VMs that uses normal routing instead of interception:
-
-```text
-pan-fw tagged VM
-     |
-     v
-DEFAULT_ROUTING
-```
-
-Then:
-
-```text
-VM-Series
- |
- | firewall bypass PBR
- v
-normal GCP routing
+Firewall-tagged VM
+    |
+higher-priority bypass PBR
+    |
+default-routing / ordinary route lookup
 ```
 
 **Memorize:**
 
-> Workloads get steering PBRs; firewall VMs get bypass PBRs.
-
-**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+> Workloads get insertion; firewalls need a deliberate escape path.
 
 ---
 
-## 15. Symmetric hashing
+## 18. State, symmetry, and hashing
 
-Internal passthrough ILB next-hop designs can use symmetric hashing so forward and reverse tuples are more likely to select the same eligible firewall backend.
+Stateful firewalls need both directions to reach a compatible firewall state domain.
 
-But symmetric hashing does not fix incorrect routing.
+Internal passthrough NLB hashing can help keep forward/reverse flows aligned with an eligible backend, but it does not repair a bad route design.
 
 You still need:
 
-- both directions to reach the firewall service;
+- forward steering;
+- return steering;
 - compatible backend sets;
-- consistent health state;
-- valid PAN-OS session ownership.
+- healthy backends;
+- correct NAT ownership;
+- no recursive service insertion.
 
 **Memorize:**
 
-> Symmetric hashing helps backend symmetry; it does not repair asymmetric routing.
-
-**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+> Hashing helps backend selection; routing creates symmetry.
 
 ---
 
-## 16. One-page cheat sheet
+## 19. One-page cheat sheet
 
 ```text
 GOOGLE-MANAGED FIREWALL
 Cloud NGFW Enterprise
-= Google policy
-= no firewall VMs
+= Google firewall policy
+= firewall endpoint
+= no customer firewall VMs
 
-TRANSPARENT PAN FIREWALL
-VM-Series + NSI
-= firewall policy selects traffic
-= GENEVE
-= no normal route steering
+TRANSPARENT THIRD-PARTY INSPECTION
+NSI
+= hierarchical/global firewall policy
+= apply_security_profile_group
+= GENEVE to producer appliances
+= normally BEFORE_CLASSIC_FIREWALL
 
-SAME VPC
-VM-Series + PBR
-= selective service insertion
+SAME-VPC ROUTED INSPECTION
+PBR
+-> internal passthrough NLB
+-> VM-Series/NVA
 
-DIFFERENT VPCs WITH PEERING
-VM-Series + ILB + exported static route
-= no NCC required
-= peering is non-transitive
+PBR MULTI-PROTOCOL ILB
+frontend = L3_DEFAULT + ALL
+backend  = UNSPECIFIED
 
-LARGE / DYNAMIC MULTI-VPC
+STATIC-ROUTE ILB
+destination-prefix steering
+do NOT use L3_DEFAULT as static next hop
+
+SIMPLE MULTI-VPC
+VPC Peering + exported/imported custom routes
+-> firewall ILB
+
+DYNAMIC MULTI-VPC / HYBRID
 NCC + Router Appliance + BGP
-= dynamic route exchange
 
-ON-PREM INTERCONNECT
-PBR scoped to Interconnect attachment region
--> ILB
--> VM-Series
+SHARED VPC
+central routing/policy domain
++ choose PBR / NSI / Cloud NGFW / NCC
+
+INTERCONNECT
+regional Interconnect-scoped PBR
 
 HA VPN
-network-wide or broadly scoped PBR
--> ILB
--> VM-Series
+broad VPC PBR scope
 
 TRADITIONAL INTERNET EGRESS
-default route / PBR
--> Trust ILB
--> VM-Series
--> SNAT
--> Internet
+route/PBR -> VM-Series -> SNAT -> Internet
 
-NSI STANDARD INTERNET
-NSI
--> VM-Series
--> reinject
--> consumer Cloud NAT / Internet route
+STANDARD NSI INTERNET
+NSI -> inspect -> reinject -> consumer route/Cloud NAT
 
-NSI DIRECT EGRESS
-NSI
--> VM-Series
--> PAN-OS route / NAT
--> Internet
+DIRECT NSI INTERNET
+NSI -> VM-Series -> PAN-OS route/NAT -> Internet
 ```
 
 ---
 
-## 17. Decision tree
+## 20. Decision tree
 
 ```text
-Do you want Google-managed firewalling?
+Do you want Google-managed inspection?
         |
        YES
         |
         v
 Cloud NGFW Enterprise
 
-Do you specifically want PAN-OS / VM-Series?
+Do you specifically want third-party PAN-OS / VM-Series?
         |
        YES
         |
         v
-Do you want transparent insertion
-without changing workload routing?
+Do you want transparent interception
+without changing ordinary destination routing?
         |
        YES
         |
         v
 NSI
+        |
+        +--> set consumer VPC to BEFORE_CLASSIC_FIREWALL
 
-Do you need a routed VM-Series service chain?
+Do you want routed insertion?
         |
        YES
         |
         v
-Same VPC?
-   |
-  YES -> PBR
+Same VPC east-west?
+        |
+       YES --> PBR -> ILB -> VM-Series
 
-Different VPCs, simple peering topology?
-   |
-  YES -> VPC Peering + exported static route + ILB
+Destination-prefix egress/transit only?
+        |
+       YES --> static route -> ILB -> VM-Series
+               but NOT L3_DEFAULT as static next hop
 
-Large / dynamic / BGP topology?
-   |
-  YES -> NCC + Router Appliance + BGP
+Simple multiple VPCs?
+        |
+       YES --> VPC Peering + custom route exchange
 
-Hybrid traffic?
-   |
-   +-> Interconnect -> PBR with attachment-region scope
-   |
-   +-> HA VPN -> broader VPC PBR scope
+Large/dynamic/BGP topology?
+        |
+       YES --> NCC + Router Appliance + BGP
+
+Many service projects sharing one enterprise VPC?
+        |
+       YES --> Shared VPC Method 11
+               + choose PBR / NSI / Cloud NGFW / NCC
+
+Hybrid?
+        |
+        +--> Interconnect -> regional attachment-scoped PBR
+        |
+        +--> HA VPN -> broad VPC PBR
 ```
-
----
-
-## 18. Final mnemonic
-
-```text
-NSI     = Policy
-PBR     = Selective routing
-Static  = Destination routing
-Peering = Simple multi-VPC
-NCC     = Dynamic scalable multi-VPC
-ILB     = HA firewall next hop
-PAN-OS  = Inspection + session + optional NAT
-```
-
-If those seven associations are clear, most GCP firewall-insertion scenarios become a matter of deriving the correct path rather than memorizing every implementation detail.
 
 ---
 
 ## Sources
 
-- https://github.com/ccaiccie/knowledge/blob/main/09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md
+- https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-eval-order
+- https://docs.cloud.google.com/firewall/docs/network-firewall-policies
+- https://docs.cloud.google.com/firewall/docs/regional-firewall-policies
 - https://docs.cloud.google.com/network-security-integration/docs/nsi-overview
-- https://docs.cloud.google.com/network-security-integration/docs/in-band/in-band-integration-overview
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-consumer-service
+- https://docs.cloud.google.com/network-security-integration/docs/in-band/configure-firewall-rules
+- https://docs.cloud.google.com/firewall/docs/about-security-profile-groups
 - https://docs.cloud.google.com/vpc/docs/policy-based-routes
-- https://docs.cloud.google.com/vpc/docs/vpc-peering
+- https://docs.cloud.google.com/vpc/docs/use-policy-based-routes
 - https://docs.cloud.google.com/load-balancing/docs/internal/ilb-next-hop-overview
-- https://cloud.google.com/network-connectivity/docs/network-connectivity-center/concepts/overview
-- https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-google-cloud-platform
+- https://docs.cloud.google.com/load-balancing/docs/internal/setting-up-ilb-next-hop
+- https://docs.cloud.google.com/load-balancing/docs/internal/setting-up-ilb-multiple-protocols
+- https://docs.cloud.google.com/vpc/docs/shared-vpc
+- https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center
+- https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center/concepts/ra-overview
+- https://github.com/ccaiccie/knowledge/blob/main/09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md
+- https://github.com/ccaiccie/knowledge/blob/main/09-07-26_GCP_Firewall_Policy_Hierarchy_Goto_Next_NSI_Deep_Dive.md
+- https://github.com/ccaiccie/knowledge/blob/main/09-07-26_GCP_Shared_VPC_Centralized_Firewall_Insertion_Method_11_Deep_Dive.md
+- https://github.com/ccaiccie/knowledge/blob/main/09-07-26-09-03_GCP_NCC_Router_Appliance_BGP_Firewall_Insertion_Deep_Dive.md
+- https://github.com/ccaiccie/knowledge/blob/main/09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md
