@@ -56,6 +56,8 @@ Key points:
 
 > Cloud NGFW Enterprise = Google-managed firewalling in the VPC fabric.
 
+**Deep dive:** [Google Cloud NGFW Enterprise Firewall Endpoints — Deep Dive](09-07-26-07-05_GCP_Cloud_NGFW_Enterprise_Firewall_Endpoints_Deep_Dive.md)
+
 ---
 
 ## 2. VM-Series + Network Security Integration (NSI)
@@ -106,6 +108,8 @@ Key points:
 
 > NSI = policy, not routing.
 
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+
 ---
 
 ## 3. NSI Internet egress: two variants
@@ -143,6 +147,8 @@ Key points:
 **Memorize:**
 
 > Standard NSI = inspect and give it back.
+
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
 
 ### 3.2 NSI direct Internet egress / Overlay
 
@@ -191,6 +197,8 @@ Key points:
 
 > NSI direct egress = VM-Series becomes the Internet router/NAT device.
 
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
+
 ---
 
 ## 4. Traditional VM-Series + internal passthrough ILB
@@ -224,6 +232,8 @@ Important behavior:
 **Memorize:**
 
 > Traditional VM-Series insertion = routed service chain through an ILB-backed firewall fleet.
+
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
 
 ---
 
@@ -259,6 +269,8 @@ PBR can select based on:
 
 > PBR = selective routing.
 
+**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+
 ### Static route = destination steering
 
 Use a static route when the destination prefix alone is sufficient.
@@ -273,6 +285,8 @@ Examples:
 **Memorize:**
 
 > Static route = destination-based routing.
+
+**Deep dive:** [Google Cloud Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
 
 ---
 
@@ -317,6 +331,8 @@ Because normal subnet routing already knows how to reach the other subnet direct
 **Memorize:**
 
 > Same VPC = PBR.
+
+**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
 
 ---
 
@@ -385,6 +401,8 @@ And:
 
 > Peering is non-transitive; the firewall route creates the deliberate transit path.
 
+**Deep dive:** [Google Cloud Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-18-58_GCP_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
+
 ---
 
 ## 8. Where Network Connectivity Center fits
@@ -418,6 +436,8 @@ Conceptually:
 > Peering design = static route exchange.
 
 > NCC Router Appliance design = dynamic BGP route exchange.
+
+**Deep dive:** [GCP Firewall Insertion with NCC Router Appliance + BGP — Deep Dive](09-07-26-09-03_GCP_NCC_Router_Appliance_BGP_Firewall_Insertion_Deep_Dive.md)
 
 ---
 
@@ -456,6 +476,8 @@ Important concept:
 **Memorize:**
 
 > Interconnect inbound = PBR can apply at the VLAN attachment ingress context.
+
+**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
 
 ---
 
@@ -502,6 +524,8 @@ On-prem
 
 > Forward and return directions can have different PBR scopes because they originate from different GCP endpoint types.
 
+**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+
 ---
 
 ## 11. HA VPN inspection
@@ -537,6 +561,8 @@ Key distinction:
 
 > Interconnect can have attachment-region-specific PBR scope; HA VPN generally uses broader VPC scope.
 
+**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+
 ---
 
 ## 12. Traditional Internet egress through VM-Series
@@ -568,6 +594,8 @@ This differs from standard NSI, where the packet is normally reinjected into the
 **Memorize:**
 
 > Traditional routed model = PAN-OS can be the actual Internet gateway/NAT device.
+
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
 
 ---
 
@@ -608,6 +636,8 @@ Internet
 The important principle is state symmetry:
 
 > Return traffic must come back through the firewall that owns the relevant state/NAT relationship.
+
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
 
 ---
 
@@ -660,6 +690,8 @@ normal GCP routing
 
 > Workloads get steering PBRs; firewall VMs get bypass PBRs.
 
+**Deep dive:** [Google Cloud Policy-Based Routing (PBR) — Comprehensive Study Guide](09-05-26-08-12_GCP_Policy_Based_Routing_Study_Guide.md)
+
 ---
 
 ## 15. Symmetric hashing
@@ -678,6 +710,8 @@ You still need:
 **Memorize:**
 
 > Symmetric hashing helps backend symmetry; it does not repair asymmetric routing.
+
+**Deep dive:** [Palo Alto Networks Firewalling in Google Cloud — Cloud NGFW Enterprise Integration vs VM-Series Service Insertion](09-07-26-07-03_Palo_Alto_Networks_Firewalling_in_GCP_Deep_Dive.md)
 
 ---
 
