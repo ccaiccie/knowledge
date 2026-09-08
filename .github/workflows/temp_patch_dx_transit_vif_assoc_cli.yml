@@ -1,0 +1,22 @@
+name: temp-patch-dx-transit-vif-assoc-cli
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/temp_patch_dx_transit_vif_assoc_cli.py'
+      - '.github/workflows/temp_patch_dx_transit_vif_assoc_cli.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/temp_patch_dx_transit_vif_assoc_cli.py
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/scripts/temp_patch_dx_transit_vif_assoc_cli.py .github/workflows/temp_patch_dx_transit_vif_assoc_cli.yml
+          git add 09-08-26_AWS_Direct_Connect_Transit_VIF_Deep_Dive.md
+          git commit -m 'Add exact DXGW TGW association CLI example'
+          git push
