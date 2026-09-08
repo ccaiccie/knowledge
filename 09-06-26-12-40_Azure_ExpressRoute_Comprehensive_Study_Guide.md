@@ -47,6 +47,16 @@ Primary Microsoft sources used for this guide:
   - [2.4 Provider circuit versus ExpressRoute Direct](#24-provider-circuit-versus-expressroute-direct)
   - [2.5 ExpressRoute Metro](#25-expressroute-metro)
   - [2.6 ExpressRoute Global Reach](#26-expressroute-global-reach)
+    - [2.6.1 What Global Reach actually connects](#261-what-global-reach-actually-connects)
+    - [2.6.2 Control plane and BGP route exchange](#262-control-plane-and-bgp-route-exchange)
+    - [2.6.3 Exact packet flow](#263-exact-packet-flow)
+    - [2.6.4 Prerequisites and SKU/geography rules](#264-prerequisites-and-skugeography-rules)
+    - [2.6.5 Azure CLI configuration](#265-azure-cli-configuration)
+    - [2.6.6 Cross-subscription circuit connection](#266-cross-subscription-circuit-connection)
+    - [2.6.7 Three or more circuits and non-transitivity](#267-three-or-more-circuits-and-non-transitivity)
+    - [2.6.8 Bandwidth, route scale, and failure behavior](#268-bandwidth-route-scale-and-failure-behavior)
+    - [2.6.9 Global Reach versus Route Server and Virtual WAN](#269-global-reach-versus-route-server-and-virtual-wan)
+    - [2.6.10 Security and firewall implications](#2610-security-and-firewall-implications)
 - [3. Private Peering, Microsoft Peering, and legacy Public Peering](#3-private-peering-microsoft-peering-and-legacy-public-peering)
   - [3.1 Azure Private Peering](#31-azure-private-peering)
   - [3.2 Microsoft Peering](#32-microsoft-peering)
@@ -203,9 +213,468 @@ Do not invent a Metro location string; use a value returned by Azure for the sel
 
 ### 2.6 ExpressRoute Global Reach
 
-Global Reach connects **two ExpressRoute circuits** so on-premises networks behind those circuits can communicate over Microsoft's backbone.
+**Source information:** ExpressRoute Global Reach links ExpressRoute circuits so that the **on-premises networks behind those circuits can communicate directly over Microsoft's global network**. It is primarily an on-premises-to-on-premises transit feature. It does not require traffic to enter an Azure VNet merely to move between the sites.
 
-Do not confuse it with Route Server. ARS does not provide ExpressRoute-circuit-to-circuit transit. Section 11 contains the exact Azure CLI pattern.
+A simple mental model is:
+
+```text
+Without Global Reach
+
+Site A / LA                    Site B / Dallas
+10.10.0.0/16                  10.20.0.0/16
+     |                              |
+     v                              v
+ER Circuit A                    ER Circuit B
+     |                              |
+     +----> Azure VNets      Azure VNets <----+
+
+No automatic Site A <-> Site B transit
+```
+
+With Global Reach:
+
+```text
+Site A / LA                    Site B / Dallas
+10.10.0.0/16                  10.20.0.0/16
+     |                              |
+     v                              v
+ER Circuit A ==== Global Reach ==== ER Circuit B
+               Microsoft backbone
+```
+
+The important distinction is:
+
+```text
+ExpressRoute Private Peering
+    = on-premises <-> Azure private routing domain
+
+ExpressRoute Global Reach
+    = on-premises <-> on-premises transit between ER circuits
+```
+
+#### 2.6.1 What Global Reach actually connects
+
+Global Reach is represented as an **ExpressRoute circuit connection under Azure Private Peering**. It is not a VNet peering, it is not a Route Server adjacency, and it is not a connection between two ExpressRoute VNet gateways.
+
+Conceptually:
+
+```text
+ER Circuit A
+  |
+  +-- AzurePrivatePeering
+          |
+          | ExpressRouteCircuitConnection
+          | Global Reach
+          |
+  +-- AzurePrivatePeering
+ER Circuit B
+```
+
+This means the Global Reach relationship exists at the ExpressRoute circuit/private-peering layer.
+
+You do **not** need the following merely for the basic circuit-to-circuit Global Reach data path:
+
+- Azure Route Server;
+- VNet peering;
+- a VNet ExpressRoute gateway acting as the transit router;
+- a Virtual WAN hub;
+- UDRs in an Azure VNet.
+
+Those features can exist in the wider architecture, but they are not what creates the Global Reach circuit relationship.
+
+#### 2.6.2 Control plane and BGP route exchange
+
+Assume:
+
+```text
+LA site
+  ASN: 65010
+  Prefix: 10.10.0.0/16
+
+Dallas site
+  ASN: 65020
+  Prefix: 10.20.0.0/16
+```
+
+LA advertises `10.10.0.0/16` over the Private Peering of Circuit A. Dallas advertises `10.20.0.0/16` over the Private Peering of Circuit B.
+
+After Global Reach is established, the remote on-premises prefixes can be exchanged through the connected circuit relationship, subject to ExpressRoute routing rules and your CE/provider routing policies.
+
+Conceptually:
+
+```text
+LA CE
+  advertises 10.10.0.0/16
+      |
+      v
+Circuit A Private Peering
+      |
+      | Global Reach
+      v
+Circuit B Private Peering
+      |
+      v
+Dallas CE learns 10.10.0.0/16
+```
+
+and the reverse direction:
+
+```text
+Dallas CE
+  advertises 10.20.0.0/16
+      |
+      v
+Circuit B Private Peering
+      |
+      | Global Reach
+      v
+Circuit A Private Peering
+      |
+      v
+LA CE learns 10.20.0.0/16
+```
+
+**What to verify:** Do not stop at the Azure resource state. On both customer/provider routers, verify that the remote site prefixes are actually present, accepted by policy, and installed in the forwarding table.
+
+#### 2.6.3 Exact packet flow
+
+For this packet:
+
+```text
+Source:      10.10.10.25
+Destination: 10.20.20.25
+```
+
+a representative path is:
+
+```text
+10.10.10.25
+   |
+   v
+LA LAN/router
+   |
+   | route to 10.20.0.0/16 learned through ER
+   v
+LA CE/provider edge
+   |
+   | ExpressRoute Private Peering
+   v
+MSEE / Microsoft edge
+   |
+   | Global Reach
+   | Microsoft backbone
+   v
+MSEE / Microsoft edge
+   |
+   | ExpressRoute Private Peering
+   v
+Dallas CE/provider edge
+   |
+   v
+10.20.20.25
+```
+
+The packet does **not** need to traverse:
+
+```text
+ER VNet gateway -> Azure VNet -> another ER VNet gateway
+```
+
+merely to reach the other on-premises site.
+
+The return flow is the same logical path in reverse, subject to your BGP policy:
+
+```text
+10.20.20.25
+  -> Dallas ER Circuit B
+  -> Global Reach
+  -> ER Circuit A
+  -> LA
+  -> 10.10.10.25
+```
+
+#### 2.6.4 Prerequisites and SKU/geography rules
+
+Before creating Global Reach, validate all of the following:
+
+1. Both circuits are provisioned and operational.
+2. **Azure Private Peering** is configured on both circuits.
+3. The selected ExpressRoute peering locations support Global Reach.
+4. Address spaces advertised by the two sites do not create unintended overlap/ambiguity.
+5. A dedicated `/29` is available for the Global Reach circuit connection.
+6. Customer/provider route policies allow the remote site prefixes.
+7. Circuit capacity is sufficient for both Azure-bound traffic and site-to-site traffic.
+
+**SKU/geography:** Microsoft's current Global Reach documentation states that when connecting circuits in **different geopolitical regions**, both circuits must use the **Premium SKU**.
+
+For circuits within the same supported geopolitical region, Premium is not required merely because Global Reach is used; use the SKU that satisfies reach/limit requirements and is supported for the topology.
+
+Global Reach availability is location-dependent. Always validate the current supported-location list before committing to a design.
+
+#### 2.6.5 Azure CLI configuration
+
+Assume:
+
+```text
+Circuit A: ER-LA-01
+Circuit B: ER-DAL-01
+Resource group: RG-Network
+Global Reach prefix: 10.254.0.0/29
+```
+
+First verify Private Peering on both circuits:
+
+```cli
+az network express-route peering show \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --name AzurePrivatePeering \
+  --query '{state:state,provisioning:provisioningState,id:id}' \
+  --output json
+```
+
+```cli
+az network express-route peering show \
+  --resource-group RG-Network \
+  --circuit-name ER-DAL-01 \
+  --name AzurePrivatePeering \
+  --query '{state:state,provisioning:provisioningState,id:id}' \
+  --output json
+```
+
+Retrieve Circuit B's resource ID:
+
+```cli
+ER_DAL_ID=$(az network express-route show \
+  --resource-group RG-Network \
+  --name ER-DAL-01 \
+  --query id \
+  --output tsv)
+```
+
+Create the Global Reach connection from Circuit A's Private Peering:
+
+```cli
+az network express-route peering connection create \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  --name GR-LA-to-DAL \
+  --peer-circuit "$ER_DAL_ID" \
+  --address-prefix 10.254.0.0/29
+```
+
+Microsoft's current CLI defines `--address-prefix` as a **`/29` IP address space used to carve out customer addresses for the circuit connection**. Treat it as dedicated Global Reach connection addressing; do not reuse a LAN, VNet, Private Peering `/30`, VPN pool, or overlapping enterprise prefix.
+
+Wait for the connection resource to reach `Succeeded`:
+
+```cli
+az network express-route peering connection wait \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  --name GR-LA-to-DAL \
+  --created
+```
+
+Show the connection:
+
+```cli
+az network express-route peering connection show \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  --name GR-LA-to-DAL \
+  --output json
+```
+
+List every Global Reach connection under the private peering:
+
+```cli
+az network express-route peering connection list \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --peering-name AzurePrivatePeering \
+  --output table
+```
+
+**Success criteria:**
+
+- Global Reach connection provisioning succeeds;
+- the peer circuit reference is correct;
+- the `/29` is the intended dedicated connection prefix;
+- remote site prefixes are visible on the CE routers;
+- bidirectional test traffic follows the expected ExpressRoute paths.
+
+**Failure indicators:**
+
+- Global Reach resource is failed/disconnected;
+- peer circuit ID is wrong;
+- Private Peering is not operational on one side;
+- `/29` overlaps another network;
+- remote prefixes are filtered by CE/provider policy;
+- sites advertise overlapping prefixes;
+- location/SKU combination is unsupported.
+
+#### 2.6.6 Cross-subscription circuit connection
+
+If the peer circuit is in another subscription, the Global Reach CLI supports an **authorization key**.
+
+Microsoft's current command reference exposes:
+
+```text
+--authorization-key
+```
+
+and defines it as the authorization key used when the peer circuit is in another subscription.
+
+The conceptual workflow is:
+
+```text
+Circuit owner in Subscription B
+     |
+     | grants/creates authorization for the peer circuit relationship
+     v
+Authorization key
+     |
+     v
+Subscription A creates Global Reach connection
+     using --authorization-key
+```
+
+When implementing this, use the current Microsoft authorization procedure for the exact ownership model rather than copying a same-subscription command and assuming access is implicit.
+
+#### 2.6.7 Three or more circuits and non-transitivity
+
+Do not design Global Reach as though it were a generic transitive routing mesh.
+
+If you configure:
+
+```text
+Circuit A <-> Circuit B
+Circuit B <-> Circuit C
+```
+
+do **not** assume that this automatically means:
+
+```text
+Circuit A <-> Circuit C
+```
+
+For a full three-circuit mesh, explicitly create the required pairwise relationships:
+
+```text
+A <-> B
+A <-> C
+B <-> C
+```
+
+The number of pairwise relationships grows quickly as circuit count increases. This is one reason Virtual WAN can become operationally cleaner when the problem evolves from a few ER-attached sites into a large multi-connection global transit fabric.
+
+#### 2.6.8 Bandwidth, route scale, and failure behavior
+
+**Bandwidth:** Global Reach does not create new bandwidth. Site-to-Azure and site-to-site traffic share the capacity of the involved ExpressRoute circuits.
+
+Example:
+
+```text
+Circuit B capacity:            5 Gbps
+Existing Azure traffic:        3 Gbps
+New Global Reach traffic:      3 Gbps
+                               ------
+Total offered load:            6 Gbps
+Available circuit capacity:    5 Gbps
+```
+
+The result is congestion even though Global Reach itself is configured correctly.
+
+If Circuit A is 10 Gbps and Circuit B is 5 Gbps, the smaller circuit can become the bottleneck for traffic traversing the pair.
+
+**Route scale:** Enabling Global Reach means customer routers can receive remote on-premises prefixes in addition to Azure prefixes. Check both ExpressRoute route limits and the CE's own `maximum-prefix`/FIB capacity.
+
+**Failure behavior:** One ExpressRoute circuit already contains redundant primary and secondary BGP sessions. A single peering-link failure can therefore leave the circuit operational through the surviving session.
+
+But if the **entire circuit or peering location** becomes unavailable, the Global Reach path through that circuit is lost unless you have another independently designed circuit/path.
+
+For mission-critical site-to-site use, combine Global Reach with proper circuit diversity:
+
+- diverse peering locations;
+- diverse provider/local-loop infrastructure where possible;
+- redundant CE routers;
+- BGP policy for alternate paths;
+- tested failover capacity.
+
+#### 2.6.9 Global Reach versus Route Server and Virtual WAN
+
+These three features solve different problems.
+
+| Feature | Primary purpose | Packet forwarding role |
+|---|---|---|
+| **Global Reach** | On-premises site-to-site transit between ExpressRoute circuits | Microsoft backbone carries the site-to-site packets |
+| **Azure Route Server** | BGP route exchange between NVAs and supported Azure gateways in a VNet | ARS is control plane only; it does not forward packets |
+| **Virtual WAN** | Managed multi-connection transit among VNets, VPN, ExpressRoute, SD-WAN, and security services | vHub routing fabric provides managed transit |
+
+Do not use this incorrect mental model:
+
+```text
+ER Circuit A -> Route Server -> ER Circuit B
+```
+
+Route Server is not the ER circuit-to-circuit WAN transit feature.
+
+Use Global Reach when the requirement is primarily:
+
+```text
+Datacenter A <---- Microsoft backbone ----> Datacenter B
+```
+
+Use Virtual WAN when the requirement becomes broader:
+
+```text
+ExpressRoute + VPN + SD-WAN + VNets + multiple regions + routing segmentation/security insertion
+```
+
+#### 2.6.10 Security and firewall implications
+
+Global Reach provides private backbone transit; it does **not** automatically insert Azure Firewall or a third-party NVA into the circuit-to-circuit path.
+
+The natural Global Reach path is:
+
+```text
+Site A
+ -> Circuit A
+ -> Global Reach / Microsoft backbone
+ -> Circuit B
+ -> Site B
+```
+
+not:
+
+```text
+Site A
+ -> Circuit A
+ -> Azure Firewall
+ -> Global Reach
+ -> Circuit B
+ -> Site B
+```
+
+If you need site-to-site traffic inspection, deliberately place stateful security in a path that the routing architecture actually traverses. Options can include on-premises firewalls at each CE edge or a broader Azure transit/security design such as Virtual WAN secured hub, depending on requirements.
+
+**Stateful symmetry:** If inspection/NAT exists at either end, ensure the return route does not bypass the state owner. Global Reach can provide reachability while an asymmetric security design still breaks the application session.
+
+**Fast mental model:**
+
+```text
+Global Reach = connect ER-attached sites
+              over Microsoft's backbone
+
+It is NOT:
+- VNet peering
+- Azure Firewall insertion
+- Route Server transit
+- automatic SD-WAN policy
+```
 
 ---
 
