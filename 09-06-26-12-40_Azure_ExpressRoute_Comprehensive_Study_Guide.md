@@ -62,6 +62,7 @@ Primary Microsoft sources used for this guide:
   - [3.2 Microsoft Peering](#32-microsoft-peering)
   - [3.3 Azure CLI — Microsoft Peering](#33-azure-cli--microsoft-peering)
   - [3.4 Azure CLI — route filter for Microsoft Peering](#34-azure-cli--route-filter-for-microsoft-peering)
+    - [3.4.1 Understanding Microsoft Peering BGP communities](#341-understanding-microsoft-peering-bgp-communities)
 - [4. BGP mechanics you must understand](#4-bgp-mechanics-you-must-understand)
 - [5. ExpressRoute to a customer-managed VNet](#5-expressroute-to-a-customer-managed-vnet)
   - [5.1 Control plane](#51-control-plane)
@@ -793,6 +794,144 @@ az network express-route peering show \
   --query '{state:state,routeFilter:routeFilter.id}' \
   -o json
 ```
+
+#### 3.4.1 Understanding Microsoft Peering BGP communities
+
+The community value in a route-filter rule tells Microsoft **which service route groups you want Microsoft to advertise to you over ExpressRoute Microsoft Peering**.
+
+For example:
+
+```text
+12076:5040
+```
+
+is a Microsoft-owned BGP community used for **CRM Online / Dynamics 365** service prefixes.
+
+So this route-filter rule:
+
+```cli
+az network route-filter rule create \
+  --resource-group RG-Network \
+  --filter-name RF-MicrosoftServices \
+  --name Allow-Selected-Microsoft-Services \
+  --access Allow \
+  --communities 12076:5040
+```
+
+means, conceptually:
+
+```text
+Advertise to my Microsoft Peering BGP sessions
+only the Microsoft service prefixes represented by
+community 12076:5040.
+```
+
+It does **not** mean that Azure is applying community `12076:5040` to routes you advertise toward Microsoft. The route filter controls which Microsoft service route groups are sent **from Microsoft toward your routers**.
+
+Common service-community examples include:
+
+| BGP community | Microsoft service group |
+|---|---|
+| `12076:5010` | Exchange Online |
+| `12076:5020` | SharePoint Online |
+| `12076:5030` | Skype for Business Online |
+| `12076:5040` | CRM Online / Dynamics 365 |
+| `12076:5050` | Azure Global Services |
+| `12076:5060` | Microsoft Entra ID |
+| `12076:5070` | Azure Resource Manager |
+| `12076:5100` | Other Microsoft 365 Online services |
+| `12076:5220` | Microsoft Defender for Identity |
+| `12076:5250` | Microsoft PSTN services |
+
+Because Microsoft can add or change service-community definitions over time, do **not** treat a static table as the source of truth. Query Azure for the currently available communities:
+
+```cli
+az network route-filter rule list-service-communities \
+  --output table
+```
+
+For automation or filtering, inspect the live JSON first:
+
+```cli
+az network route-filter rule list-service-communities \
+  --output json
+```
+
+Then select only the communities required by your design.
+
+A single `Allow` rule can include multiple service communities. For example, to request Exchange Online and Dynamics 365 service routes:
+
+```cli
+az network route-filter rule create \
+  --resource-group RG-Network \
+  --filter-name RF-MicrosoftServices \
+  --name Allow-Exchange-Dynamics \
+  --access Allow \
+  --communities 12076:5010 12076:5040
+```
+
+There is also an important distinction between **service communities** and the other BGP communities you may see on ExpressRoute-learned routes.
+
+```text
+Service community
+Example: 12076:5040
+Purpose: select a Microsoft service route group for Microsoft Peering route filtering
+
+Regional community
+Example pattern: 12076:51xxx
+Purpose: identify the Azure region associated with routes Microsoft advertises
+
+Service + region community
+Example pattern: 12076:52xxx / 53xxx / 54xxx / etc.
+Purpose: identify a service category within a specific Azure region
+```
+
+For example, Microsoft documents region-specific communities such as regional tags and service-per-region tags for services including Storage, SQL, Cosmos DB, and Backup. These are useful for routing policy and identifying where Microsoft-originated prefixes belong, but they should not be confused with the top-level service communities used in the route-filter `--communities` allowlist.
+
+A clean mental model is:
+
+```text
+Route filter community
+    answers:
+    "Which Microsoft service prefixes should Microsoft advertise to me?"
+
+Regional/service tags on learned routes
+    answer:
+    "What region/service does this Microsoft route belong to?"
+```
+
+**Verification workflow:**
+
+1. List the available communities:
+
+```cli
+az network route-filter rule list-service-communities --output table
+```
+
+2. Inspect the configured route-filter rule:
+
+```cli
+az network route-filter rule show \
+  --resource-group RG-Network \
+  --filter-name RF-MicrosoftServices \
+  --name Allow-Selected-Microsoft-Services \
+  --output json
+```
+
+3. Verify the route filter is attached to Microsoft Peering:
+
+```cli
+az network express-route peering show \
+  --resource-group RG-Network \
+  --circuit-name ER-LA-01 \
+  --name MicrosoftPeering \
+  --query '{state:state,routeFilter:routeFilter.id}' \
+  --output json
+```
+
+4. Verify on the customer router that the expected Microsoft prefixes are actually being learned over the Microsoft Peering BGP sessions.
+
+**Success criteria:** the expected service-community rule is present, the route filter is attached to `MicrosoftPeering`, and the customer router learns only the intended Microsoft service routes.
 
 ---
 
