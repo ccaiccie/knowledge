@@ -12,15 +12,15 @@ Azure has several fundamentally different ways to make traffic reach a security 
 
 | Method | What selects the traffic? | Where is the firewall? | Customer route steering? | Best mental label |
 |---|---|---|---:|---|
-| **Azure Firewall in customer-managed hub** | UDR / effective route | Azure Firewall in your hub VNet | Yes | **Explicit routed insertion** |
-| **Third-party NVA in customer-managed hub** | UDR / effective route | NVA VM(s), often behind Standard ILB HA Ports | Yes | **Routed NVA insertion** |
-| **Azure Route Server + NVA** | BGP advertisements + Azure route selection | NVA VM(s) in customer-managed VNet | Dynamic | **Dynamic routed insertion** |
-| **Virtual WAN secured hub + Azure Firewall** | Routing Intent / vHub routing | Azure Firewall in managed vHub | No per-spoke UDRs | **Managed security routing** |
-| **Integrated NVA in Virtual WAN hub** | vHub routing / Routing Intent where supported | Qualified vendor NVA inside managed vHub | No per-spoke UDRs | **Managed third-party hub insertion** |
-| **Security SaaS Provider in Virtual WAN** | vWAN security configuration / provider integration | Provider security cloud | No per-spoke UDRs | **Cloud-delivered security insertion** |
-| **Gateway Load Balancer** | Endpoint chaining reference | Third-party NVA behind GWLB | No UDR for the chained endpoint | **Transparent service chaining** |
-| **Forced tunnel to on-premises** | BGP default / VPN Default Site / UDR | On-prem firewall | Yes / dynamic | **Backhaul for inspection** |
-| **Front Door / Application Gateway WAF** | Reverse-proxy listener | Azure edge/regional L7 proxy | No routed firewall hop | **HTTP/S application inspection** |
+| **[Azure Firewall in customer-managed hub](09-05-26-18-55_Azure_Firewall_Customer_Managed_Hub_VNet_Method_1_Deep_Dive.md)** | UDR / effective route | Azure Firewall in your hub VNet | Yes | **Explicit routed insertion** |
+| **[Third-party NVA in customer-managed hub](09-05-26-19-45_Third_Party_NGFW_NVA_Customer_Managed_Hub_VNet_Method_2_Deep_Dive.md)** | UDR / effective route | NVA VM(s), often behind Standard ILB HA Ports | Yes | **Routed NVA insertion** |
+| **[Azure Route Server + NVA](09-05-26-13-55_Azure_Route_Server_Third_Party_NVA_Dynamic_Service_Insertion_Study_Guide.md)** | BGP advertisements + Azure route selection | NVA VM(s) in customer-managed VNet | Dynamic | **Dynamic routed insertion** |
+| **[Virtual WAN secured hub + Azure Firewall](09-05-26-15-56_Azure_Virtual_WAN_Secured_Hub_Method_4_Study_Guide.md)** | Routing Intent / vHub routing | Azure Firewall in managed vHub | No per-spoke UDRs | **Managed security routing** |
+| **[Integrated NVA in Virtual WAN hub](09-05-26-20-00_Azure_Virtual_WAN_Integrated_Third_Party_NGFW_Direct_Hub_Deep_Dive.md)** | vHub routing / Routing Intent where supported | Qualified vendor NVA inside managed vHub | No per-spoke UDRs | **Managed third-party hub insertion** |
+| **[Security SaaS Provider in Virtual WAN](09-05-26-16-44_Azure_Virtual_WAN_Security_SaaS_Provider_Method_6_Deep_Dive.md)** | vWAN security configuration / provider integration | Provider security cloud | No per-spoke UDRs | **Cloud-delivered security insertion** |
+| **[Gateway Load Balancer](09-05-26-17-03_Gateway_Load_Balancer_Transparent_NVA_Insertion_Study_Guide.md)** | Endpoint chaining reference | Third-party NVA behind GWLB | No UDR for the chained endpoint | **Transparent service chaining** |
+| **[Forced tunnel to on-premises](09-05-26-20-53_Azure_Forced_Tunneling_On_Premises_Internet_Inspection_Deep_Dive.md)** | BGP default / VPN Default Site / UDR | On-prem firewall | Yes / dynamic | **Backhaul for inspection** |
+| **[Front Door / Application Gateway WAF](09-06-26-10-24_Azure_Front_Door_Application_Gateway_WAF_Method_9_Deep_Dive.md)** | Reverse-proxy listener | Azure edge/regional L7 proxy | No routed firewall hop | **HTTP/S application inspection** |
 
 A useful shorthand is:
 
