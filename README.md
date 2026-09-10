@@ -4,6 +4,9 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
+### [Perimeter Design Engineer Interview Study Guide](09-10-26-07-33_Perimeter_Design_Engineer_Interview_Study_Guide.md)
+Interview-focused perimeter architecture guide covering FortiGate/FortiManager/FortiAnalyzer/Security Fabric, Check Point R82/ClusterXL, Arista CloudVision, BGP/OSPF, SD-WAN coexistence, DMZ design, Zero Trust, HLD/LLD ownership, change governance, packet/session flow, HA convergence, verification, troubleshooting, and three matching SVG/editable draw.io diagrams.
+
 ### [DNSSEC (Domain Name System Security Extensions) — Comprehensive Network & Security Study Guide](09-05-26-12-14_DNSSEC_Comprehensive_Study_Guide.md)
 Comprehensive guide to DNSSEC authenticity and integrity, the root-to-child chain of trust, DS/DNSKEY/RRSIG relationships, KSK and ZSK roles, NSEC/NSEC3 authenticated denial, Secure/Insecure/Bogus validation states, `dig` verification, EDNS/UDP/TCP/MTU considerations, key rollover and provider migration, Amazon Route 53 DNSSEC signing/validation behavior, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
 
@@ -78,7 +81,7 @@ Deep dive into Azure Gateway Load Balancer as a transparent bump-in-the-wire ser
 Deep dive into Azure Firewall Manager Security Partner Provider service insertion for VNet-to-Internet and Branch-to-Internet inspection. Covers the external SECaaS architecture, required vHub S2S VPN Gateway/IPsec service tunnel, secured `0.0.0.0/0` route programming and connection opt-in, VNet and branch packet walks, Microsoft 365 local-breakout guidance, the supported split of SECaaS for Internet and Azure Firewall for private traffic, current Zscaler-specific integration caveats, provider-list documentation conflicts, verification, HA/failure behavior, and symptom-based troubleshooting, with matching SVG and editable draw.io diagrams.
 
 ### [Azure Virtual WAN Secured Hub with Azure Firewall or Integrated NVA — Method 4 Study Guide](09-05-26-15-56_Azure_Virtual_WAN_Secured_Hub_Method_4_Study_Guide.md)
-Deep dive into Virtual WAN secured hubs for centralized inspection. Covers Azure Firewall versus supported hub-integrated NVAs, Routing Intent and Private/Internet traffic policies, route association/propagation, spoke-to-spoke and branch-to-spoke packet walks, inter-hub inspection, Internet egress/DNAT, Private Endpoint caveats, HA/asymmetry, verification, troubleshooting, and configuration steps, with matching SVG and editable draw.io diagrams.
+Deep dive into Virtual WAN secured hubs for centralized inspection. Covers Azure Firewall versus supported hub-integrated NVAs, Routing Intent and Private/Internet traffic policies, route association/propagation, spoke-to-spoke and branch-to-spoke packet walks, inter-hub inspection, Internet egress/DNAT, Private Endpoint caveats, HA/asymmetry, verification, troubleshooting, and configuration steps, with matching SVG/editable draw.io diagrams.
 
 ### [Azure Virtual WAN Multi-Region Hubs — Deep Dive Expansion for Method 4](09-05-26-16-05_Azure_Virtual_WAN_Multi_Region_Hubs_Deep_Dive.md)
 Detailed multi-region expansion covering the global Virtual WAN versus regional vHub model, automatic full-mesh hub-to-hub transit over Microsoft's backbone, regional route learning and propagation, West-to-East packet walks with and without inter-hub inspection, the one-VNet-to-one-vHub constraint, regional branch and ExpressRoute designs, per-hub Routing Intent, regional firewall placement, route symmetry, address overlap, and cross-region troubleshooting, with matching SVG/editable draw.io topology.
@@ -117,45 +120,3 @@ Deep dive into the pre-GWLB direct-appliance service-insertion pattern: PRE/POST
 
 ### [Caveats for Centralized Ingress Routing — ALB, NLB, GWLB/GWLBE, TGW, and Distributed Alternatives](09-06-26-16-23_Caveats_for_Centralized_Ingress_Routing.md)
 Explains the symmetry caveats in centralized Internet ingress, including the Experian ALB case-study return-route matrix, why ALB proxying makes the original GWLBE recoverable from the destination ALB subnet, why NLB client-IP preservation is unsupported through TGW or between NLB and target through GWLBE, and why distributed/spoke ingress removes the centralized TGW return-AZ recovery problem while retaining its own placement constraints. Includes AWS case-study/documentation references and matching SVG/editable draw.io diagrams.
-
-### [AWS Transit Gateway + Centralized GWLB/GWLBE Inspection VPC — Deep Dive](09-06-26-15-45_TGW_Centralized_GWLB_GWLBE_Inspection_VPC_Deep_Dive.md)
-Detailed centralized third-party NGFW architecture using TGW, a dedicated Inspection VPC, zonal GWLBE, GWLB, and Appliance Mode. Covers pre-inspection versus post-inspection TGW route tables, exact Inspection-VPC subnet routes, east-west packet flow, centralized Internet egress and NAT return enforcement, Direct Connect Transit VIF/DXGW/TGW routing, Site-to-Site VPN primary/backup behavior, stateful symmetry, HA/AZ behavior, AWS CLI deployment and verification, bypass risks, troubleshooting, and matching editable draw.io/SVG diagrams.
-
-### [Distributed GWLBE with a Centralized Third-Party Firewall Fleet — Deep Dive](09-06-26-15-23_Distributed_GWLBE_Centralized_Third_Party_Firewall_Fleet_Deep_Dive.md)
-Fine-grained distributed Gateway Load Balancer Endpoint architecture with a centralized third-party NGFW fleet. Covers exact per-subnet route-table enforcement for east-west VPC traffic, Internet north-south ingress, south-north egress through NAT Gateway, Direct Connect Transit VIF → Direct Connect Gateway → Transit Gateway routing, Site-to-Site VPN primary/backup behavior, TGW route priority, BGP, double-inspection choices, original-tuple/GENEVE packet flow, AWS CLI deployment and verification, failover, common mistakes, and symptom-based troubleshooting, with three detailed matching SVG/editable draw.io diagrams.
-
-### [AWS Firewall Inspection and Service Insertion — Comprehensive Study Guide](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)
-Comprehensive AWS firewall-insertion guide covering AWS Network Firewall, third-party NGFW/NVAs behind Gateway Load Balancer, distributed GWLBE, centralized Transit Gateway inspection VPCs, Direct Connect transit-VIF/DXGW/TGW inspection, Internet ingress and egress, ALB/NLB placement, ELB sandwich and direct-NVA legacy designs, Cloud WAN Network Function Group service insertion, VPC Route Server/BGP active-standby patterns, NAT/source-IP behavior, appliance mode and symmetry, AWS CLI verification, failover, MTU, common mistakes, and troubleshooting, with matching SVG and editable draw.io diagrams.
-
-### [AWS VPC Traffic Mirroring — Missing Inbound Packets and Source-Side Policy](09-05-26-11-22_AWS_VPC_Traffic_Mirroring_Missing_Inbound_Packets_Study_Guide.md)
-Explains why an analyzer can miss inbound packets in AWS VPC Traffic Mirroring, including the documented behavior that traffic dropped at the mirror source by inbound Security Group or Network ACL rules is not mirrored. Covers source/filter/target architecture, VXLAN/UDP 4789 transport, TLS misconceptions, the important nuance when a workload claims it received the exact packet, AWS CLI configuration patterns, verification, bandwidth/PPS limitations, and symptom-based troubleshooting, with matching SVG/editable draw.io packet-flow diagrams.
-
-### [AWS NLB Hairpinning, Client-IP Preservation, and Proxy Protocol v2](09-05-26-10-38_AWS_NLB_Hairpinning_Client_IP_Preservation_PPv2.md)
-Explains why an internal Network Load Balancer target calling the same NLB can fail when client-IP preservation is enabled. Covers AWS NAT loopback/hairpinning behavior, self-target packet flow, why routing changes do not solve the issue, disabling `preserve_client_ip.enabled`, using Proxy Protocol v2 to retain client identity, protocol/default caveats, CLI configuration, verification, common mistakes, and troubleshooting.
-
-### [AWS Cloud WAN — Comprehensive Network Engineering Study Guide](09-05-26-09-57_AWS_Cloud_WAN_Comprehensive_Study_Guide.md)
-Deep dive into AWS Cloud WAN as a policy-driven global Layer 3 WAN. Covers Global Networks, Core Networks, Core Network Edges, globally consistent segments, attachment policies, VPC/VPN/Connect/TGW/Direct Connect gateway attachments, native Direct Connect routing, service insertion and Network Function Groups, Routing Policy route filtering/summarization/BGP path control, packet flows, multi-account operation, CLI workflows, Route Analysis, CloudWatch monitoring, quotas, MTU, pricing, convergence, migration, common mistakes, and troubleshooting.
-
-### [AWS PrivateLink, VPC Endpoints, and GWLB Firewall Inspection](09-04-26-16-18_AWS_PrivateLink_GWLB_Firewall_Inspection_Study_Guide.md)
-Deep dive into AWS PrivateLink and VPC endpoint types, including interface endpoints, endpoint services, resource/service-network endpoints, and the distinction between gateway endpoints and PrivateLink. Covers Gateway Load Balancer Endpoints (GWLBE), route-table-based traffic steering, GENEVE-based appliance insertion, centralized and distributed firewall inspection, packet flows, security controls, limitations, and troubleshooting.
-
-### [AWS DNS for Network Experts — Route 53 VPC Resolver](09-04-26-15-43_AWS_DNS_Route53_Resolver_Study_Guide.md)
-Advanced AWS DNS guide covering AmazonProvidedDNS/VPC+2, Route 53 VPC Resolver, inbound and outbound Resolver endpoints, forwarding and delegation rules, private hosted zones, hybrid on-premises DNS, Route 53 Profiles, DNS Firewall, query logging, DNS over HTTPS, DNSSEC-related concepts, centralized multi-account DNS, high availability, troubleshooting, and Route 53 Global Resolver.
-
-## BGP, MPLS, and Routing
-
-### [BGP Optimal Route Reflection (ORR) — Comprehensive Study Guide](08-29-26-15-51_bgp_optimal_route_reflection_orr.md)
-Explains RFC 9107 Optimal Route Reflection, why conventional route reflectors can cause suboptimal hot-potato routing, client-versus-RR IGP viewpoints, alternate IGP roots, Cisco IOS XR and Junos behavior, interaction with ADD-PATH, design considerations, verification, and troubleshooting.
-
-### [BGP Clusters and Route Reflectors — Comprehensive Study Guide](08-29-26-15-14_bgp_clusters_study_guide.md)
-Covers route-reflector clusters, RR clients and non-clients, cluster IDs, ORIGINATOR_ID, CLUSTER_LIST, loop prevention, path-selection implications, Cisco/Juniper/FRR configuration concepts, verification, and troubleshooting.
-
-## GitHub, Git, and Network Automation
-
-### [Network Automation Using GitHub](08-30-26-17-00_network_automation_using_github.md)
-Practical GitOps/NetDevOps guide for using GitHub as the reviewed source of truth for network configuration. Covers pull-request workflows, GitHub Actions, private runners, secrets, validation pipelines, deployment approvals, Ansible/Nornir/Terraform/vendor APIs, Cisco IOS XE/IOS XR/NX-OS/Meraki/SD-WAN/Catalyst Center/NSO use cases, post-change validation, rollback, and production safety controls.
-
-## Hands-On Labs
-
-### [Runnable FRR BGP ORR-Behavior / ADD-PATH GNS3 Lab](labs/bgp-orr-frr-gns3-lab/README.md)
-Hands-on lab instructions and assets for building the FRR/GNS3 topology. Covers Docker/FRR prerequisites, GNS3 API requirements, the RR/E1/E2/C1/C2 topology, OSPF metrics, standard route-reflection versus ADD-PATH scenarios, configuration behavior, validation, and automation details.
