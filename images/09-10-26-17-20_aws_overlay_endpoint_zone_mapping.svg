@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#37474F"/></marker></defs>
+<rect width="1500" height="900" fill="white"/><text x="750" y="50" text-anchor="middle" font-family="Arial" font-size="29" font-weight="bold">GWLBE Endpoint Identity → PAN-OS Subinterface → Security Zone</text>
+<text x="230" y="110" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">AWS Consumer Endpoints</text><text x="750" y="110" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">VM-Series Logical Interfaces</text><text x="1260" y="110" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">PAN-OS Zones</text>
+<rect x="80" y="180" width="300" height="90" rx="12" fill="#FFE0B2" stroke="#EF6C00" stroke-width="2"/><text x="230" y="218" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">vpce-dmz-a / vpce-dmz-b</text><text x="230" y="246" text-anchor="middle" font-family="Arial" font-size="15">DMZ GWLBE endpoints</text>
+<rect x="600" y="180" width="300" height="90" rx="12" fill="#FFCCBC" stroke="#D84315" stroke-width="2"/><text x="750" y="233" text-anchor="middle" font-family="Arial" font-size="19">ethernet1/1.10</text>
+<rect x="1110" y="180" width="300" height="90" rx="12" fill="#FFAB91" stroke="#D84315" stroke-width="2"/><text x="1260" y="233" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">DMZ</text>
+
+<rect x="80" y="350" width="300" height="90" rx="12" fill="#C8E6C9" stroke="#2E7D32" stroke-width="2"/><text x="230" y="388" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">vpce-trust-a / vpce-trust-b</text><text x="230" y="416" text-anchor="middle" font-family="Arial" font-size="15">Internal GWLBE endpoints</text>
+<rect x="600" y="350" width="300" height="90" rx="12" fill="#A5D6A7" stroke="#2E7D32" stroke-width="2"/><text x="750" y="403" text-anchor="middle" font-family="Arial" font-size="19">ethernet1/1.20</text>
+<rect x="1110" y="350" width="300" height="90" rx="12" fill="#81C784" stroke="#2E7D32" stroke-width="2"/><text x="1260" y="403" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">TRUST</text>
+
+<rect x="80" y="520" width="300" height="90" rx="12" fill="#D1C4E9" stroke="#5E35B1" stroke-width="2"/><text x="230" y="558" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">vpce-shared-a / b</text><text x="230" y="586" text-anchor="middle" font-family="Arial" font-size="15">Shared-services endpoints</text>
+<rect x="600" y="520" width="300" height="90" rx="12" fill="#B39DDB" stroke="#5E35B1" stroke-width="2"/><text x="750" y="573" text-anchor="middle" font-family="Arial" font-size="19">ethernet1/1.30</text>
+<rect x="1110" y="520" width="300" height="90" rx="12" fill="#9575CD" stroke="#5E35B1" stroke-width="2"/><text x="1260" y="573" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">SHARED</text>
+
+<rect x="600" y="690" width="300" height="90" rx="12" fill="#E1BEE7" stroke="#8E24AA" stroke-width="2"/><text x="750" y="728" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">ethernet1/2 / ethernet1/3</text><text x="750" y="756" text-anchor="middle" font-family="Arial" font-size="15">Native Layer-3 egress interfaces</text>
+<rect x="1110" y="690" width="300" height="90" rx="12" fill="#CE93D8" stroke="#8E24AA" stroke-width="2"/><text x="1260" y="728" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">UNTRUST / TRANSIT</text><text x="1260" y="756" text-anchor="middle" font-family="Arial" font-size="15">selected by inner-header route lookup</text>
+
+<line x1="380" y1="225" x2="600" y2="225" stroke="#EF6C00" stroke-width="4" marker-end="url(#a)"/><line x1="900" y1="225" x2="1110" y2="225" stroke="#D84315" stroke-width="4" marker-end="url(#a)"/>
+<line x1="380" y1="395" x2="600" y2="395" stroke="#2E7D32" stroke-width="4" marker-end="url(#a)"/><line x1="900" y1="395" x2="1110" y2="395" stroke="#2E7D32" stroke-width="4" marker-end="url(#a)"/>
+<line x1="380" y1="565" x2="600" y2="565" stroke="#5E35B1" stroke-width="4" marker-end="url(#a)"/><line x1="900" y1="565" x2="1110" y2="565" stroke="#5E35B1" stroke-width="4" marker-end="url(#a)"/>
+<line x1="900" y1="735" x2="1110" y2="735" stroke="#8E24AA" stroke-width="4" marker-end="url(#a)"/>
+<text x="750" y="840" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Endpoint mapping supplies ingress policy context; overlay routing supplies a different Layer-3 egress when needed.</text>
+</svg>
