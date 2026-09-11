@@ -19,7 +19,7 @@ AWS has several fundamentally different ways to put a security function into a p
 | **[Legacy TGW + direct NVA VPC](09-06-26-16-41_Legacy_TGW_NVA_VPC_Attachment_Deep_Dive.md)** | TGW route table + ENI/VPC route | Customer-managed NVA | Yes | **Direct appliance transit** |
 | **[Cloud WAN service insertion](09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive.md)** | Core-network policy `send-via` / `send-to` | Network Function Group | Policy-driven | **Global policy service insertion** |
 | **[VPC Route Server + NVA](09-06-26-17-01_AWS_VPC_Route_Server_NVA_Dynamic_Service_Insertion_Deep_Dive.md)** | BGP advertisements | Customer-managed NVA | Dynamic | **Dynamic VPC routed insertion** |
-| **[TGW / Cloud WAN Connect + security NVA](09-10-26-17-10_AWS_Overlay_Networking_TGW_Cloud_WAN_Connect_Service_Insertion_Deep_Dive.md)** | BGP route selection; Cloud WAN policy where used | BGP-speaking security/SD-WAN NVA | Dynamic | **Routed overlay insertion** |
+| **[Palo Alto VM-Series GWLB overlay routing](09-10-26-17-20_AWS_Overlay_Routing_Underlay_BGP_TGW_Cloud_WAN_Connect_Deep_Dive.md)** | AWS route → GWLBE; PAN-OS inner-header L3 lookup after GWLB | VM-Series behind GWLB | Yes, endpoint-based | **Endpoint-to-zone + routed egress** |
 | **[AWS WAF / CloudFront / ALB](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)** | L7 resource association | AWS WAF | No routed hop | **HTTP/S application inspection** |
 
 A useful shorthand is:
@@ -32,7 +32,7 @@ TGW            = centralized regional routing fabric
 Appliance mode = AZ/path symmetry helper for stateful inspection
 Cloud WAN NFG  = policy-defined security insertion group
 VPC Route Server = BGP control plane for VPC/IGW route tables
-TGW Connect     = GRE + BGP overlay to a third-party NVA; routing makes it inline
+Palo Alto GWLB overlay routing = GWLBE endpoint identity + PAN-OS inner-header L3 routing; not TGW Connect
 WAF            = L7 reverse-proxy/resource protection, not transit firewalling
 ```
 
@@ -435,7 +435,7 @@ Deep dive: [AWS VPC Route Server + NVA — Dynamic Service Insertion](09-06-26-1
 
 ---
 
-## 10A. TGW / Cloud WAN Connect + security NVA — routed overlay insertion
+## 10A. Palo Alto VM-Series GWLB overlay routing — DMZ and two-zone service insertion
 
 AWS Connect attachments can place a **BGP-speaking SD-WAN/security appliance** in the routed path.
 
@@ -480,7 +480,7 @@ Key implications:
 
 > TGW Connect = overlay connectivity to the NVA. Winning routes = interception.
 
-Deep dive: [AWS Overlay Networking with Transit Gateway Connect and Cloud WAN Connect — Service Insertion Deep Dive](09-10-26-17-10_AWS_Overlay_Networking_TGW_Cloud_WAN_Connect_Service_Insertion_Deep_Dive.md)
+Deep dive: [Palo Alto VM-Series Overlay Routing with AWS GWLB — DMZ Separation and Endpoint-to-Zone Mapping](09-10-26-17-20_AWS_Overlay_Routing_Underlay_BGP_TGW_Cloud_WAN_Connect_Deep_Dive.md)
 
 ---
 
