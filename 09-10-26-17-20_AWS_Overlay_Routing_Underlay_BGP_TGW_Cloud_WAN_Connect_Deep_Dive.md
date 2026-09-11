@@ -1,911 +1,1050 @@
-# AWS Overlay Routing — Underlay, BGP, Transit Gateway Connect, Cloud WAN Connect, SD-WAN, ECMP, and Failure Domains
+# Palo Alto VM-Series Overlay Routing with AWS GWLB — DMZ Separation, VPC Endpoint-to-Zone Mapping, and Detailed Traffic Flows
 
 ## Purpose
 
-This guide explains **overlay routing in AWS as a routing architecture**, independently of firewall insertion.
+This guide explains how to use **Palo Alto Networks VM-Series overlay routing with AWS Gateway Load Balancer (GWLB)** to keep **DMZ traffic separate from internal/trust traffic**.
 
-> **The underlay provides endpoint reachability. The overlay provides logical routing between networks using tunnels and/or BGP.**
+This is the Palo Alto Networks **GWLB overlay-routing feature**. It is **not** AWS Transit Gateway Connect, GRE+BGP overlay routing, or Cloud WAN Connect.
 
-The clearest customer-visible AWS overlay-routing constructs are:
+Three different mechanisms work together:
 
-- **AWS Transit Gateway Connect** — GRE data plane plus BGP control plane.
-- **AWS Cloud WAN Connect (GRE)** — GRE plus BGP toward a Cloud WAN core network edge.
-- **AWS Cloud WAN Tunnel-less Connect** — native BGP without GRE.
-- **Third-party SD-WAN overlays** that use VPC, Internet, VPN, MPLS, or Direct Connect as transport.
+1. **AWS route tables** select a **Gateway Load Balancer Endpoint (GWLBE)** as the traffic-interception next hop.
+2. **GWLB** transports the original packet to VM-Series using **GENEVE**.
+3. **PAN-OS overlay routing** can inspect the **inner packet header**, associate the ingress VPC endpoint with a firewall interface/subinterface and security zone, and perform a Layer-3 route lookup so the packet can leave through a different firewall interface when required.
 
-Firewall/service insertion is one **application** of overlay routing; it is not what defines overlay routing.
+The result can preserve the classic firewall model:
 
-Companion guide: [AWS Overlay Networking with Transit Gateway Connect and Cloud WAN Connect — Service Insertion Deep Dive](09-10-26-17-10_AWS_Overlay_Networking_TGW_Cloud_WAN_Connect_Service_Insertion_Deep_Dive.md)
+~~~text
+                    INTERNET
+                       |
+                   [ UNTRUST ]
+                       |
+                +------v------+
+                |  VM-Series  |
+                |             |
+       [ DMZ ]--|             |--[ TRUST ]
+                +-------------+
+~~~
+
+even though DMZ and internal traffic initially enter the firewall through GWLB.
 
 ## Table of contents
 
-1. [Overlay routing mental model](#1-overlay-routing-mental-model)
-2. [Underlay versus overlay](#2-underlay-versus-overlay)
-3. [Control plane versus data plane](#3-control-plane-versus-data-plane)
-4. [Transit Gateway Connect architecture](#4-transit-gateway-connect-architecture)
-5. [Connect peer addressing](#5-connect-peer-addressing)
-6. [What AWS advertises to the appliance](#6-what-aws-advertises-to-the-appliance)
-7. [What the appliance advertises to AWS](#7-what-the-appliance-advertises-to-aws)
-8. [TGW association versus propagation](#8-tgw-association-versus-propagation)
-9. [Route selection and preference](#9-route-selection-and-preference)
-10. [ECMP](#10-ecmp)
-11. [Direct Connect as underlay](#11-direct-connect-as-underlay)
-12. [VPN versus Connect](#12-vpn-versus-connect)
-13. [Cloud WAN Connect](#13-cloud-wan-connect)
-14. [Tunnel-less Connect](#14-tunnel-less-connect)
-15. [SD-WAN overlay routing](#15-sd-wan-overlay-routing)
-16. [Route recursion](#16-route-recursion)
-17. [MTU](#17-mtu)
-18. [Failure domains and convergence](#18-failure-domains-and-convergence)
-19. [Leaks, loops, blackholes, and bypass](#19-leaks-loops-blackholes-and-bypass)
-20. [Overlay routing versus service insertion](#20-overlay-routing-versus-service-insertion)
-21. [Verification](#21-verification)
-22. [AWS CLI](#22-aws-cli)
-23. [Exam takeaways](#23-exam-takeaways)
-24. [References](#24-references)
+1. What Palo Alto overlay routing means
+2. DMZ design goal
+3. Reference architecture
+4. VPC endpoint to PAN-OS zone mapping
+5. Recommended security zones and interfaces
+6. Inbound Internet to DMZ packet flow
+7. DMZ to Internet packet flow
+8. DMZ to internal/trust packet flow
+9. Internal/trust to DMZ packet flow
+10. Why separate GWLBE endpoints matter
+11. PAN-OS overlay-routing packet processing
+12. PAN-OS configuration workflow
+13. AWS route-table design
+14. Security policy design
+15. NAT placement
+16. Symmetry and state
+17. Multi-AZ design
+18. DMZ isolation controls
+19. Common failure modes
+20. Verification and troubleshooting
+21. Overlay routing versus normal GWLB mode
+22. What this is not
+23. Design checklist
+24. References
 
 ---
 
-## 1. Overlay routing mental model
+## 1. What Palo Alto overlay routing means
 
-Traditional data-center networking often teaches:
+Palo Alto Networks documents **overlay routing for VM-Series integrated with AWS GWLB** as the ability to use **two-zone policy** and allow packets to leave the VM-Series firewall through a different interface from the one on which they arrived.
 
-~~~text
-IP underlay
-   |
-VXLAN
-   |
-EVPN
-   |
-tenant overlay routes
-~~~
-
-A Transit Gateway Connect design is conceptually:
+With overlay routing enabled, PAN-OS performs a **Layer-3 route lookup on the original packet's inner header**.
 
 ~~~text
-VPC / Direct Connect underlay
-         |
-        GRE
-         |
-        BGP
-         |
-TGW Connect <-> SD-WAN/NVA logical routes
+AWS route table
+      |
+      v
+GWLBE
+      |
+      v
+GWLB
+      |
+      | GENEVE
+      v
+VM-Series
+      |
+      | inspect inner src/dst
+      | identify mapped endpoint/interface/zone
+      | security policy
+      | L3 route lookup
+      |
+      +---- same overlay path ----> return through GWLB/GWLBE
+      |
+      +---- different egress -----> decapsulate -> L3 interface
 ~~~
 
-Cloud WAN Tunnel-less Connect removes GRE:
+If the destination is reachable through the same overlay path, the session continues through the GWLB service chain.
 
-~~~text
-VPC underlay
-    |
-native BGP
-    |
-Cloud WAN Connect
-~~~
+If the destination should leave through another Layer-3 interface, PAN-OS can decapsulate the packet and forward it out that interface. Palo Alto specifically documents outbound routing toward an **Internet Gateway or NAT Gateway** as an overlay-routing use case.
 
-The customer-visible routing relationship is logical even though AWS hides the physical fabric underneath VPC, TGW, and Cloud WAN.
+Palo Alto documents overlay routing for **PAN-OS 10.0.5 or later**.
 
 ---
 
-## 2. Underlay versus overlay
+## 2. DMZ design goal
 
-![AWS overlay routing control and data plane](images/09-10-26-17-20_aws_overlay_routing_control_data_plane.svg)
+The design goal is to preserve distinct security contexts:
+
+~~~text
+UNTRUST
+   |
+   v
+ DMZ
+   |
+   v
+TRUST
+~~~
+
+The key Palo Alto feature is **VPC endpoint-to-interface association**.
+
+Example:
+
+~~~text
+vpce-dmz-a
+    |
+    v
+ethernet1/1.10
+    |
+    v
+zone DMZ
+~~~
+
+~~~text
+vpce-trust-a
+    |
+    v
+ethernet1/1.20
+    |
+    v
+zone TRUST
+~~~
+
+This creates the useful abstraction:
+
+> **AWS GWLBE identity becomes PAN-OS logical interface/zone identity.**
+
+That is what prevents DMZ-originated traffic from being treated as generic trust traffic.
+
+---
+
+## 3. Reference architecture
+
+![DMZ architecture](images/09-10-26-17-20_aws_overlay_routing_control_data_plane.svg)
 
 [Editable draw.io source](images/09-10-26-17-20_aws_overlay_routing_control_data_plane.drawio)
 
-### Underlay
+Example topology:
 
-The underlay answers:
+~~~text
+                              INTERNET
+                                  |
+                                  v
+                                IGW
+                                  |
+                       IGW gateway route table
+                                  |
+                    DMZ subnet -> GWLBE-DMZ
+                                  |
+                                  v
+                        +-------------------+
+                        |     DMZ VPC       |
+                        |                   |
+                        |  GWLBE-DMZ-A      |
+                        +---------+---------+
+                                  |
+                           AWS PrivateLink
+                                  |
+                                  v
+                    +---------------------------+
+                    |       SECURITY VPC        |
+                    |                           |
+                    |          GWLB             |
+                    |            |              |
+                    |        VM-Series          |
+                    |                           |
+                    | DMZ VPCE -> e1/1.10 DMZ  |
+                    | TRUST VPCE -> e1/1.20    |
+                    |               TRUST       |
+                    | e1/2 -> UNTRUST           |
+                    | e1/3 -> TRANSIT           |
+                    +------+-------------+------+
+                           |             |
+                           v             v
+                     NAT/IGW        TGW/Internal
+~~~
 
-> Can the routing/tunnel endpoints reach one another?
+**Important:** the DMZ security identity comes from the **GWLBE/VPC endpoint mapping**. Overlay routing is what allows the firewall, after inspecting the inner packet, to select a **different egress interface**.
 
-Examples:
+---
 
-- VPC route-table reachability;
-- AWS backbone connectivity;
-- Direct Connect;
-- Internet transport;
-- Cloud WAN transport VPC attachment.
+## 4. VPC endpoint to PAN-OS zone mapping
 
-### Overlay
+![Endpoint to zone mapping](images/09-10-26-17-20_aws_overlay_endpoint_zone_mapping.svg)
 
-The overlay answers:
+[Editable draw.io source](images/09-10-26-17-20_aws_overlay_endpoint_zone_mapping.drawio)
 
-> Which prefixes are reachable through which logical peer?
+A possible mapping is:
+
+| AWS endpoint | PAN-OS interface | Zone | Purpose |
+|---|---|---|---|
+| vpce-dmz-a | ethernet1/1.10 | DMZ | DMZ inspection |
+| vpce-dmz-b | ethernet1/1.10 | DMZ | DMZ inspection in AZ-B |
+| vpce-trust-a | ethernet1/1.20 | TRUST | Internal workload inspection |
+| vpce-trust-b | ethernet1/1.20 | TRUST | Internal workload inspection in AZ-B |
+| vpce-shared-a | ethernet1/1.30 | SHARED | Shared services |
+| Routed ENI | ethernet1/2 | UNTRUST | Internet egress |
+| Routed ENI | ethernet1/3 | TRANSIT | TGW/internal routed egress |
+
+Palo Alto documents this association command:
+
+~~~text
+request plugins vm_series aws gwlb associate vpc-endpoint <vpce-id> interface <subinterface>
+~~~
 
 Example:
 
 ~~~text
-UNDERLAY
+request plugins vm_series aws gwlb associate vpc-endpoint vpce-02c4e6g8ha97h7e39 interface ethernet1/1.10
+~~~
 
-NVA outer IP 10.0.1.10
+Verification:
+
+~~~text
+show plugins vm_series aws gwlb
+~~~
+
+---
+
+## 5. Recommended security zones and interfaces
+
+~~~text
+ZONE          ROLE
+--------------------------------------------------------
+UNTRUST       Internet-facing routed interface
+DMZ           Public-facing application tier
+TRUST         Internal application/workload tier
+SHARED        DNS, AD, PKI, logging, shared services
+TRANSIT       TGW/on-prem routed path when used
+MGMT          Firewall management only
+~~~
+
+Recommended interface concept:
+
+~~~text
+ethernet1/1
+  |
+  +-- ethernet1/1.10 -> DMZ
+  |      associated with vpce-dmz-*
+  |
+  +-- ethernet1/1.20 -> TRUST
+  |      associated with vpce-trust-*
+  |
+  +-- ethernet1/1.30 -> SHARED
+         associated with vpce-shared-*
+
+ethernet1/2 -> UNTRUST
+ethernet1/3 -> TRANSIT
+~~~
+
+If DMZ and internal traffic use the same endpoint mapping and the same PAN-OS zone, you lose much of the value of the DMZ boundary.
+
+---
+
+## 6. Inbound Internet to DMZ packet flow
+
+![Inbound Internet to DMZ](images/09-10-26-17-20_aws_overlay_inbound_dmz_flow.svg)
+
+[Editable draw.io source](images/09-10-26-17-20_aws_overlay_inbound_dmz_flow.drawio)
+
+Example:
+
+~~~text
+Client public IP:        198.51.100.25
+DMZ VPC:                 10.10.0.0/16
+ALB subnet:              10.10.10.0/24
+DMZ app subnet:          10.10.20.0/24
+DMZ GWLBE:               vpce-dmz-a
+Mapped interface:        ethernet1/1.10
+PAN-OS zone:             DMZ
+~~~
+
+Forward path:
+
+~~~text
+1 Internet client
       |
-      | VPC/TGW transport reachability
       v
-TGW GRE outer IP 10.255.0.1
-
-
-OVERLAY
-
-169.254.100.x <---- BGP ----> 169.254.100.x
-
-Learned/advertised routes:
-10.10.0.0/16
-10.20.0.0/16
-172.16.0.0/12
-~~~
-
-The overlay can fail while the underlay remains healthy.
-
----
-
-## 3. Control plane versus data plane
-
-For Transit Gateway Connect:
-
-~~~text
-CONTROL PLANE = BGP
-DATA PLANE    = GRE
-UNDERLAY      = VPC or Direct Connect transport attachment
-~~~
-
-BGP exchanges reachability. GRE carries the customer packet.
-
-This creates separate troubleshooting layers:
-
-1. Underlay reachability.
-2. GRE operation.
-3. BGP state.
-4. AWS route installation.
-5. TGW route-table selection.
-6. Actual data-plane forwarding.
-
-A BGP session being Established does not prove that the customer packet is flowing.
-
----
-
-## 4. Transit Gateway Connect architecture
-
-~~~text
-                       Transit Gateway
-                  +----------------------+
-Spoke VPC ------->| TGW route table      |
-                  |                      |
-                  | Connect attachment   |
-                  +----------+-----------+
-                             |
-                            GRE
-                             |
-                         BGP x 2
-                             |
-                  +----------v-----------+
-                  | SD-WAN / NVA         |
-                  +----------+-----------+
-                             |
-                       transport path
-                             |
-                   VPC or Direct Connect
-~~~
-
-The hierarchy is:
-
-~~~text
-TGW
- |
- +-- Transport attachment
- |      +-- VPC or Direct Connect
- |
- +-- Connect attachment
-        +-- Connect peer
-              +-- one GRE tunnel
-              +-- two BGP sessions
-~~~
-
-The two BGP sessions provide routing-plane redundancy for the Connect peer.
-
----
-
-## 5. Connect peer addressing
-
-A TGW Connect peer contains different address roles.
-
-### GRE outer addresses
-
-Appliance side:
-
-~~~text
-10.0.1.10
-~~~
-
-TGW side, taken from a TGW CIDR block:
-
-~~~text
-10.255.0.1
-~~~
-
-### BGP inside addresses
-
-For IPv4, AWS requires a /29 from 169.254.0.0/16, excluding reserved ranges.
-
-Conceptually:
-
-~~~text
-OUTER
-10.0.1.10 <======== GRE ========> 10.255.0.1
-
-INNER CONTROL PLANE
-169.254.100.x <====== BGP ======> 169.254.100.x
-~~~
-
-These inside addresses are control-plane addresses, not workload prefixes.
-
----
-
-## 6. What AWS advertises to the appliance
-
-A subtle but important TGW rule:
-
-> **Routes in the TGW route table associated with the Connect attachment are advertised to the third-party appliance through BGP.**
-
-Example:
-
-~~~text
-TGW-RT-CONNECT
-
-10.10.0.0/16 -> Spoke-A
-10.20.0.0/16 -> Spoke-B
-172.16.0.0/12 -> DXGW
-
-             |
-             | BGP advertisements
-             v
-
-SD-WAN appliance learns:
-10.10.0.0/16
-10.20.0.0/16
-172.16.0.0/12
-~~~
-
-This means the associated TGW route table is both:
-
-- a forwarding context for traffic entering from Connect; and
-- a source of routes AWS advertises toward the Connect appliance.
-
----
-
-## 7. What the appliance advertises to AWS
-
-The appliance can advertise remote prefixes such as:
-
-~~~text
-192.168.10.0/24  Branch 1
-192.168.20.0/24  Branch 2
-172.20.0.0/16    Data center
-0.0.0.0/0        Optional default
-~~~
-
-TGW learns them through BGP and the Connect attachment.
-
-AWS documents Connect routes as dynamically propagated; static routes are not supported on the Connect attachment.
-
-Example:
-
-~~~text
-NVA advertises 192.168.10.0/24
-        |
-        v
-TGW Connect
-        |
-        | propagation enabled/default behavior
-        v
-TGW-RT-SPOKES
-
-192.168.10.0/24 -> Connect attachment
-~~~
-
----
-
-## 8. TGW association versus propagation
-
-### Association
-
-An attachment is associated with one TGW route table.
-
-That route table is consulted when a packet **enters TGW from that attachment**.
-
-~~~text
-Spoke-A packet
-   |
-   v
-Spoke-A attachment
-   |
-   v
-Spoke-A associated TGW RT
-   |
-   v
-selected next attachment
-~~~
-
-### Propagation
-
-An attachment can propagate its learned routes into TGW route tables.
-
-~~~text
-Connect learns branch routes
+2 Internet Gateway
       |
-      +--> TGW-RT-PROD
-      +--> TGW-RT-SHARED
-      +--> TGW-RT-BRANCH
+      | IGW gateway RT:
+      | 10.10.10.0/24 -> vpce-dmz-a
+      v
+3 GWLBE-DMZ-A
+      |
+      v
+4 GWLB
+      |
+      | GENEVE
+      v
+5 VM-Series
+      |
+      | endpoint = vpce-dmz-a
+      | mapped subinterface = ethernet1/1.10
+      | zone = DMZ
+      |
+      | security inspection
+      v
+6 GWLB/GWLBE return
+      |
+      v
+7 ALB
+      |
+      v
+8 DMZ application
 ~~~
 
-This lets you control which routing domains can use the overlay.
+For this flow, overlay routing does **not necessarily mean the packet exits another physical interface**. If the destination remains on the original GWLB service-chain path, PAN-OS continues normal GWLB forwarding.
 
-A route learned by Connect does not need to be visible in every TGW route table.
+The endpoint mapping is still valuable because the firewall knows that this session belongs to the **DMZ policy domain**.
 
 ---
 
-## 9. Route selection and preference
+## 7. DMZ to Internet packet flow
 
-Route selection starts with **longest-prefix match**.
+This is the strongest overlay-routing use case.
+
+~~~text
+DMZ server 10.10.20.50
+       |
+       | default route -> GWLBE-DMZ
+       v
+GWLBE-DMZ
+       |
+       v
+GWLB
+       |
+       | GENEVE
+       v
+VM-Series
+       |
+       | vpce-dmz -> DMZ zone
+       | inspect inner destination
+       |
+       | L3 route:
+       | 0.0.0.0/0 -> ethernet1/2
+       v
+PAN-OS decapsulates
+       |
+       v
+ethernet1/2 / UNTRUST
+       |
+       v
+NAT Gateway or IGW path
+       |
+       v
+Internet
+~~~
+
+Return:
+
+~~~text
+Internet
+   |
+NAT/IGW
+   |
+UNTRUST / ethernet1/2
+   |
+VM-Series session lookup
+   |
+PAN-OS reapplies required encapsulation
+   |
+GWLB
+   |
+GWLBE-DMZ
+   |
+DMZ server
+~~~
+
+Palo Alto explicitly documents that an outbound packet can be decapsulated and forwarded toward an IGW or NAT Gateway and that the firewall reapplies the encapsulation when return traffic arrives.
+
+---
+
+## 8. DMZ to internal/trust packet flow
+
+![DMZ to TRUST flow](images/09-10-26-17-20_aws_overlay_dmz_trust_flow.svg)
+
+[Editable draw.io source](images/09-10-26-17-20_aws_overlay_dmz_trust_flow.drawio)
 
 Example:
 
 ~~~text
-192.168.0.0/16  -> Connect
-192.168.10.0/24 -> VPN
+DMZ web server:  10.10.20.50
+Internal DB:     10.20.20.25
+DMZ endpoint:    vpce-dmz-a -> DMZ
+TRUST endpoint:  vpce-trust-a -> TRUST
 ~~~
 
-Traffic to 192.168.10.25 follows the /24 VPN route.
-
-### Static versus propagated
-
-For the same destination prefix, AWS TGW prefers a static route over a propagated route.
+Concept:
 
 ~~~text
-10.20.0.0/16 -> Connect       propagated
-10.20.0.0/16 -> Inspection    static
+DMZ web server
+10.10.20.50
+      |
+      v
+GWLBE-DMZ
+      |
+GWLB
+      |
+VM-Series
+      |
+source zone = DMZ
+destination route = internal/TGW/appropriate trust path
+      |
+security policy:
+DMZ -> TRUST
+application = postgresql
+service = application-default
+      |
+      v
+Internal DB
+10.20.20.25
 ~~~
 
-The static route wins.
+Recommended policy:
 
-This is useful for deterministic routing, but it also means a perfectly healthy BGP route can be hidden by a static route.
+~~~text
+Name: DMZ-Web-to-DB
+From: DMZ
+To: TRUST
+Source: dmz-web-tier
+Destination: prod-db-tier
+Application: postgresql
+Service: application-default
+Action: allow
+Security Profiles: strict
+Log at Session End: yes
+~~~
 
-### Do not assume router-only BGP logic
+Then deny all other DMZ-to-TRUST flows.
 
-AWS transit constructs have route-type and attachment-type preference behavior in addition to BGP attributes.
-
-Troubleshoot in this order:
-
-1. longest prefix;
-2. static versus propagated;
-3. attachment-type priority;
-4. BGP attributes;
-5. ECMP eligibility.
+Do not use a broad DMZ-to-TRUST allow rule.
 
 ---
 
-## 10. ECMP
+## 9. Internal/trust to DMZ packet flow
 
-TGW Connect can use ECMP between eligible:
-
-- Connect peers on the same Connect attachment;
-- Connect peers across Connect attachments on the same TGW.
-
-AWS requires compatible/matching route attributes such as AS-PATH and ASN characteristics for all paths to participate.
-
-### Important distinction
+Internal traffic should enter the firewall using a **TRUST-associated GWLBE**, not the DMZ endpoint.
 
 ~~~text
-Connect Peer A
-   |
-   +-- BGP session 1
-   +-- BGP session 2
+Internal client
+10.20.10.25
+      |
+      | route -> GWLBE-TRUST
+      v
+GWLBE-TRUST
+      |
+GWLB
+      |
+VM-Series
+      |
+vpce-trust -> ethernet1/1.20
+      |
+source zone = TRUST
+destination zone/path = DMZ
+      |
+security policy
+      |
+DMZ application
 ~~~
 
-This is **one GRE peer/data path with two redundant BGP sessions**.
-
-It is not two data-plane ECMP paths.
-
-For ECMP data paths you need multiple Connect peers:
+This makes policy directional:
 
 ~~~text
-Connect Peer A -> GRE path A
-Connect Peer B -> GRE path B
+TRUST -> DMZ
+is not the same policy as
+DMZ -> TRUST
 ~~~
+
+which is a basic requirement of a real DMZ design.
 
 ---
 
-## 11. Direct Connect as underlay
+## 10. Why separate GWLBE endpoints matter
 
-Direct Connect can carry the transport while Connect supplies the overlay.
+A GWLBE is not merely transport in this Palo Alto design.
 
-~~~text
-Remote site / SD-WAN
-        |
-Direct Connect
-        |
-DXGW / TGW transport
-        |
-TGW Connect
-        |
-GRE + BGP
-        |
-SD-WAN / NVA
-~~~
-
-Think:
+The endpoint ID can provide policy context:
 
 ~~~text
-Direct Connect = underlay transport
-GRE            = overlay encapsulation
-BGP            = overlay routing control plane
+                        VM-Series
+                            |
+          +-----------------+-----------------+
+          |                                   |
+     vpce-dmz-a                         vpce-trust-a
+          |                                   |
+  ethernet1/1.10                       ethernet1/1.20
+          |                                   |
+         DMZ                                 TRUST
 ~~~
 
-The Direct Connect circuit can remain healthy while overlay routes move between Connect peers.
+Without endpoint association:
 
-That is one of the biggest advantages of separating the underlay from the logical routing plane.
+~~~text
+many GWLB flows -> generic interface -> generic zone
+~~~
+
+With endpoint association:
+
+~~~text
+DMZ endpoint     -> DMZ zone
+TRUST endpoint   -> TRUST zone
+SHARED endpoint  -> SHARED zone
+~~~
+
+Palo Alto describes this as a way to use different subinterfaces/security zones for differentiated policy enforcement.
 
 ---
 
-## 12. VPN versus Connect
+## 11. PAN-OS overlay-routing packet processing
 
-| Property | Site-to-Site VPN | TGW Connect |
-|---|---|---|
-| Encapsulation | IPsec | GRE |
-| Encryption | Yes | No |
-| BGP | Supported | Required |
-| Primary purpose | Secure hybrid connectivity | SD-WAN/NVA connectivity |
-| Typical peer | Customer gateway | Third-party appliance |
-
-GRE is not encryption.
-
-A vendor SD-WAN system can separately encrypt traffic even when TGW Connect itself uses GRE.
-
----
-
-## 13. Cloud WAN Connect
-
-Cloud WAN Connect uses an existing **VPC attachment as the transport attachment**.
-
-GRE mode:
-
-~~~text
-Third-party appliance
-       |
-      GRE
-       |
-     BGP x 2
-       |
-Cloud WAN Core Network Edge
-       |
-Cloud WAN segments
-~~~
-
-Cloud WAN adds global segmentation and core-network policy, so route behavior is not identical to TGW route-table association/propagation.
-
----
-
-## 14. Tunnel-less Connect
-
-Cloud WAN Tunnel-less Connect removes GRE and uses native BGP.
-
-~~~text
-Third-party appliance
-       |
-    native BGP
-       |
-Cloud WAN Core Network Edge
-~~~
-
-What disappears:
-
-- GRE tunnel configuration;
-- GRE overhead;
-- GRE-specific MTU reduction.
-
-What remains:
-
-- BGP;
-- VPC transport reachability;
-- VPC routes to the core-network-edge BGP address;
-- Cloud WAN segment/policy design.
-
-AWS recommends placing the third-party appliance in the same subnet as the transport VPC attachment where practical. Tunnel-less Connect also supports MP-BGP for IPv4 and IPv6.
-
----
-
-## 15. SD-WAN overlay routing
-
-A vendor SD-WAN may already have its own overlay above several transports:
-
-~~~text
-                    SD-WAN overlay
-                   /             \
-              Branch A          Branch B
-              /  |  \           /  |  \
-        Internet MPLS 5G   Internet MPLS 5G
-~~~
-
-AWS may then be one hub/site in that SD-WAN fabric:
-
-~~~text
-Branches
-   |
-vendor SD-WAN overlay
-   |
-AWS SD-WAN appliance
-   |
-TGW Connect
-   |
-AWS VPCs
-~~~
-
-This can create nested encapsulation:
-
-~~~text
-application packet
-   |
-SD-WAN/IPsec encapsulation
-   |
-provider transport
-   |
-GRE Connect encapsulation
-   |
-AWS transit routing
-~~~
-
-That is why MTU analysis must be end-to-end.
-
----
-
-## 16. Route recursion
-
-Overlay routes eventually depend on underlay reachability.
-
-Conceptually:
-
-~~~text
-Overlay:
-10.40.0.0/16 -> BGP peer
-
-BGP peer:
-169.254.100.x -> GRE interface
-
-GRE destination:
-10.255.0.1
-
-Underlay:
-10.255.0.1 -> TGW transport path
-~~~
-
-If the GRE outer endpoint loses underlay reachability, the logical overlay is no longer usable.
-
-Tunnel-less Connect removes the GRE recursion layer but still depends on VPC reachability to the BGP peer.
-
----
-
-## 17. MTU
-
-TGW Connect GRE adds at least:
-
-~~~text
-20 bytes IPv4 outer header
- 4 bytes GRE header
---------------------------
-24 bytes
-~~~
-
-AWS gives the standard example:
-
-~~~text
-external MTU = 1500
-GRE MTU      = 1476
-~~~
-
-Nested SD-WAN or IPsec encapsulation can reduce the practical payload further.
-
-Common symptoms:
-
-- large packets fail while small ones work;
-- TCP handshake succeeds but data transfer stalls;
-- retransmissions increase;
-- PMTUD fails.
-
----
-
-## 18. Failure domains and convergence
-
-![AWS overlay routing failure and route selection](images/09-10-26-17-20_aws_overlay_route_selection_failover.svg)
+![PAN-OS overlay decision logic](images/09-10-26-17-20_aws_overlay_route_selection_failover.svg)
 
 [Editable draw.io source](images/09-10-26-17-20_aws_overlay_route_selection_failover.drawio)
 
-Treat these as separate failure domains.
-
-### Underlay
-
-- Direct Connect circuit;
-- VPC attachment;
-- ENI/instance;
-- Internet/private transport.
-
-### Tunnel
-
-- GRE outer reachability;
-- wrong GRE addresses;
-- encapsulation;
-- MTU.
-
-### BGP
-
-- neighbor loss;
-- ASN mismatch;
-- route filtering;
-- route withdrawal.
-
-### AWS routing
-
-- wrong TGW route-table association;
-- propagation missing;
-- static route wins;
-- more-specific route wins.
-
-### SD-WAN/application policy
-
-- vendor path selection;
-- application steering;
-- security policy.
-
-A typical convergence chain is:
-
 ~~~text
-underlay failure
-  ->
-GRE loss
-  ->
-BGP withdrawal
-  ->
-TGW removes route
-  ->
-alternate route/peer wins
-  ->
-traffic moves
+GENEVE packet from GWLB
+          |
+          v
+Identify GWLBE/VPC endpoint
+          |
+          v
+Map endpoint -> PAN-OS subinterface -> ingress zone
+          |
+          v
+Read inner packet header
+          |
+          v
+Session/security policy processing
+          |
+          v
+L3 lookup of inner destination
+          |
+          +---------------------------+
+          |                           |
+          v                           v
+Same overlay destination        Different L3 egress
+          |                           |
+Return through GWLB             Decapsulate
+          |                           |
+          v                           v
+GWLBE/service path        UNTRUST / TRANSIT / other
 ~~~
 
-Total convergence is the sum of these stages, not simply the BGP timer.
+This is why the Palo Alto term **overlay routing** must not be interpreted as TGW Connect BGP routing.
 
 ---
 
-## 19. Leaks, loops, blackholes, and bypass
+## 12. PAN-OS configuration workflow
 
-### Route leak
+### Step 1 — integrate VM-Series with GWLB
 
-An appliance unintentionally advertises 0.0.0.0/0 into a widely propagated TGW routing domain.
+Create GWLB, its endpoint service, GWLBE consumers, and VM-Series targets.
 
-Result: many VPCs may suddenly prefer the appliance.
+### Step 2 — configure subinterfaces and zones
 
-### Blackhole
-
-BGP remains up and advertises 10.50.0.0/16, but the appliance has no valid forwarding path beyond itself.
-
-### Loop
+Example:
 
 ~~~text
-TGW -> Connect -> NVA -> TGW -> Connect -> NVA
+ethernet1/1.10 -> DMZ
+ethernet1/1.20 -> TRUST
+ethernet1/1.30 -> SHARED
 ~~~
 
-This occurs when the post-NVA lookup resolves the same destination back through the overlay.
+Palo Alto's documented workflow uses Layer 3 subinterfaces, a virtual router, a security zone, and DHCP Client addressing.
 
-### Bypass
+### Step 3 — associate VPC endpoints
 
 ~~~text
-10.50.0.0/16 -> Connect
-10.50.20.0/24 -> direct VPC
+request plugins vm_series aws gwlb associate vpc-endpoint vpce-DMZ-A interface ethernet1/1.10
+
+request plugins vm_series aws gwlb associate vpc-endpoint vpce-TRUST-A interface ethernet1/1.20
 ~~~
 
-Traffic for the /24 bypasses Connect due to longest-prefix match.
+### Step 4 — enable overlay routing
+
+~~~text
+request plugins vm_series aws gwlb overlay-routing enable yes
+~~~
+
+Palo Alto also documents bootstrap plugin operation commands such as:
+
+~~~text
+aws-gwlb-inspect:enable
+aws-gwlb-associate-vpce:<vpce-id>@ethernet<subinterface>
+aws-gwlb-overlay-routing:enable
+~~~
+
+### Step 5 — follow Palo Alto trust-interface routing guidance
+
+Palo Alto instructs administrators to disable automatic creation of the DHCP-provided default route on the trust/ingress interface used by the overlay-routing design.
+
+### Step 6 — configure L3 egress
+
+Example:
+
+~~~text
+ethernet1/2
+Type: Layer3
+Zone: UNTRUST
+Virtual Router: default
+~~~
+
+Then install the intended default or internal route.
 
 ---
 
-## 20. Overlay routing versus service insertion
+## 13. AWS route-table design
 
-Pure routing use case:
+AWS controls **which traffic first enters GWLBE**.
 
-~~~text
-AWS VPC
-  |
- TGW
-  |
-Connect
-  |
-SD-WAN router
-  |
-Branch
-~~~
+### IGW gateway route table
 
-The appliance is simply a router.
-
-Security/service-insertion use case:
+Example inbound DMZ steering:
 
 ~~~text
-Spoke
-  |
-TGW route
-  |
-Connect
-  |
-Security NVA
-  |
-post-inspection path
-  |
-Destination
+Destination       Target
+--------------------------------
+10.10.10.0/24     vpce-dmz-a
+10.10.0.0/16      local
 ~~~
 
-Therefore:
+AWS supports GWLBE as a target in an IGW-associated gateway route table.
 
-> **Overlay routing is the foundation. Service insertion is one use of that routing foundation.**
+### DMZ application subnet route table
 
-The companion security article focuses on that second case.
+Example outbound inspection:
+
+~~~text
+Destination       Target
+--------------------------------
+10.10.0.0/16      local
+0.0.0.0/0         vpce-dmz-a
+~~~
+
+### GWLBE subnet route table
+
+In a standard AWS GWLB ingress/egress pattern:
+
+~~~text
+Destination       Target
+--------------------------------
+10.10.0.0/16      local
+0.0.0.0/0         igw-xxxx
+~~~
+
+Palo Alto overlay-routed egress changes what the **firewall itself** can do after receiving the GENEVE packet, but the initial interception still comes from AWS route-table steering to the endpoint.
 
 ---
 
-## 21. Verification
+## 14. Security policy design
 
-Always prove the layers in order.
+Recommended conceptual policy matrix:
 
-### 1. Underlay
+| From | To | Policy |
+|---|---|---|
+| UNTRUST | DMZ | Only published applications |
+| DMZ | UNTRUST | Restricted outbound access |
+| DMZ | TRUST | Explicit application dependencies only |
+| TRUST | DMZ | Approved management/user/application access |
+| DMZ | SHARED | DNS/NTP/PKI/logging only |
+| UNTRUST | TRUST | Deny unless explicitly required |
+| DMZ | MGMT | Deny |
 
-Verify:
+Examples:
 
-- transport attachment state;
-- VPC routes;
-- ENI reachability;
-- Direct Connect if used.
+~~~text
+UNTRUST -> DMZ
+Destination: dmz-public-app
+Application: ssl
+Service: application-default
+Action: allow
+Threat Prevention: strict
+~~~
 
-### 2. GRE
+~~~text
+DMZ -> TRUST
+Source: dmz-web-tier
+Destination: prod-db-tier
+Application: postgresql
+Service: application-default
+Action: allow
+~~~
 
-Verify:
-
-- outer endpoints;
-- tunnel counters;
-- MTU.
-
-### 3. BGP
-
-Verify:
-
-- both sessions where expected;
-- received prefixes;
-- advertised prefixes;
-- AS-PATH;
-- next hop;
-- route policy.
-
-### 4. AWS route installation
-
-Do not stop at the appliance BGP table.
-
-Verify the route actually appears in TGW or Cloud WAN.
-
-### 5. Effective route choice
-
-Ask:
-
-- Which route table is consulted?
-- Which exact prefix wins?
-- Is it static or propagated?
-- Is another route more specific?
-- Is ECMP actually active?
-
-### 6. Data plane
-
-Use:
-
-- VPC Flow Logs;
-- Transit Gateway Flow Logs;
-- appliance packet capture;
-- SD-WAN telemetry;
-- application tests.
+Every other DMZ-to-TRUST flow should hit a deny rule.
 
 ---
 
-## 22. AWS CLI
+## 15. NAT placement
 
-### Connect attachments
+NAT is separate from endpoint-based inspection.
 
-~~~bash
-aws ec2 describe-transit-gateway-connects --output table
+Possible DMZ egress:
+
+~~~text
+DMZ
+ -> GWLBE
+ -> GWLB
+ -> VM-Series overlay route
+ -> UNTRUST
+ -> NAT Gateway
+ -> IGW
 ~~~
 
-### Connect peers
+or a vendor-supported design in which VM-Series performs SNAT before public egress.
 
-~~~bash
-aws ec2 describe-transit-gateway-connect-peers --output json
-~~~
+NAT placement changes:
 
-### TGW associations
+- source identity visible in logs;
+- return path;
+- public IP ownership;
+- scale;
+- failure behavior.
 
-~~~bash
-aws ec2 get-transit-gateway-route-table-associations \
-  --transit-gateway-route-table-id tgw-rtb-EXAMPLE \
-  --output table
-~~~
-
-### TGW propagations
-
-~~~bash
-aws ec2 get-transit-gateway-route-table-propagations \
-  --transit-gateway-route-table-id tgw-rtb-EXAMPLE \
-  --output table
-~~~
-
-### Effective TGW routes
-
-~~~bash
-aws ec2 search-transit-gateway-routes \
-  --transit-gateway-route-table-id tgw-rtb-EXAMPLE \
-  --filters Name=state,Values=active \
-  --output table
-~~~
-
-The final command is often decisive because it shows the route AWS is actually prepared to use.
+For Internet ingress through ALB, remember that ALB is a Layer-7 proxy, so that architecture is not equivalent to a classic firewall DNAT design.
 
 ---
 
-## 23. Exam takeaways
+## 16. Symmetry and state
 
-Memorize:
-
-~~~text
-TGW Connect
-  transport = VPC or Direct Connect attachment
-  data plane = GRE
-  control plane = BGP
-  static routes on Connect = not supported
-  eBGP multihop TTL = 2
-~~~
+GWLB provides flow affinity to an appliance, but the full design still needs valid stateful return routing.
 
 ~~~text
-One Connect peer
-  = one GRE data path
-  + two BGP sessions for control-plane redundancy
+DMZ -> GWLBE -> GWLB -> FW-A -> UNTRUST -> Internet
 ~~~
+
+Return must be compatible with:
 
 ~~~text
-TGW route-table association
-  = lookup context for traffic entering from attachment
-  + for Connect, routes advertised toward the appliance
-
-TGW propagation
-  = learned attachment routes installed into selected TGW route tables
+Internet -> FW-A -> encapsulation/GWLB return -> GWLBE -> DMZ
 ~~~
+
+If failover sends the reverse session to another VM-Series without synchronized state, an established flow can reset.
+
+GWLB target health is not the same thing as PAN-OS session synchronization.
+
+---
+
+## 17. Multi-AZ design
+
+Use zonal endpoints in each participating AZ.
 
 ~~~text
-Cloud WAN Tunnel-less Connect
-  = no GRE
-  = native BGP
-  = VPC remains transport
-  = MP-BGP IPv4/IPv6 supported
+AZ-A
+  DMZ subnet A
+  GWLBE-DMZ-A
+
+AZ-B
+  DMZ subnet B
+  GWLBE-DMZ-B
 ~~~
 
-The most useful operational rule is:
+Maintain consistent mappings:
 
-> **Never troubleshoot an overlay as one network. Prove the underlay, tunnel, BGP, AWS route installation, route-table selection, and data plane independently.**
+~~~text
+vpce-dmz-a   -> DMZ
+vpce-dmz-b   -> DMZ
+
+vpce-trust-a -> TRUST
+vpce-trust-b -> TRUST
+~~~
+
+The endpoint IDs differ, but their logical firewall zone can be the same.
+
+---
+
+## 18. DMZ isolation controls
+
+Do not rely only on PAN-OS zones.
+
+Also enforce:
+
+- separate DMZ and internal route tables;
+- dedicated GWLBE endpoints;
+- security groups;
+- NACLs where useful;
+- restricted TGW route propagation/association;
+- explicit DMZ-to-internal routes only where required;
+- no accidental direct peering/bypass path;
+- separate load-balancer and application subnets;
+- least-privilege IAM and management access.
+
+The design principle is:
+
+> **AWS routing prevents bypass; GWLBE identity provides policy context; PAN-OS enforces the zone boundary.**
+
+---
+
+## 19. Common failure modes
+
+### DMZ traffic shows as TRUST
+
+Check:
+
+- wrong endpoint association;
+- DMZ and TRUST endpoints mapped to same subinterface;
+- wrong zone assigned to subinterface.
+
+### DMZ bypasses VM-Series
+
+Check:
+
+- DMZ subnet route;
+- IGW gateway route;
+- more-specific direct route;
+- route-table association;
+- endpoint availability.
+
+### Firewall sees packet but Internet egress fails
+
+Check:
+
+- overlay routing enabled;
+- L3 default route;
+- egress interface/zone;
+- trust/untrust subnet design;
+- automatic DHCP default route setting;
+- NAT/IGW route.
+
+### DMZ-to-TRUST only works one direction
+
+Check:
+
+- reverse routing;
+- state owner;
+- security policy in reverse direction;
+- alternate direct route bypassing GWLB.
+
+---
+
+## 20. Verification and troubleshooting
+
+### Verify GWLB plugin and endpoint mappings
+
+~~~text
+show plugins vm_series aws gwlb
+~~~
+
+Expected concept:
+
+~~~text
+GWLB enabled:     True
+Overlay Routing:  True
+
+VPC endpoint        Interface
+----------------------------------
+vpce-dmz-a          ethernet1/1.10
+vpce-trust-a        ethernet1/1.20
+~~~
+
+### Verify PAN-OS route selection
+
+~~~text
+show routing route
+~~~
+
+Confirm Internet or internal destinations resolve to the intended routed interface.
+
+### Verify session classification
+
+~~~text
+show session all filter source <ip>
+~~~
+
+Check:
+
+- ingress interface;
+- ingress zone;
+- egress interface;
+- egress zone;
+- NAT;
+- application;
+- state.
+
+### Verify AWS
+
+Inspect:
+
+- IGW gateway route table;
+- DMZ subnet route table;
+- GWLBE subnet route table;
+- TGW routes if internal routing uses TGW;
+- GWLBE state;
+- GWLB target health.
+
+### Packet capture
+
+Capture on both:
+
+- GWLB-facing interface/subinterface;
+- routed egress interface.
+
+You want to prove:
+
+~~~text
+GENEVE ingress
+   ->
+endpoint/zone identity
+   ->
+inner-header L3 lookup
+   ->
+native routed egress
+~~~
+
+---
+
+## 21. Overlay routing versus normal GWLB mode
+
+Normal GWLB service insertion:
+
+~~~text
+GWLBE
+  |
+GWLB
+  |
+VM-Series
+  |
+GWLB
+  |
+GWLBE
+~~~
+
+Palo Alto overlay routing:
+
+~~~text
+GWLBE
+  |
+GWLB
+  |
+VM-Series
+  |
+inner-header L3 lookup
+  |
+  +-> same GWLB path
+  |
+  +-> different L3 interface
+        |
+        +-> UNTRUST
+        +-> TRANSIT/TRUST path
+~~~
+
+The ability to use **two-zone policy plus another egress interface** is what makes this especially useful for DMZ separation.
+
+---
+
+## 22. What this is not
+
+This is not:
+
+~~~text
+AWS Transit Gateway Connect
+   GRE + BGP
+~~~
+
+and not:
+
+~~~text
+AWS Cloud WAN Connect
+   GRE/native BGP
+~~~
+
+Those services connect BGP-speaking routers/SD-WAN appliances to AWS transit fabrics.
+
+This article is about:
+
+~~~text
+AWS GWLBE
+   +
+AWS GWLB
+   +
+GENEVE
+   +
+Palo Alto endpoint-to-interface mapping
+   +
+PAN-OS inner-header L3 routing
+~~~
+
+No TGW Connect BGP overlay is required.
+
+---
+
+## 23. Design checklist
+
+- [ ] Dedicated DMZ GWLBE endpoints.
+- [ ] Dedicated TRUST GWLBE endpoints where endpoint-based zone distinction is needed.
+- [ ] Endpoint IDs mapped to correct VM-Series subinterfaces.
+- [ ] DMZ and TRUST use different security zones.
+- [ ] PAN-OS overlay routing enabled.
+- [ ] PAN-OS 10.0.5 or later.
+- [ ] Separate trust and untrust subnets as required by Palo Alto guidance.
+- [ ] DHCP-created default route disabled where Palo Alto specifies.
+- [ ] L3 UNTRUST/TRANSIT egress interfaces correctly routed.
+- [ ] IGW gateway route sends inbound DMZ traffic to DMZ GWLBE.
+- [ ] DMZ subnet routes required outbound traffic to DMZ GWLBE.
+- [ ] No more-specific AWS route bypasses inspection.
+- [ ] DMZ-to-TRUST policy is least privilege.
+- [ ] Return path preserves firewall state.
+- [ ] Multi-AZ endpoint mappings are consistent.
+- [ ] GWLB targets healthy.
+- [ ] PAN-OS session table proves expected ingress/egress zones.
+- [ ] VPC/TGW flow logs prove no bypass.
 
 ---
 
 ## 24. References
 
-Official AWS documentation:
+### Palo Alto Networks
 
-- Transit Gateway Connect attachments and peers: https://docs.aws.amazon.com/vpc/latest/tgw/tgw-connect.html
-- How Transit Gateway works and routing: https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html
-- Transit Gateway route propagation: https://docs.aws.amazon.com/vpc/latest/tgw/enable-tgw-route-propagation.html
-- VPC route priority and longest-prefix match: https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html
-- Cloud WAN Connect and Tunnel-less Connect: https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-connect-attachment.html
-- Direct Connect with Transit Gateway: https://docs.aws.amazon.com/directconnect/latest/UserGuide/direct-connect-transit-gateways.html
+- Enable Overlay Routing for the VM-Series on AWS:
+  https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-aws/vm-series-integration-with-gateway-load-balancer/enable-overlay-routing-for-the-vm-series-on-aws
 
-Related knowledgebase guides:
+- Associate a VPC Endpoint with a VM-Series Interface:
+  https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-aws/vm-series-integration-with-gateway-load-balancer/associate-a-vpc-endpoint-with-a-vm-series-interface
 
-- [AWS Overlay Networking with Transit Gateway Connect and Cloud WAN Connect — Service Insertion Deep Dive](09-10-26-17-10_AWS_Overlay_Networking_TGW_Cloud_WAN_Connect_Service_Insertion_Deep_Dive.md)
+- VM-Series Integration with an AWS Gateway Load Balancer:
+  https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-aws/vm-series-integration-with-gateway-load-balancer
+
+- VM-Series bootstrap configuration and GWLB plugin commands:
+  https://docs.paloaltonetworks.com/vm-series/getting-started/bootstrap-the-vm-series-firewall/create-bootstrap-configuration-files
+
+### AWS
+
+- Access virtual appliances through AWS PrivateLink:
+  https://docs.aws.amazon.com/vpc/latest/privatelink/vpce-gateway-load-balancer.html
+
+- Gateway Load Balancer overview:
+  https://docs.aws.amazon.com/elasticloadbalancing/latest/gateway/introduction.html
+
+- Gateway Load Balancer getting started and routing:
+  https://docs.aws.amazon.com/elasticloadbalancing/latest/gateway/getting-started.html
+
+- VPC gateway route tables:
+  https://docs.aws.amazon.com/vpc/latest/userguide/gateway-route-tables.html
+
+### Related knowledgebase articles
+
 - [AWS Firewall Insertion Summary](09-07-26_AWS_Firewall_Insertion_Summary.md)
-- [AWS Cloud WAN Service Insertion — Deep Dive](09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive.md)
-- [AWS Direct Connect Transit VIF — Deep Dive](09-08-26_AWS_Direct_Connect_Transit_VIF_Deep_Dive.md)
+- [Distributed GWLBE with a Centralized Third-Party Firewall Fleet](09-06-26-15-23_Distributed_GWLBE_Centralized_Third_Party_Firewall_Fleet_Deep_Dive.md)
+- [AWS ALB/NLB + Inline Firewall Endpoint — GWLB/GWLBE Deep Dive](09-06-26-16-42_AWS_ALB_NLB_Inline_Firewall_Endpoint_GWLBE_Deep_Dive.md)
