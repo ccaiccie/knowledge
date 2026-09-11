@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="900" viewBox="0 0 2000 900">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#7B1FA2"/></marker></defs>
+<rect width="2000" height="900" fill="#fff"/>
+<text x="1000" y="42" text-anchor="middle" font-family="Arial" font-size="32" font-weight="bold">OUTBOUND — DMZ Application → Internet</text>
+<text x="1000" y="76" text-anchor="middle" font-family="Arial" font-size="17">GWLBE/GWLB inspection followed by PAN-OS overlay-routing native egress through UNTRUST</text>
+
+<rect x="40" y="120" width="580" height="540" rx="22" fill="#FFF8E1" stroke="#FB8C00" stroke-width="4"/>
+<text x="330" y="157" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">DMZ VPC — 10.10.0.0/16</text>
+<rect x="90" y="190" width="220" height="110" rx="12" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2"/>
+<text x="200" y="228" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">DMZ Application</text><text x="200" y="258" text-anchor="middle" font-family="Arial" font-size="14">10.10.20.50</text><text x="200" y="283" text-anchor="middle" font-family="Arial" font-size="12">initiates Internet session</text>
+<rect x="365" y="190" width="200" height="110" rx="12" fill="#FFD180" stroke="#EF6C00" stroke-width="2"/>
+<text x="465" y="228" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">GWLBE-DMZ</text><text x="465" y="258" text-anchor="middle" font-family="Arial" font-size="14">vpce-dmz-a</text><text x="465" y="283" text-anchor="middle" font-family="Arial" font-size="12">0.0.0.0/0 → endpoint</text>
+<rect x="110" y="445" width="400" height="115" rx="12" fill="#FFFDE7" stroke="#F9A825" stroke-width="2"/>
+<text x="310" y="482" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">DMZ subnet route table</text><text x="155" y="518" font-family="Arial" font-size="15">10.10.0.0/16 → local</text><text x="155" y="547" font-family="Arial" font-size="15">0.0.0.0/0 → vpce-dmz-a</text>
+
+<rect x="680" y="120" width="710" height="540" rx="22" fill="#E3F2FD" stroke="#1976D2" stroke-width="4"/>
+<text x="1035" y="157" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">Security VPC — 10.100.0.0/16</text>
+<rect x="730" y="190" width="240" height="110" rx="12" fill="#BBDEFB" stroke="#1565C0" stroke-width="2"/>
+<text x="850" y="228" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">AWS GWLB</text><text x="850" y="258" text-anchor="middle" font-family="Arial" font-size="14">PrivateLink service</text><text x="850" y="283" text-anchor="middle" font-family="Arial" font-size="12">GENEVE UDP/6081</text>
+<rect x="1030" y="170" width="310" height="150" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="3"/>
+<text x="1185" y="208" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">VM-Series</text><text x="1185" y="238" text-anchor="middle" font-family="Arial" font-size="14">vpce-dmz-a → e1/1.10 → DMZ</text><text x="1185" y="265" text-anchor="middle" font-family="Arial" font-size="14">Inner destination = Internet</text><text x="1185" y="292" text-anchor="middle" font-family="Arial" font-size="14">Route lookup → e1/2 UNTRUST</text>
+<rect x="790" y="445" width="490" height="115" rx="12" fill="#F3E5F5" stroke="#8E24AA" stroke-width="2"/>
+<text x="1035" y="482" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Overlay-routing action</text><text x="1035" y="513" text-anchor="middle" font-family="Arial" font-size="14">PAN-OS routes on the original inner destination</text><text x="1035" y="540" text-anchor="middle" font-family="Arial" font-size="14">Different egress selected → decapsulate → native Layer-3 packet</text>
+
+<rect x="1450" y="120" width="500" height="540" rx="22" fill="#F3E5F5" stroke="#8E24AA" stroke-width="4"/>
+<text x="1700" y="157" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">UNTRUST / Internet Egress</text>
+<rect x="1510" y="190" width="380" height="110" rx="12" fill="#E1BEE7" stroke="#8E24AA" stroke-width="2"/>
+<text x="1700" y="228" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">ethernet1/2 — UNTRUST</text><text x="1700" y="258" text-anchor="middle" font-family="Arial" font-size="14">NAT Gateway or routed IGW path</text><text x="1700" y="283" text-anchor="middle" font-family="Arial" font-size="12">native IP forwarding</text>
+<rect x="1510" y="445" width="380" height="110" rx="12" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+<text x="1700" y="483" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">Internet Destination</text><text x="1700" y="513" text-anchor="middle" font-family="Arial" font-size="14">203.0.113.80</text>
+
+<path d="M310 245 H365" fill="none" stroke="#7B1FA2" stroke-width="5" marker-end="url(#a)"/>
+<text x="338" y="226" text-anchor="middle" font-family="Arial" font-size="14" fill="#7B1FA2">1</text>
+<path d="M565 245 H730" fill="none" stroke="#7B1FA2" stroke-width="5" marker-end="url(#a)"/>
+<text x="648" y="226" text-anchor="middle" font-family="Arial" font-size="14" fill="#7B1FA2">2 PrivateLink</text>
+<path d="M970 245 H1030" fill="none" stroke="#7B1FA2" stroke-width="5" marker-end="url(#a)"/>
+<text x="1000" y="226" text-anchor="middle" font-family="Arial" font-size="14" fill="#7B1FA2">3 GENEVE</text>
+<path d="M1185 320 V390 H1035 V445" fill="none" stroke="#7B1FA2" stroke-width="5" stroke-linejoin="round" marker-end="url(#a)"/>
+<text x="1110" y="375" text-anchor="middle" font-family="Arial" font-size="14" fill="#7B1FA2">4 inner-header L3 lookup</text>
+<path d="M1280 502 H1395 V245 H1510" fill="none" stroke="#7B1FA2" stroke-width="5" stroke-linejoin="round" marker-end="url(#a)"/>
+<text x="1405" y="385" text-anchor="middle" font-family="Arial" font-size="14" fill="#7B1FA2">5 decapsulate → e1/2</text>
+<path d="M1700 300 V445" fill="none" stroke="#7B1FA2" stroke-width="5" marker-end="url(#a)"/>
+<text x="1727" y="377" font-family="Arial" font-size="14" fill="#7B1FA2">6</text>
+
+<rect x="80" y="735" width="1840" height="105" rx="14" fill="#FAFAFA" stroke="#455A64" stroke-width="2"/>
+<text x="1000" y="770" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">Outbound summary</text>
+<text x="115" y="807" font-family="Arial" font-size="15">DMZ app → default route to GWLBE-DMZ → GWLB → GENEVE → VM-Series → inner-header route lookup → decapsulate → e1/2 UNTRUST → NAT/IGW → Internet.</text>
+</svg>
