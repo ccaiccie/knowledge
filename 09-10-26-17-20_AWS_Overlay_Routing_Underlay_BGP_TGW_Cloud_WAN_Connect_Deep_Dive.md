@@ -148,6 +148,17 @@ That is what prevents DMZ-originated traffic from being treated as generic trust
 
 [Editable draw.io source](images/09-10-26-17-20_aws_overlay_routing_control_data_plane.drawio)
 
+### How to read the overview diagram
+
+The overview diagram is intentionally limited to **Internet ↔ DMZ** so the forward and reverse directions remain unambiguous:
+
+- **Blue arrows, steps 1–5** = inbound/forward flow from Internet to the DMZ application.
+- **Orange arrows, steps R1–R5** = reverse flow from the DMZ application back to the Internet client.
+- Forward and reverse connectors use separate rounded routing lanes and do not share junctions.
+- **DMZ → Internet native Layer-3 egress** is covered in its own flow section.
+- **DMZ → TRUST/internal** is covered in a separate diagram and section.
+- The main overview therefore does not branch into UNTRUST or TRANSIT paths, which avoids overlapping arrows and makes stateful symmetry easier to trace.
+
 Example topology:
 
 ~~~text
@@ -321,6 +332,33 @@ Forward path:
 For this flow, overlay routing does **not necessarily mean the packet exits another physical interface**. If the destination remains on the original GWLB service-chain path, PAN-OS continues normal GWLB forwarding.
 
 The endpoint mapping is still valuable because the firewall knows that this session belongs to the **DMZ policy domain**.
+
+### Forward versus reverse path in the overview
+
+The diagram deliberately shows the two directions as separate numbered sequences:
+
+~~~text
+FORWARD / INBOUND — BLUE
+
+Internet
+  -> IGW
+  -> GWLBE-DMZ
+  -> GWLB
+  -> VM-Series
+  -> DMZ ALB / application
+~~~
+
+~~~text
+REVERSE — ORANGE
+
+DMZ application
+  -> GWLBE-DMZ
+  -> GWLB / same VM-Series session
+  -> IGW
+  -> Internet client
+~~~
+
+This separation is important for troubleshooting stateful inspection. Do not infer that the orange path is an alternate forward route; it is the reverse direction of the same inspected session.
 
 ---
 
