@@ -1,121 +1,119 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1900" height="1180" viewBox="0 0 1900 1180">
 <defs>
-  <marker id="fwd" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1565C0"/></marker>
-  <marker id="ret" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#D84315"/></marker>
-  <marker id="route" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#6A1B9A"/></marker>
+  <marker id="blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1565C0"/></marker>
+  <marker id="orange" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#D84315"/></marker>
+  <marker id="purple" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#7B1FA2"/></marker>
+  <marker id="green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2E7D32"/></marker>
 </defs>
-
-<rect width="1900" height="1180" fill="#FFFFFF"/>
+<rect width="1900" height="1180" fill="#fff"/>
 <text x="950" y="42" text-anchor="middle" font-family="Arial" font-size="31" font-weight="bold">Palo Alto VM-Series Overlay Routing with AWS GWLB — DMZ Separation</text>
-<text x="950" y="75" text-anchor="middle" font-family="Arial" font-size="17">Endpoint identity creates the PAN-OS zone; inner-header Layer-3 routing decides whether traffic stays on GWLB or exits natively</text>
+<text x="950" y="75" text-anchor="middle" font-family="Arial" font-size="17">Rounded paths separate ingress, native routed egress, and GWLB return behavior</text>
+
+<!-- VPC boundaries -->
+<rect x="250" y="110" width="560" height="760" rx="22" fill="#FFF8E1" stroke="#FB8C00" stroke-width="4"/>
+<text x="530" y="145" text-anchor="middle" font-family="Arial" font-size="25" font-weight="bold">DMZ VPC — 10.10.0.0/16</text>
+
+<rect x="855" y="110" width="620" height="760" rx="22" fill="#E3F2FD" stroke="#1976D2" stroke-width="4"/>
+<text x="1165" y="145" text-anchor="middle" font-family="Arial" font-size="25" font-weight="bold">Security VPC — 10.100.0.0/16</text>
+
+<rect x="1515" y="110" width="340" height="760" rx="22" fill="#F3E5F5" stroke="#8E24AA" stroke-width="4"/>
+<text x="1685" y="145" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">Routed Egress</text>
 
 <!-- Internet -->
-<rect x="40" y="165" width="210" height="120" rx="16" fill="#E3F2FD" stroke="#1565C0" stroke-width="3"/>
-<text x="145" y="205" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">Internet</text>
-<text x="145" y="238" text-anchor="middle" font-family="Arial" font-size="15">Client / Public traffic</text>
-<text x="145" y="263" text-anchor="middle" font-family="Arial" font-size="14">198.51.100.25</text>
+<rect x="35" y="200" width="170" height="95" rx="16" fill="#E3F2FD" stroke="#1565C0" stroke-width="3"/>
+<text x="120" y="238" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">Internet</text>
+<text x="120" y="266" text-anchor="middle" font-family="Arial" font-size="14">198.51.100.25</text>
 
-<!-- DMZ VPC boundary -->
-<rect x="285" y="105" width="540" height="770" rx="20" fill="#FFF8E1" stroke="#FB8C00" stroke-width="4"/>
-<text x="555" y="142" text-anchor="middle" font-family="Arial" font-size="25" font-weight="bold">DMZ VPC — 10.10.0.0/16</text>
+<!-- DMZ nodes -->
+<rect x="300" y="190" width="200" height="110" rx="14" fill="#FFE0B2" stroke="#EF6C00" stroke-width="2"/>
+<text x="400" y="226" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">Internet Gateway</text>
+<text x="400" y="253" text-anchor="middle" font-family="Arial" font-size="14">IGW gateway RT</text>
+<text x="400" y="278" text-anchor="middle" font-family="Arial" font-size="13">10.10.10.0/24 → vpce-dmz-a</text>
 
-<rect x="330" y="175" width="200" height="105" rx="12" fill="#FFE0B2" stroke="#EF6C00" stroke-width="2"/>
-<text x="430" y="212" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">Internet Gateway</text>
-<text x="430" y="242" text-anchor="middle" font-family="Arial" font-size="14">IGW gateway RT attached</text>
-<text x="430" y="264" text-anchor="middle" font-family="Arial" font-size="13">10.10.10.0/24 → vpce-dmz-a</text>
+<rect x="580" y="190" width="190" height="110" rx="14" fill="#FFD180" stroke="#EF6C00" stroke-width="2"/>
+<text x="675" y="226" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">GWLBE-DMZ-A</text>
+<text x="675" y="253" text-anchor="middle" font-family="Arial" font-size="14">vpce-dmz-a</text>
+<text x="675" y="278" text-anchor="middle" font-family="Arial" font-size="13">consumer endpoint</text>
 
-<rect x="585" y="175" width="195" height="105" rx="12" fill="#FFD180" stroke="#EF6C00" stroke-width="2"/>
-<text x="682" y="212" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">GWLBE-DMZ-A</text>
-<text x="682" y="242" text-anchor="middle" font-family="Arial" font-size="14">vpce-dmz-a</text>
-<text x="682" y="264" text-anchor="middle" font-family="Arial" font-size="13">consumer endpoint</text>
+<rect x="300" y="420" width="470" height="120" rx="14" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2"/>
+<text x="535" y="458" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">ALB / DMZ Workload Tier</text>
+<text x="535" y="488" text-anchor="middle" font-family="Arial" font-size="15">ALB subnet: 10.10.10.0/24</text>
+<text x="535" y="516" text-anchor="middle" font-family="Arial" font-size="15">Application subnet: 10.10.20.0/24</text>
 
-<rect x="330" y="365" width="450" height="118" rx="12" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2"/>
-<text x="555" y="400" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">DMZ ALB / Public Application Subnets</text>
-<text x="555" y="430" text-anchor="middle" font-family="Arial" font-size="15">ALB subnet: 10.10.10.0/24</text>
-<text x="555" y="456" text-anchor="middle" font-family="Arial" font-size="15">Application subnet: 10.10.20.0/24</text>
+<rect x="300" y="630" width="470" height="150" rx="14" fill="#FFFDE7" stroke="#F9A825" stroke-width="2"/>
+<text x="535" y="665" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">DMZ subnet route table</text>
+<text x="340" y="700" font-family="Arial" font-size="15">10.10.0.0/16</text><text x="610" y="700" font-family="Arial" font-size="15">local</text>
+<text x="340" y="732" font-family="Arial" font-size="15">0.0.0.0/0</text><text x="610" y="732" font-family="Arial" font-size="15">vpce-dmz-a</text>
+<text x="535" y="760" text-anchor="middle" font-family="Arial" font-size="13">AWS route selection causes the initial interception</text>
 
-<rect x="330" y="555" width="450" height="160" rx="12" fill="#FFFDE7" stroke="#F9A825" stroke-width="2"/>
-<text x="555" y="590" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">DMZ subnet route table</text>
-<text x="365" y="625" font-family="Arial" font-size="15">10.10.0.0/16</text><text x="600" y="625" font-family="Arial" font-size="15">local</text>
-<text x="365" y="655" font-family="Arial" font-size="15">0.0.0.0/0</text><text x="600" y="655" font-family="Arial" font-size="15">vpce-dmz-a</text>
-<text x="555" y="690" text-anchor="middle" font-family="Arial" font-size="13">Initial inspection is caused by the AWS route to the GWLBE</text>
+<!-- Security VPC nodes -->
+<rect x="915" y="190" width="500" height="105" rx="14" fill="#BBDEFB" stroke="#1565C0" stroke-width="2"/>
+<text x="1165" y="228" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">AWS Gateway Load Balancer</text>
+<text x="1165" y="256" text-anchor="middle" font-family="Arial" font-size="14">Endpoint service + appliance load balancing</text>
+<text x="1165" y="280" text-anchor="middle" font-family="Arial" font-size="13">GENEVE UDP/6081</text>
 
-<!-- Security VPC -->
-<rect x="875" y="105" width="615" height="770" rx="20" fill="#E3F2FD" stroke="#1976D2" stroke-width="4"/>
-<text x="1182" y="142" text-anchor="middle" font-family="Arial" font-size="25" font-weight="bold">Security VPC — 10.100.0.0/16</text>
+<rect x="930" y="360" width="470" height="330" rx="16" fill="#E8F5E9" stroke="#2E7D32" stroke-width="3"/>
+<text x="1165" y="400" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">Palo Alto VM-Series</text>
 
-<rect x="930" y="175" width="500" height="100" rx="12" fill="#BBDEFB" stroke="#1565C0" stroke-width="2"/>
-<text x="1180" y="212" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">AWS Gateway Load Balancer</text>
-<text x="1180" y="242" text-anchor="middle" font-family="Arial" font-size="14">Endpoint service / appliance load balancing</text>
-<text x="1180" y="263" text-anchor="middle" font-family="Arial" font-size="13">GENEVE UDP/6081 to VM-Series targets</text>
+<rect x="975" y="440" width="380" height="58" rx="10" fill="#FFCCBC" stroke="#D84315" stroke-width="2"/>
+<text x="1165" y="475" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">vpce-dmz-* → e1/1.10 → DMZ</text>
 
-<rect x="940" y="335" width="480" height="380" rx="16" fill="#E8F5E9" stroke="#2E7D32" stroke-width="3"/>
-<text x="1180" y="375" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">Palo Alto VM-Series</text>
+<rect x="975" y="515" width="380" height="58" rx="10" fill="#C8E6C9" stroke="#2E7D32" stroke-width="2"/>
+<text x="1165" y="550" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">vpce-trust-* → e1/1.20 → TRUST</text>
 
-<rect x="980" y="415" width="400" height="65" rx="10" fill="#FFCCBC" stroke="#D84315" stroke-width="2"/>
-<text x="1180" y="442" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">vpce-dmz-* → ethernet1/1.10 → DMZ zone</text>
-<text x="1180" y="465" text-anchor="middle" font-family="Arial" font-size="13">Endpoint identity supplies ingress policy context</text>
+<rect x="975" y="590" width="380" height="70" rx="10" fill="#FFF9C4" stroke="#F9A825" stroke-width="2"/>
+<text x="1165" y="616" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Inner-header L3 lookup</text>
+<text x="1165" y="642" text-anchor="middle" font-family="Arial" font-size="13">Stay on GWLB path OR decapsulate and route natively</text>
 
-<rect x="980" y="500" width="400" height="65" rx="10" fill="#C8E6C9" stroke="#2E7D32" stroke-width="2"/>
-<text x="1180" y="527" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">vpce-trust-* → ethernet1/1.20 → TRUST zone</text>
-<text x="1180" y="550" text-anchor="middle" font-family="Arial" font-size="13">Separate endpoint = separate security domain</text>
+<!-- Egress -->
+<rect x="1560" y="225" width="250" height="130" rx="14" fill="#E1BEE7" stroke="#8E24AA" stroke-width="2"/>
+<text x="1685" y="260" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">UNTRUST</text>
+<text x="1685" y="290" text-anchor="middle" font-family="Arial" font-size="14">ethernet1/2</text>
+<text x="1685" y="316" text-anchor="middle" font-family="Arial" font-size="14">NAT Gateway / IGW</text>
+<text x="1685" y="339" text-anchor="middle" font-family="Arial" font-size="13">Internet egress</text>
 
-<rect x="980" y="585" width="400" height="100" rx="10" fill="#FFF9C4" stroke="#F9A825" stroke-width="2"/>
-<text x="1180" y="613" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">PAN-OS overlay-routing decision</text>
-<text x="1180" y="638" text-anchor="middle" font-family="Arial" font-size="14">L3 lookup uses the original inner destination</text>
-<text x="1180" y="662" text-anchor="middle" font-family="Arial" font-size="13">Stay on GWLB path OR decapsulate and exit another L3 interface</text>
+<rect x="1560" y="525" width="250" height="150" rx="14" fill="#C8E6C9" stroke="#2E7D32" stroke-width="2"/>
+<text x="1685" y="560" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">TRANSIT / TRUST</text>
+<text x="1685" y="590" text-anchor="middle" font-family="Arial" font-size="14">ethernet1/3</text>
+<text x="1685" y="616" text-anchor="middle" font-family="Arial" font-size="14">TGW / internal VPCs</text>
+<text x="1685" y="642" text-anchor="middle" font-family="Arial" font-size="13">On-prem / shared services</text>
 
-<!-- Egress domains -->
-<rect x="1535" y="105" width="325" height="770" rx="20" fill="#F3E5F5" stroke="#8E24AA" stroke-width="4"/>
-<text x="1697" y="142" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">Routed Egress Domains</text>
+<!-- Ingress lane -->
+<path d="M205 245 H300" fill="none" stroke="#1565C0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="250" y="226" text-anchor="middle" font-family="Arial" font-size="13" fill="#1565C0">1</text>
 
-<rect x="1580" y="225" width="235" height="130" rx="12" fill="#E1BEE7" stroke="#8E24AA" stroke-width="2"/>
-<text x="1697" y="260" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">UNTRUST</text>
-<text x="1697" y="290" text-anchor="middle" font-family="Arial" font-size="14">ethernet1/2</text>
-<text x="1697" y="315" text-anchor="middle" font-family="Arial" font-size="14">NAT Gateway / IGW</text>
-<text x="1697" y="338" text-anchor="middle" font-family="Arial" font-size="13">Internet egress</text>
+<path d="M500 245 H580" fill="none" stroke="#1565C0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="540" y="226" text-anchor="middle" font-family="Arial" font-size="13" fill="#1565C0">2 route → vpce</text>
 
-<rect x="1580" y="475" width="235" height="150" rx="12" fill="#C8E6C9" stroke="#2E7D32" stroke-width="2"/>
-<text x="1697" y="512" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">TRANSIT / TRUST</text>
-<text x="1697" y="542" text-anchor="middle" font-family="Arial" font-size="14">ethernet1/3</text>
-<text x="1697" y="568" text-anchor="middle" font-family="Arial" font-size="14">TGW / internal VPCs</text>
-<text x="1697" y="594" text-anchor="middle" font-family="Arial" font-size="13">On-prem / shared services</text>
+<path d="M770 245 H840 Q875 245 875 280 V315 Q875 350 910 350 H1165 V295" fill="none" stroke="#1565C0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="875" y="228" text-anchor="middle" font-family="Arial" font-size="13" fill="#1565C0">3 AWS PrivateLink</text>
 
-<!-- Forward path -->
-<line x1="250" y1="215" x2="330" y2="215" stroke="#1565C0" stroke-width="5" marker-end="url(#fwd)"/>
-<text x="290" y="196" text-anchor="middle" font-family="Arial" font-size="13" fill="#1565C0">1</text>
+<path d="M1165 295 V360" fill="none" stroke="#1565C0" stroke-width="5" stroke-linecap="round" marker-end="url(#blue)"/>
+<text x="1193" y="332" font-family="Arial" font-size="13" fill="#1565C0">4 GENEVE</text>
 
-<line x1="530" y1="225" x2="585" y2="225" stroke="#1565C0" stroke-width="5" marker-end="url(#fwd)"/>
-<text x="558" y="206" text-anchor="middle" font-family="Arial" font-size="13" fill="#1565C0">2 route to vpce</text>
+<!-- Native egress branch A, routed above -->
+<path d="M1400 610 H1450 Q1490 610 1490 570 V330 Q1490 290 1530 290 H1560" fill="none" stroke="#7B1FA2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#purple)"/>
+<text x="1475" y="430" text-anchor="middle" font-family="Arial" font-size="14" fill="#7B1FA2">5A Internet destination</text>
+<text x="1475" y="454" text-anchor="middle" font-family="Arial" font-size="13" fill="#7B1FA2">decapsulate → e1/2</text>
 
-<line x1="780" y1="225" x2="930" y2="225" stroke="#1565C0" stroke-width="5" marker-end="url(#fwd)"/>
-<text x="855" y="203" text-anchor="middle" font-family="Arial" font-size="13" fill="#1565C0">3 AWS PrivateLink</text>
+<!-- Native egress branch B, routed below -->
+<path d="M1400 640 H1460 Q1500 640 1500 600 H1560" fill="none" stroke="#2E7D32" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#green)"/>
+<text x="1478" y="620" text-anchor="middle" font-family="Arial" font-size="14" fill="#2E7D32">5B Internal destination</text>
 
-<line x1="1180" y1="275" x2="1180" y2="335" stroke="#1565C0" stroke-width="5" marker-end="url(#fwd)"/>
-<text x="1205" y="312" font-family="Arial" font-size="13" fill="#1565C0">4 GENEVE</text>
+<!-- Same overlay return lane -->
+<path d="M975 665 H900 Q850 665 850 715 V825 Q850 845 830 845 H675 Q650 845 650 820 V300" fill="none" stroke="#D84315" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)"/>
+<text x="865" y="805" text-anchor="middle" font-family="Arial" font-size="14" fill="#D84315">Same-overlay destination: re-encapsulate → GWLB/GWLBE</text>
 
-<line x1="1420" y1="635" x2="1580" y2="290" stroke="#8E24AA" stroke-width="5" marker-end="url(#route)"/>
-<text x="1482" y="430" font-family="Arial" font-size="14" fill="#6A1B9A">5A inner dst = Internet</text>
-<text x="1488" y="453" font-family="Arial" font-size="13" fill="#6A1B9A">decapsulate → e1/2</text>
+<!-- GWLBE to app continuation path -->
+<path d="M675 300 V340 Q675 370 645 370 H555 Q535 370 535 390 V420" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="8,6" marker-end="url(#green)"/>
+<text x="610" y="350" text-anchor="middle" font-family="Arial" font-size="13" fill="#EF6C00">service-chain continuation</text>
 
-<line x1="1420" y1="650" x2="1580" y2="550" stroke="#2E7D32" stroke-width="5" marker-end="url(#route)"/>
-<text x="1490" y="620" font-family="Arial" font-size="14" fill="#2E7D32">5B inner dst = internal</text>
-
-<!-- Same overlay return -->
-<path d="M 980 690 L 900 690 L 900 785 L 682 785 L 682 280" fill="none" stroke="#D84315" stroke-width="5" marker-end="url(#ret)"/>
-<text x="838" y="765" text-anchor="middle" font-family="Arial" font-size="14" fill="#D84315">Same-overlay destination: re-encapsulate and return via GWLB → GWLBE</text>
-
-<!-- App link within DMZ -->
-<line x1="555" y1="280" x2="555" y2="365" stroke="#FB8C00" stroke-width="3" stroke-dasharray="7,5" marker-end="url(#route)"/>
-<text x="575" y="328" font-family="Arial" font-size="13">service-chain continuation</text>
-
-<!-- Bottom explainer -->
-<rect x="65" y="930" width="1770" height="185" rx="16" fill="#FAFAFA" stroke="#455A64" stroke-width="2"/>
-<text x="950" y="970" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">How to read this design</text>
-<text x="100" y="1010" font-family="Arial" font-size="15"><tspan font-weight="bold">1. AWS interception:</tspan> IGW/subnet route tables steer selected DMZ flows to GWLBE-DMZ.</text>
-<text x="100" y="1042" font-family="Arial" font-size="15"><tspan font-weight="bold">2. Zone identity:</tspan> Palo Alto maps vpce-dmz-* to ethernet1/1.10/DMZ, while separate endpoints can map to TRUST or SHARED.</text>
-<text x="100" y="1074" font-family="Arial" font-size="15"><tspan font-weight="bold">3. Overlay routing:</tspan> PAN-OS looks at the original inner destination. It can keep the session on the GWLB service path or decapsulate and route it natively.</text>
-<text x="100" y="1106" font-family="Arial" font-size="15"><tspan font-weight="bold">4. Security implication:</tspan> a direct AWS route around the GWLBE bypasses this enforcement path even if the PAN-OS zone/policy configuration is correct.</text>
-
-<text x="950" y="1150" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Blue = AWS/GWLB forwarding • Orange = DMZ • Green = TRUST/Transit • Purple = native routed exit • Red = GWLB/GWLBE return</text>
+<!-- Bottom notes -->
+<rect x="65" y="920" width="1770" height="195" rx="16" fill="#FAFAFA" stroke="#455A64" stroke-width="2"/>
+<text x="950" y="958" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">How to trace the packet</text>
+<text x="100" y="998" font-family="Arial" font-size="15"><tspan font-weight="bold">Blue lane:</tspan> Internet/DMZ traffic is intercepted by AWS routing to the GWLBE and delivered to GWLB/VM-Series.</text>
+<text x="100" y="1030" font-family="Arial" font-size="15"><tspan font-weight="bold">Orange lane:</tspan> if PAN-OS keeps the packet on the overlay/service path, the return is routed around the bottom of the diagram back to the GWLBE.</text>
+<text x="100" y="1062" font-family="Arial" font-size="15"><tspan font-weight="bold">Purple lane:</tspan> Internet-bound inner traffic is decapsulated and exits through the UNTRUST Layer-3 interface.</text>
+<text x="100" y="1094" font-family="Arial" font-size="15"><tspan font-weight="bold">Green lane:</tspan> internal destinations leave through the TRANSIT/TRUST Layer-3 interface. No arrow crosses the GWLB return lane.</text>
+<text x="950" y="1148" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Rounded routing lanes intentionally bypass objects so ingress, native egress, and return behavior stay visually separate.</text>
 </svg>
