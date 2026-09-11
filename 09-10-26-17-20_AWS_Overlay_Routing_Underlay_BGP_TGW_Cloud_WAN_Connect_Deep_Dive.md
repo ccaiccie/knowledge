@@ -2,6 +2,8 @@
 
 ## Purpose
 
+> **Scope note:** In this guide, *overlay routing* means the Palo Alto Networks VM-Series feature used with AWS GWLB/GWLBE and GENEVE inner-header routing. It does **not** mean AWS Transit Gateway Connect or Cloud WAN Connect.
+
 This guide explains how to use **Palo Alto Networks VM-Series overlay routing with AWS Gateway Load Balancer (GWLB)** to keep **DMZ traffic separate from internal/trust traffic**.
 
 This is the Palo Alto Networks **GWLB overlay-routing feature**. It is **not** AWS Transit Gateway Connect, GRE+BGP overlay routing, or Cloud WAN Connect.
