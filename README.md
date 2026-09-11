@@ -100,6 +100,9 @@ Deep dive into ExpressRoute Global Reach as a Layer 3 WAN-transit service betwee
 
 ## AWS Networking
 
+### [AWS Overlay Routing — Underlay, BGP, Transit Gateway Connect, Cloud WAN Connect, SD-WAN, ECMP, and Failure Domains](09-10-26-17-20_AWS_Overlay_Routing_Underlay_BGP_TGW_Cloud_WAN_Connect_Deep_Dive.md)
+Foundational AWS overlay-routing guide separating underlay, overlay, control plane, and data plane. Covers Transit Gateway Connect GRE/BGP, Connect peer addressing, which TGW routes AWS advertises to the appliance, NVA-to-AWS advertisements, TGW association versus propagation, longest-prefix and static-versus-propagated route selection, ECMP requirements, Direct Connect as underlay, Site-to-Site VPN comparison, Cloud WAN GRE and Tunnel-less Connect with MP-BGP, SD-WAN nested overlays, route recursion, MTU, failure/convergence domains, route leaks/loops/blackholes, CLI verification, and two matching SVG/editable draw.io diagrams.
+
 ### [AWS Direct Connect Transit VIF — Deep Dive](09-08-26_AWS_Direct_Connect_Transit_VIF_Deep_Dive.md)
 Deep dive into AWS Direct Connect transit virtual interfaces for Transit Gateway connectivity. Separates the physical Direct Connect connection, transit VIF, Direct Connect gateway, Transit Gateway, TGW route tables, and VPC route tables; explains BGP adjacency and ASN behavior, DXGW allowed-prefix semantics, exact on-premises-to-VPC and return packet walks, multi-VPC and multi-Region designs, redundant-circuit failover, AWS CLI deployment, verification, troubleshooting, and common mistakes, with matching SVG/editable draw.io architecture and route-flow diagrams.
 
