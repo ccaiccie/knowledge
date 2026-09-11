@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="980" viewBox="0 0 1900 980">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1565C0"/></marker></defs>
+<rect width="1900" height="980" fill="#fff"/>
+<text x="950" y="42" text-anchor="middle" font-family="Arial" font-size="31" font-weight="bold">Inbound Flow — Internet → DMZ Through GWLBE, GWLB, and VM-Series</text>
+<text x="950" y="76" text-anchor="middle" font-family="Arial" font-size="17">Single direction only: every blue arrow is part of the inbound path</text>
+
+<rect x="40" y="135" width="210" height="100" rx="14" fill="#E3F2FD" stroke="#1565C0" stroke-width="3"/>
+<text x="145" y="175" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">Internet Client</text>
+<text x="145" y="205" text-anchor="middle" font-family="Arial" font-size="14">198.51.100.25</text>
+
+<rect x="300" y="120" width="500" height="500" rx="20" fill="#FFF8E1" stroke="#FB8C00" stroke-width="4"/>
+<text x="550" y="158" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">DMZ VPC — 10.10.0.0/16</text>
+
+<rect x="345" y="210" width="185" height="110" rx="12" fill="#FFE0B2" stroke="#EF6C00" stroke-width="2"/>
+<text x="438" y="248" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Internet Gateway</text>
+<text x="438" y="278" text-anchor="middle" font-family="Arial" font-size="14">IGW gateway RT</text>
+<text x="438" y="302" text-anchor="middle" font-family="Arial" font-size="12">10.10.10.0/24 → vpce-dmz-a</text>
+
+<rect x="575" y="210" width="180" height="110" rx="12" fill="#FFD180" stroke="#EF6C00" stroke-width="2"/>
+<text x="665" y="248" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">GWLBE-DMZ</text>
+<text x="665" y="278" text-anchor="middle" font-family="Arial" font-size="14">vpce-dmz-a</text>
+<text x="665" y="302" text-anchor="middle" font-family="Arial" font-size="12">consumer endpoint</text>
+
+<rect x="390" y="445" width="320" height="115" rx="12" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2"/>
+<text x="550" y="483" text-anchor="middle" font-family="Arial" font-size="19" font-weight="bold">ALB / DMZ Application</text>
+<text x="550" y="513" text-anchor="middle" font-family="Arial" font-size="14">ALB subnet 10.10.10.0/24</text>
+<text x="550" y="539" text-anchor="middle" font-family="Arial" font-size="14">App subnet 10.10.20.0/24</text>
+
+<rect x="855" y="120" width="640" height="500" rx="20" fill="#E3F2FD" stroke="#1976D2" stroke-width="4"/>
+<text x="1175" y="158" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">Security VPC — 10.100.0.0/16</text>
+
+<rect x="920" y="210" width="260" height="110" rx="12" fill="#BBDEFB" stroke="#1565C0" stroke-width="2"/>
+<text x="1050" y="248" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">AWS GWLB</text>
+<text x="1050" y="278" text-anchor="middle" font-family="Arial" font-size="14">PrivateLink endpoint service</text>
+<text x="1050" y="302" text-anchor="middle" font-family="Arial" font-size="12">GENEVE UDP/6081</text>
+
+<rect x="1235" y="195" width="210" height="140" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="3"/>
+<text x="1340" y="232" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">VM-Series</text>
+<text x="1340" y="262" text-anchor="middle" font-family="Arial" font-size="14">vpce-dmz-a</text>
+<text x="1340" y="286" text-anchor="middle" font-family="Arial" font-size="14">→ e1/1.10</text>
+<text x="1340" y="310" text-anchor="middle" font-family="Arial" font-size="14">→ DMZ zone</text>
+
+<rect x="930" y="430" width="500" height="135" rx="12" fill="#F1F8E9" stroke="#558B2F" stroke-width="2"/>
+<text x="1180" y="467" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">PAN-OS processing</text>
+<text x="1180" y="498" text-anchor="middle" font-family="Arial" font-size="14">Identify endpoint → DMZ zone → inspect inner packet → apply security policy</text>
+<text x="1180" y="526" text-anchor="middle" font-family="Arial" font-size="14">Destination remains on GWLB service path, so no native L3 egress is used</text>
+
+<!-- arrows -->
+<path d="M250 185 H345" fill="none" stroke="#1565C0" stroke-width="5" marker-end="url(#a)"/>
+<text x="298" y="168" text-anchor="middle" font-family="Arial" font-size="14" fill="#1565C0">1</text>
+
+<path d="M530 265 H575" fill="none" stroke="#1565C0" stroke-width="5" marker-end="url(#a)"/>
+<text x="552" y="247" text-anchor="middle" font-family="Arial" font-size="14" fill="#1565C0">2</text>
+
+<path d="M755 265 H920" fill="none" stroke="#1565C0" stroke-width="5" marker-end="url(#a)"/>
+<text x="838" y="247" text-anchor="middle" font-family="Arial" font-size="14" fill="#1565C0">3 PrivateLink</text>
+
+<path d="M1180 265 H1235" fill="none" stroke="#1565C0" stroke-width="5" marker-end="url(#a)"/>
+<text x="1208" y="247" text-anchor="middle" font-family="Arial" font-size="14" fill="#1565C0">4 GENEVE</text>
+
+<path d="M1340 335 V390 H1180 V430" fill="none" stroke="#1565C0" stroke-width="5" stroke-linejoin="round" marker-end="url(#a)"/>
+<text x="1260" y="377" text-anchor="middle" font-family="Arial" font-size="14" fill="#1565C0">5 Inspect</text>
+
+<path d="M930 500 H830 Q790 500 790 540 V585 Q790 610 765 610 H550 V560" fill="none" stroke="#1565C0" stroke-width="5" stroke-linejoin="round" marker-end="url(#a)"/>
+<text x="805" y="575" text-anchor="middle" font-family="Arial" font-size="14" fill="#1565C0">6 GWLB/GWLBE service-chain continuation</text>
+
+<!-- notes -->
+<rect x="95" y="690" width="1710" height="205" rx="16" fill="#FAFAFA" stroke="#455A64" stroke-width="2"/>
+<text x="950" y="728" text-anchor="middle" font-family="Arial" font-size="21" font-weight="bold">Inbound packet walk</text>
+<text x="130" y="766" font-family="Arial" font-size="15">1. Internet client reaches the public application address through the IGW.</text>
+<text x="130" y="796" font-family="Arial" font-size="15">2. The IGW gateway route table redirects the DMZ/ALB subnet prefix to GWLBE-DMZ.</text>
+<text x="130" y="826" font-family="Arial" font-size="15">3–4. GWLBE reaches GWLB through PrivateLink; GWLB delivers the flow to VM-Series using GENEVE.</text>
+<text x="130" y="856" font-family="Arial" font-size="15">5–6. VM-Series maps vpce-dmz-a to the DMZ zone, inspects the inner packet, and returns it to the GWLB service path toward the DMZ target.</text>
+<text x="950" y="940" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">There are no reverse-flow arrows in this diagram.</text>
+</svg>
