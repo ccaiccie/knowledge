@@ -144,65 +144,68 @@ That is what prevents DMZ-originated traffic from being treated as generic trust
 
 ## 3. Reference architecture
 
-![DMZ architecture](images/09-10-26-17-20_aws_overlay_routing_control_data_plane.svg)
+The main architecture is intentionally split into **two separate diagrams** so the reader never has to distinguish opposing arrows on the same canvas.
 
-[Editable draw.io source](images/09-10-26-17-20_aws_overlay_routing_control_data_plane.drawio)
+### 3.1 Inbound — Internet to DMZ
 
-### How to read the overview diagram
+![Inbound Internet to DMZ architecture](images/09-10-26-18-30_aws_paloalto_gwlb_dmz_main_inbound.svg)
 
-The overview diagram is intentionally limited to **Internet ↔ DMZ** so the forward and reverse directions remain unambiguous:
+[Editable draw.io source](images/09-10-26-18-30_aws_paloalto_gwlb_dmz_main_inbound.drawio)
 
-- **Blue arrows, steps 1–5** = inbound/forward flow from Internet to the DMZ application.
-- **Orange arrows, steps R1–R5** = reverse flow from the DMZ application back to the Internet client.
-- Forward and reverse connectors use separate rounded routing lanes and do not share junctions.
-- **DMZ → Internet native Layer-3 egress** is covered in its own flow section.
-- **DMZ → TRUST/internal** is covered in a separate diagram and section.
-- The main overview therefore does not branch into UNTRUST or TRANSIT paths, which avoids overlapping arrows and makes stateful symmetry easier to trace.
-
-Example topology:
+This diagram shows only:
 
 ~~~text
-                              INTERNET
-                                  |
-                                  v
-                                IGW
-                                  |
-                       IGW gateway route table
-                                  |
-                    DMZ subnet -> GWLBE-DMZ
-                                  |
-                                  v
-                        +-------------------+
-                        |     DMZ VPC       |
-                        |                   |
-                        |  GWLBE-DMZ-A      |
-                        +---------+---------+
-                                  |
-                           AWS PrivateLink
-                                  |
-                                  v
-                    +---------------------------+
-                    |       SECURITY VPC        |
-                    |                           |
-                    |          GWLB             |
-                    |            |              |
-                    |        VM-Series          |
-                    |                           |
-                    | DMZ VPCE -> e1/1.10 DMZ  |
-                    | TRUST VPCE -> e1/1.20    |
-                    |               TRUST       |
-                    | e1/2 -> UNTRUST           |
-                    | e1/3 -> TRANSIT           |
-                    +------+-------------+------+
-                           |             |
-                           v             v
-                     NAT/IGW        TGW/Internal
+Internet
+  -> IGW
+  -> IGW gateway route table
+  -> GWLBE-DMZ
+  -> AWS PrivateLink
+  -> GWLB
+  -> GENEVE
+  -> VM-Series
+  -> vpce-dmz-a mapped to ethernet1/1.10 / DMZ zone
+  -> inspected service-path continuation
+  -> ALB / DMZ application
 ~~~
 
-**Important:** the DMZ security identity comes from the **GWLBE/VPC endpoint mapping**. Overlay routing is what allows the firewall, after inspecting the inner packet, to select a **different egress interface**.
+There are **no outbound or reverse arrows** in this diagram.
+
+### 3.2 Outbound — DMZ to Internet
+
+![Outbound DMZ to Internet architecture](images/09-10-26-18-30_aws_paloalto_gwlb_dmz_main_outbound.svg)
+
+[Editable draw.io source](images/09-10-26-18-30_aws_paloalto_gwlb_dmz_main_outbound.drawio)
+
+This diagram shows only:
+
+~~~text
+DMZ application
+  -> DMZ subnet default route
+  -> GWLBE-DMZ
+  -> AWS PrivateLink
+  -> GWLB
+  -> GENEVE
+  -> VM-Series
+  -> vpce-dmz-a mapped to ethernet1/1.10 / DMZ zone
+  -> PAN-OS inner-header Layer-3 lookup
+  -> decapsulate
+  -> ethernet1/2 / UNTRUST
+  -> NAT Gateway or routed IGW path
+  -> Internet
+~~~
+
+There are **no inbound or reverse arrows** in this diagram.
+
+### Why they are separate
+
+The two directions use different forwarding logic after the packet reaches VM-Series:
+
+- **Inbound Internet -> DMZ** normally remains on the GWLB service path after inspection so the packet can continue toward the ALB/application.
+- **Outbound DMZ -> Internet** demonstrates the actual Palo Alto overlay-routing behavior: PAN-OS looks up the original inner destination, selects a different Layer-3 egress interface, decapsulates the packet, and sends it natively out the UNTRUST interface.
+
+This separation prevents the flow diagrams from collapsing into crossing arrows or ambiguous return paths.
 
 ---
-
 ## 4. VPC endpoint to PAN-OS zone mapping
 
 ![Endpoint to zone mapping](images/09-10-26-17-20_aws_overlay_endpoint_zone_mapping.svg)
