@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This guide condenses the major AWS firewall-inspection and service-insertion methods into one decision-oriented reference. The goal is to make it easy to distinguish **AWS Network Firewall**, **Gateway Load Balancer/Gateway Load Balancer Endpoint**, **Transit Gateway centralized inspection**, **Cloud WAN service insertion**, **VPC Route Server dynamic routing**, **Direct Connect/VPN inspection**, **Internet ingress/egress**, and **Layer-7 WAF designs**.
+This guide condenses the major AWS firewall-inspection and service-insertion methods into one decision-oriented reference. The goal is to make it easy to distinguish **AWS Network Firewall**, **Gateway Load Balancer/Gateway Load Balancer Endpoint**, **Transit Gateway centralized inspection**, **Cloud WAN service insertion**, **VPC Route Server dynamic routing**, **TGW/Cloud WAN Connect overlay insertion**, **Direct Connect/VPN inspection**, **Internet ingress/egress**, and **Layer-7 WAF designs**.
 
 For exhaustive implementation details, use the linked deep-dive guides in this repository.
 
@@ -19,6 +19,7 @@ AWS has several fundamentally different ways to put a security function into a p
 | **[Legacy TGW + direct NVA VPC](09-06-26-16-41_Legacy_TGW_NVA_VPC_Attachment_Deep_Dive.md)** | TGW route table + ENI/VPC route | Customer-managed NVA | Yes | **Direct appliance transit** |
 | **[Cloud WAN service insertion](09-06-26-17-01_AWS_Cloud_WAN_Service_Insertion_Deep_Dive.md)** | Core-network policy `send-via` / `send-to` | Network Function Group | Policy-driven | **Global policy service insertion** |
 | **[VPC Route Server + NVA](09-06-26-17-01_AWS_VPC_Route_Server_NVA_Dynamic_Service_Insertion_Deep_Dive.md)** | BGP advertisements | Customer-managed NVA | Dynamic | **Dynamic VPC routed insertion** |
+| **[TGW / Cloud WAN Connect + security NVA](09-10-26-17-10_AWS_Overlay_Networking_TGW_Cloud_WAN_Connect_Service_Insertion_Deep_Dive.md)** | BGP route selection; Cloud WAN policy where used | BGP-speaking security/SD-WAN NVA | Dynamic | **Routed overlay insertion** |
 | **[AWS WAF / CloudFront / ALB](09-06-26-15-03_AWS_Firewall_Inspection_Insertion_Comprehensive_Study_Guide.md)** | L7 resource association | AWS WAF | No routed hop | **HTTP/S application inspection** |
 
 A useful shorthand is:
@@ -31,6 +32,7 @@ TGW            = centralized regional routing fabric
 Appliance mode = AZ/path symmetry helper for stateful inspection
 Cloud WAN NFG  = policy-defined security insertion group
 VPC Route Server = BGP control plane for VPC/IGW route tables
+TGW Connect     = GRE + BGP overlay to a third-party NVA; routing makes it inline
 WAF            = L7 reverse-proxy/resource protection, not transit firewalling
 ```
 
@@ -433,6 +435,55 @@ Deep dive: [AWS VPC Route Server + NVA — Dynamic Service Insertion](09-06-26-1
 
 ---
 
+## 10A. TGW / Cloud WAN Connect + security NVA — routed overlay insertion
+
+AWS Connect attachments can place a **BGP-speaking SD-WAN/security appliance** in the routed path.
+
+~~~text
+Source attachment
+      |
+      v
+TGW / Cloud WAN routing
+      |
+      | winning route / policy selects Connect
+      v
+Connect attachment
+      |
+      | TGW: GRE + BGP
+      | Cloud WAN: GRE + BGP or Tunnel-less BGP
+      v
+Security / SD-WAN NVA
+      |
+      | inspect + route after inspection
+      v
+Destination
+~~~
+
+This is a **qualified interception method**:
+
+> **Connect does not automatically force traffic through a firewall. It provides the logical path to the appliance. BGP route selection—and for Cloud WAN, optionally NFG `send-via`/`send-to` policy—makes the appliance inline.**
+
+Key implications:
+
+- Transit Gateway Connect uses an existing **VPC or Direct Connect attachment as the transport/underlay**.
+- TGW Connect uses **GRE plus BGP**; static routes are not supported on the Connect attachment.
+- Cloud WAN Connect supports **GRE** and **Tunnel-less Connect**; Tunnel-less removes GRE overhead but is not encryption.
+- GRE itself is **not encrypted**.
+- AWS documents up to **5 Gbps and 300,000 pps per TGW Connect peer**, with up to four peers per Connect attachment and ECMP available for horizontal scaling.
+- Stateful inspection still requires a deliberate reverse path through a compatible firewall state owner.
+- Dynamic propagation can create bypass if a more-specific or direct destination route wins over the inspection path.
+- A post-inspection routing domain/path is required to prevent the appliance from attracting the same packet repeatedly and creating a loop.
+- BGP convergence restores reachability, but existing firewall sessions can still reset if failover moves flows to an appliance without synchronized state.
+- With Direct Connect underneath TGW Connect, **DX is the underlay**; the GRE/BGP relationship is the overlay.
+
+**Memorize:**
+
+> TGW Connect = overlay connectivity to the NVA. Winning routes = interception.
+
+Deep dive: [AWS Overlay Networking with Transit Gateway Connect and Cloud WAN Connect — Service Insertion Deep Dive](09-10-26-17-10_AWS_Overlay_Networking_TGW_Cloud_WAN_Connect_Service_Insertion_Deep_Dive.md)
+
+---
+
 ## 11. Same-VPC service insertion
 
 AWS allows VPC route tables to steer traffic between subnets through an appliance endpoint/ENI when the route design is valid.
@@ -548,6 +599,7 @@ Inspection can use:
 - traditional ANFW inspection VPC;
 - TGW + GWLB inspection VPC;
 - legacy direct NVA attachment;
+- **TGW Connect + security/SD-WAN NVA when BGP routing deliberately attracts the protected prefixes**;
 - Cloud WAN Network Function Group if Cloud WAN is the transit fabric.
 
 Important distinction:
