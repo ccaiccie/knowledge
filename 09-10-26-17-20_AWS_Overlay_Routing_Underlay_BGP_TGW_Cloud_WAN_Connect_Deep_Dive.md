@@ -278,9 +278,11 @@ If DMZ and internal traffic use the same endpoint mapping and the same PAN-OS zo
 
 ## 6. Inbound Internet to DMZ packet flow
 
-![Inbound Internet to DMZ](images/09-10-26-17-20_aws_overlay_inbound_dmz_flow.svg)
+![Inbound Internet to DMZ](images/09-10-26-18-15_aws_paloalto_gwlb_dmz_inbound_flow.svg)
 
-[Editable draw.io source](images/09-10-26-17-20_aws_overlay_inbound_dmz_flow.drawio)
+[Editable draw.io source](images/09-10-26-18-15_aws_paloalto_gwlb_dmz_inbound_flow.drawio)
+
+> **Diagram scope:** This figure is intentionally **single-directional**. It shows only the inbound path from the Internet client to the DMZ application. No reverse or outbound arrows are included, so the reader can trace the interception path without visual overlap.
 
 Example:
 
@@ -363,6 +365,12 @@ This separation is important for troubleshooting stateful inspection. Do not inf
 ---
 
 ## 7. DMZ to Internet packet flow
+
+![Outbound DMZ to Internet](images/09-10-26-18-15_aws_paloalto_gwlb_dmz_outbound_flow.svg)
+
+[Editable draw.io source](images/09-10-26-18-15_aws_paloalto_gwlb_dmz_outbound_flow.drawio)
+
+> **Diagram scope:** This figure is also intentionally **single-directional**. It shows a DMZ-initiated Internet session only: DMZ server → GWLBE → GWLB → VM-Series → PAN-OS inner-header route lookup → native UNTRUST egress. No inbound or return arrows are shown.
 
 This is the strongest overlay-routing use case.
 
