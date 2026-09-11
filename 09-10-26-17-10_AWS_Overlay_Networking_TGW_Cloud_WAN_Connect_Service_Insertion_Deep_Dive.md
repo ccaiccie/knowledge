@@ -12,6 +12,8 @@ Therefore, Transit Gateway Connect or Cloud WAN Connect should be treated as a *
 
 This guide explains the overlay/underlay model, exact forwarding logic, how BGP advertisements can attract traffic, Direct Connect integration, Cloud WAN Tunnel-less Connect, stateful-firewall implications, route-bypass risks, MTU and throughput considerations, HA/ECMP behavior, verification, and when to choose Connect instead of GWLB, VPC Route Server, or native AWS Network Firewall.
 
+For the routing foundation independent of firewall insertion, see [AWS Overlay Routing — Underlay, BGP, Transit Gateway Connect, Cloud WAN Connect, SD-WAN, ECMP, and Failure Domains](09-10-26-17-20_AWS_Overlay_Routing_Underlay_BGP_TGW_Cloud_WAN_Connect_Deep_Dive.md).
+
 ## Table of contents
 
 1. [Where this fits in the AWS firewall-insertion taxonomy](#1-where-this-fits-in-the-aws-firewall-insertion-taxonomy)
