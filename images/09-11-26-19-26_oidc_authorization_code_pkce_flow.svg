@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#333"/></marker></defs>
+<rect width="1500" height="980" fill="white"/>
+<text x="750" y="45" text-anchor="middle" font-family="Arial" font-size="28" font-weight="bold">OIDC Authorization Code Flow with PKCE</text>
+<g font-family="Arial" font-size="18">
+<rect x="80" y="90" width="260" height="70" rx="18" fill="#dceeff" stroke="#366"/>
+<text x="210" y="133" text-anchor="middle">Browser / End-User</text>
+<rect x="620" y="90" width="260" height="70" rx="18" fill="#e8f6df" stroke="#363"/>
+<text x="750" y="133" text-anchor="middle">Relying Party (RP)</text>
+<rect x="1160" y="90" width="260" height="70" rx="18" fill="#fff0d6" stroke="#663"/>
+<text x="1290" y="133" text-anchor="middle">OpenID Provider (OP)</text>
+<line x1="210" y1="170" x2="210" y2="920" stroke="#999" stroke-dasharray="8 8"/>
+<line x1="750" y1="170" x2="750" y2="920" stroke="#999" stroke-dasharray="8 8"/>
+<line x1="1290" y1="170" x2="1290" y2="920" stroke="#999" stroke-dasharray="8 8"/>
+
+<path d="M220 220 H740" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="480" y="210" text-anchor="middle">1. User selects Sign in</text>
+
+<path d="M740 290 H230" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="485" y="280" text-anchor="middle">2. 302 → /authorize (state, nonce, PKCE challenge)</text>
+
+<path d="M220 360 H1280" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="750" y="350" text-anchor="middle">3. Browser GET /authorize</text>
+
+<path d="M1280 430 H220" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="750" y="420" text-anchor="middle">4. Authentication / consent UI</text>
+
+<path d="M220 500 H1280" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="750" y="490" text-anchor="middle">5. User authentication completes</text>
+
+<path d="M1280 570 H220" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="750" y="560" text-anchor="middle">6. 302 → RP callback?code=...&amp;state=...</text>
+
+<path d="M220 640 H740" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="480" y="630" text-anchor="middle">7. Browser follows callback</text>
+
+<path d="M760 710 H1280" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="1020" y="700" text-anchor="middle">8. POST /token: code + code_verifier</text>
+
+<path d="M1280 780 H760" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="1020" y="770" text-anchor="middle">9. ID Token + access token (+ refresh token)</text>
+
+<path d="M760 850 H1280" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="1020" y="840" text-anchor="middle">10. GET JWKS if needed</text>
+
+<path d="M1280 900 H760" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="1020" y="890" text-anchor="middle">11. Validate signature, iss, aud, exp, nonce</text>
+</g></svg>
