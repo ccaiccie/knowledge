@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#333"/></marker></defs>
+<rect x="0" y="0" width="1200" height="680" fill="white"/>
+<text x="600" y="42" text-anchor="middle" font-family="Arial" font-size="28" font-weight="bold">PRP Architecture — Two Independent Active LANs</text>
+<rect x="470" y="80" rx="18" ry="18" width="260" height="90" fill="#e8eef7" stroke="#2d4f76" stroke-width="2"/>
+<text x="600" y="115" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">DANP-A</text><text x="600" y="142" text-anchor="middle" font-family="Arial" font-size="16">one logical endpoint / two PRP ports</text>
+<rect x="90" y="260" rx="24" ry="24" width="420" height="170" fill="#fbe9e7" stroke="#b83b32" stroke-width="3"/>
+<text x="300" y="300" text-anchor="middle" font-family="Arial" font-size="23" font-weight="bold">LAN A</text><text x="300" y="328" text-anchor="middle" font-family="Arial" font-size="16">Independent Ethernet network</text><rect x="175" y="350" width="250" height="50" rx="10" fill="#fff" stroke="#b83b32"/><text x="300" y="381" text-anchor="middle" font-family="Arial" font-size="16">Switching topology A</text>
+<rect x="690" y="260" rx="24" ry="24" width="420" height="170" fill="#e7f0fb" stroke="#2c6db2" stroke-width="3"/>
+<text x="900" y="300" text-anchor="middle" font-family="Arial" font-size="23" font-weight="bold">LAN B</text><text x="900" y="328" text-anchor="middle" font-family="Arial" font-size="16">Independent Ethernet network</text><rect x="775" y="350" width="250" height="50" rx="10" fill="#fff" stroke="#2c6db2"/><text x="900" y="381" text-anchor="middle" font-family="Arial" font-size="16">Switching topology B</text>
+<rect x="470" y="520" rx="18" ry="18" width="260" height="95" fill="#e8eef7" stroke="#2d4f76" stroke-width="2"/>
+<text x="600" y="557" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold">DANP-B</text><text x="600" y="585" text-anchor="middle" font-family="Arial" font-size="16">accept first copy, discard duplicate</text>
+<path d="M540 170 C480 205 395 215 330 260" fill="none" stroke="#b83b32" stroke-width="5" marker-end="url(#a)"/><text x="425" y="215" font-family="Arial" font-size="15">Copy A</text>
+<path d="M660 170 C720 205 805 215 870 260" fill="none" stroke="#2c6db2" stroke-width="5" marker-end="url(#a)"/><text x="735" y="215" font-family="Arial" font-size="15">Copy B</text>
+<path d="M330 430 C400 470 480 490 540 520" fill="none" stroke="#b83b32" stroke-width="5" marker-end="url(#a)"/>
+<path d="M870 430 C800 470 720 490 660 520" fill="none" stroke="#2c6db2" stroke-width="5" marker-end="url(#a)"/>
+<text x="600" y="655" text-anchor="middle" font-family="Arial" font-size="16">Both LANs forward simultaneously; no blocked standby path is required by PRP.</text>
+</svg>
