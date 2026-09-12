@@ -13,6 +13,9 @@ Comprehensive guide to DNSSEC authenticity and integrity, the root-to-child chai
 ### [MACsec (IEEE 802.1AE) — Comprehensive Network Engineering Study Guide](09-05-26-09-16_MACsec_IEEE8021AE_Study_Guide.md)
 Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA control-plane operation, CAK/CKN/SAK relationships, Secure Channels and Secure Associations, GCM-AES cipher suites, replay protection, WAN MACsec over carrier Ethernet, EAPOL transparency, MTU and Port-Channel considerations, Cisco IOS XE and Junos configuration patterns, packet flow, verification, failover, common mistakes, and troubleshooting.
 
+### [Parallel Redundancy Protocol (PRP) — IEC 62439-3 Comprehensive Study Guide](09-11-26-17-51_PRP_Parallel_Redundancy_Protocol_IEC62439_3_Study_Guide.md)
+Deep dive into IEC 62439-3 Parallel Redundancy Protocol for zero-recovery-time industrial Ethernet. Covers DANP/SAN/VDAN/RedBox roles, LAN A/LAN B independence, frame replication and duplicate discard, RCT and sequence concepts, supervision/node tables, detailed packet flow, single-LAN failure behavior, PRP vs HSR and reconverging protocols, PTP-over-PRP considerations, Cisco Industrial Ethernet configuration patterns, verification, common mistakes, and symptom-based troubleshooting, with three matching SVG/editable draw.io diagrams.
+
 ## GCP Networking
 
 ### [GCP Firewall Insertion Summary](09-07-26_GCP_Firewall_Insertion_Summary.md)
