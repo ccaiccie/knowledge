@@ -16,6 +16,9 @@ Deep dive into Layer 2 MACsec encryption and IEEE 802.1AE behavior. Covers MKA c
 ### [Parallel Redundancy Protocol (PRP) — IEC 62439-3 Comprehensive Study Guide](09-11-26-17-51_PRP_Parallel_Redundancy_Protocol_IEC62439_3_Study_Guide.md)
 Deep dive into IEC 62439-3 Parallel Redundancy Protocol for zero-recovery-time industrial Ethernet. Covers DANP/SAN/VDAN/RedBox roles, LAN A/LAN B independence, frame replication and duplicate discard, RCT and sequence concepts, supervision/node tables, detailed packet flow, single-LAN failure behavior, PRP vs HSR and reconverging protocols, PTP-over-PRP considerations, Cisco Industrial Ethernet configuration patterns, verification, common mistakes, and symptom-based troubleshooting, with three matching SVG/editable draw.io diagrams.
 
+### [FortiAP Dynamic User VLAN Assignment — Deep Dive](09-11-26-18-23_FortiAP_Dynamic_User_VLAN_Assignment_Deep_Dive.md)
+Deep dive into FortiAP/FortiWiFi dynamic user VLAN assignment for enterprise WLANs. Covers RADIUS IETF 64/65/81 attributes, default-VLAN fallback, Name Tag mappings, FortiAP-group location-based VLAN assignment, tunnel-mode VLAN pooling, bridge-versus-tunnel data paths, AP uplink trunk requirements, DHCP/routing/firewall/NAT behavior, exact authentication and packet flows, verification, roaming implications, common mistakes, and symptom-based troubleshooting, with matching SVG/editable draw.io architecture.
+
 ## GCP Networking
 
 ### [GCP Firewall Insertion Summary](09-07-26_GCP_Firewall_Insertion_Summary.md)
