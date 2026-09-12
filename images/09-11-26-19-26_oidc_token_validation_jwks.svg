@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="850" viewBox="0 0 1500 850">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#333"/></marker></defs>
+<rect width="1500" height="850" fill="white"/>
+<text x="750" y="48" text-anchor="middle" font-family="Arial" font-size="28" font-weight="bold">OIDC ID Token Validation and JWKS Key Selection</text>
+<g font-family="Arial" font-size="19">
+<rect x="70" y="120" width="360" height="170" rx="18" fill="#dceeff" stroke="#366"/>
+<text x="250" y="160" text-anchor="middle" font-weight="bold">ID Token (JWT)</text>
+<text x="250" y="198" text-anchor="middle">Header: alg + kid</text>
+<text x="250" y="230" text-anchor="middle">Payload: iss, sub, aud, exp, nonce…</text>
+<text x="250" y="262" text-anchor="middle">Signature</text>
+
+<rect x="570" y="105" width="360" height="200" rx="18" fill="#fff0d6" stroke="#663"/>
+<text x="750" y="145" text-anchor="middle" font-weight="bold">Trusted Issuer Metadata</text>
+<text x="750" y="183" text-anchor="middle">issuer</text>
+<text x="750" y="215" text-anchor="middle">jwks_uri</text>
+<text x="750" y="247" text-anchor="middle">supported algorithms</text>
+
+<rect x="1070" y="120" width="360" height="170" rx="18" fill="#e8f6df" stroke="#363"/>
+<text x="1250" y="160" text-anchor="middle" font-weight="bold">JWKS</text>
+<text x="1250" y="198" text-anchor="middle">kid → public key</text>
+<text x="1250" y="230" text-anchor="middle">kty / n / e or EC parameters</text>
+
+<path d="M430 205 H560" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="495" y="190" text-anchor="middle">iss</text>
+<path d="M930 205 H1060" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<text x="995" y="190" text-anchor="middle">jwks_uri</text>
+
+<rect x="180" y="410" width="1140" height="300" rx="20" fill="#f7f7f7" stroke="#444"/>
+<text x="750" y="455" text-anchor="middle" font-weight="bold">RP Validation Pipeline</text>
+<text x="260" y="515">1. Parse header</text>
+<text x="260" y="565">2. Enforce allowed alg</text>
+<text x="260" y="615">3. Select key by kid</text>
+<text x="260" y="665">4. Verify signature</text>
+<text x="825" y="515">5. Verify iss</text>
+<text x="825" y="565">6. Verify aud / azp</text>
+<text x="825" y="615">7. Verify exp / time claims</text>
+<text x="825" y="665">8. Verify nonce / transaction context</text>
+<path d="M750 305 V395" stroke="#333" stroke-width="3" marker-end="url(#a)"/>
+<path d="M1250 290 V370 H1000 V400" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<path d="M250 290 V370 H500 V400" stroke="#333" stroke-width="3" fill="none" marker-end="url(#a)"/>
+<text x="750" y="770" text-anchor="middle" font-weight="bold">Accept authentication only after cryptographic AND semantic validation succeeds.</text>
+</g></svg>
