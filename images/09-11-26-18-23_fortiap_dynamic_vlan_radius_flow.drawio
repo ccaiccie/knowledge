@@ -1,0 +1,24 @@
+<mxfile host="app.diagrams.net" modified="2026-09-11T18:23:00.000Z" agent="ChatGPT" version="24.7.17">
+<diagram id="dynamic-vlan" name="Dynamic VLAN RADIUS Flow">
+<mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="title" value="FortiAP Dynamic VLAN Assignment — 802.1X/RADIUS Control Plane and Bridged Data Plane" style="text;html=1;fontSize=24;fontStyle=1;align=center;" vertex="1" parent="1"><mxGeometry x="250" y="20" width="1100" height="40" as="geometry"/></mxCell>
+<mxCell id="client" value="Wi-Fi Client&#xa;802.1X supplicant&#xa;Example user: alice" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="1"><mxGeometry x="60" y="130" width="250" height="145" as="geometry"/></mxCell>
+<mxCell id="ap" value="FortiAP&#xa;SSID: CORP&#xa;WPA2/WPA3-Enterprise&#xa;local-bridging enabled&#xa;dynamic-vlan enabled" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="1"><mxGeometry x="420" y="105" width="290" height="190" as="geometry"/></mxCell>
+<mxCell id="fg" value="FortiGate / Wireless Controller&#xa;RADIUS client / NAS role&#xa;SSID/VAP + AP profile&#xa;VLAN interfaces/policies&#xa;Receives Access-Accept" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="1"><mxGeometry x="825" y="105" width="310" height="190" as="geometry"/></mxCell>
+<mxCell id="rad" value="RADIUS Server&#xa;FortiAuthenticator / NPS / ISE&#xa;Returns VLAN attributes" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="1"><mxGeometry x="1265" y="125" width="275" height="155" as="geometry"/></mxCell>
+<mxCell id="sw" value="Access Switch / FortiSwitch&#xa;AP uplink = 802.1Q trunk&#xa;Must allow assigned VLANs&#xa;Native/management VLAN separate" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="1"><mxGeometry x="410" y="405" width="310" height="200" as="geometry"/></mxCell>
+<mxCell id="v100" value="VLAN 100 — Staff&#xa;10.100.0.0/24" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;fillColor=#e0f7fa;" vertex="1" parent="1"><mxGeometry x="845" y="395" width="270" height="90" as="geometry"/></mxCell>
+<mxCell id="v200" value="VLAN 200 — Voice/IoT&#xa;10.200.0.0/24" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;fillColor=#e0f7fa;" vertex="1" parent="1"><mxGeometry x="845" y="510" width="270" height="90" as="geometry"/></mxCell>
+<mxCell id="gw" value="Gateway / DHCP / Policy&#xa;FortiGate or upstream L3&#xa;DHCP scope per VLAN" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="1"><mxGeometry x="1260" y="430" width="280" height="145" as="geometry"/></mxCell>
+<mxCell id="e1" value="1. EAPOL" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;html=1;" edge="1" parent="1" source="client" target="ap"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e2" value="2. Auth exchange" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;html=1;" edge="1" parent="1" source="ap" target="fg"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3" value="3. RADIUS Access-Request" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;html=1;" edge="1" parent="1" source="fg" target="rad"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e4" value="4. Access-Accept + IETF 64/65/81" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;html=1;" edge="1" parent="1" source="rad" target="fg"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e5" value="5. VLAN decision to AP" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;html=1;" edge="1" parent="1" source="fg" target="ap"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e6" value="6. Tagged client data" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;" edge="1" parent="1" source="ap" target="sw"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e7" value="VLAN 100 frames" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;" edge="1" parent="1" source="sw" target="v100"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e8" value="VLAN 200 frames" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;" edge="1" parent="1" source="sw" target="v200"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e9" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;" edge="1" parent="1" source="v100" target="gw"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e10" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;" edge="1" parent="1" source="v200" target="gw"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>
