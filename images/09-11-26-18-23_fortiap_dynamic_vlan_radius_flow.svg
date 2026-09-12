@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#333"/></marker>
+  <style>
+    .box{fill:#f8fafc;stroke:#334155;stroke-width:2;rx:18;ry:18}
+    .title{font:700 24px Arial;fill:#0f172a}
+    .txt{font:18px Arial;fill:#0f172a}
+    .small{font:16px Arial;fill:#334155}
+    .flow{fill:none;stroke:#334155;stroke-width:3;marker-end:url(#arrow)}
+    .ctrl{fill:none;stroke:#475569;stroke-width:3;stroke-dasharray:10 8;marker-end:url(#arrow)}
+    .vlan{fill:#ecfeff;stroke:#0891b2;stroke-width:2}
+  </style>
+</defs>
+<text x="800" y="45" text-anchor="middle" class="title">FortiAP Dynamic VLAN Assignment — 802.1X/RADIUS Control Plane and Bridged Data Plane</text>
+
+<rect x="60" y="130" width="250" height="145" class="box"/>
+<text x="185" y="170" text-anchor="middle" class="title">Wi-Fi Client</text>
+<text x="185" y="205" text-anchor="middle" class="txt">802.1X supplicant</text>
+<text x="185" y="235" text-anchor="middle" class="small">Example user: alice</text>
+
+<rect x="420" y="105" width="290" height="190" class="box"/>
+<text x="565" y="145" text-anchor="middle" class="title">FortiAP</text>
+<text x="565" y="180" text-anchor="middle" class="txt">SSID: CORP</text>
+<text x="565" y="210" text-anchor="middle" class="small">WPA2/WPA3-Enterprise</text>
+<text x="565" y="238" text-anchor="middle" class="small">local-bridging enabled</text>
+<text x="565" y="266" text-anchor="middle" class="small">dynamic-vlan enabled</text>
+
+<rect x="825" y="105" width="310" height="190" class="box"/>
+<text x="980" y="145" text-anchor="middle" class="title">FortiGate / Wireless Controller</text>
+<text x="980" y="180" text-anchor="middle" class="txt">RADIUS client / NAS role</text>
+<text x="980" y="210" text-anchor="middle" class="small">SSID/VAP + AP profile</text>
+<text x="980" y="238" text-anchor="middle" class="small">VLAN interfaces/policies</text>
+<text x="980" y="266" text-anchor="middle" class="small">Receives Access-Accept</text>
+
+<rect x="1265" y="125" width="275" height="155" class="box"/>
+<text x="1402" y="165" text-anchor="middle" class="title">RADIUS Server</text>
+<text x="1402" y="200" text-anchor="middle" class="txt">FortiAuthenticator / NPS / ISE</text>
+<text x="1402" y="232" text-anchor="middle" class="small">Returns VLAN attributes</text>
+
+<path d="M310 185 H420" class="ctrl"/>
+<text x="365" y="165" text-anchor="middle" class="small">1. EAPOL</text>
+<path d="M710 175 H825" class="ctrl"/>
+<text x="767" y="155" text-anchor="middle" class="small">2. Auth exchange</text>
+<path d="M1135 190 H1265" class="ctrl"/>
+<text x="1200" y="170" text-anchor="middle" class="small">3. RADIUS Access-Request</text>
+<path d="M1265 245 H1135" class="ctrl"/>
+<text x="1200" y="275" text-anchor="middle" class="small">4. Access-Accept + IETF 64/65/81</text>
+<path d="M825 255 H710" class="ctrl"/>
+<text x="767" y="290" text-anchor="middle" class="small">5. VLAN decision to AP</text>
+
+<rect x="410" y="405" width="310" height="200" class="box"/>
+<text x="565" y="445" text-anchor="middle" class="title">Access Switch / FortiSwitch</text>
+<text x="565" y="480" text-anchor="middle" class="txt">AP uplink = 802.1Q trunk</text>
+<text x="565" y="515" text-anchor="middle" class="small">Must allow assigned VLANs</text>
+<text x="565" y="548" text-anchor="middle" class="small">Native/management VLAN separate</text>
+
+<rect x="845" y="395" width="270" height="90" class="vlan"/>
+<text x="980" y="430" text-anchor="middle" class="title">VLAN 100 — Staff</text>
+<text x="980" y="460" text-anchor="middle" class="small">10.100.0.0/24</text>
+<rect x="845" y="510" width="270" height="90" class="vlan"/>
+<text x="980" y="545" text-anchor="middle" class="title">VLAN 200 — Voice/IoT</text>
+<text x="980" y="575" text-anchor="middle" class="small">10.200.0.0/24</text>
+
+<rect x="1260" y="430" width="280" height="145" class="box"/>
+<text x="1400" y="470" text-anchor="middle" class="title">Gateway / DHCP / Policy</text>
+<text x="1400" y="505" text-anchor="middle" class="txt">FortiGate or upstream L3</text>
+<text x="1400" y="538" text-anchor="middle" class="small">DHCP scope per VLAN</text>
+
+<path d="M565 295 V405" class="flow"/>
+<text x="585" y="350" class="small">6. Client data is tagged</text>
+<text x="585" y="375" class="small">with assigned VLAN ID</text>
+
+<path d="M720 455 H845" class="flow"/>
+<text x="782" y="438" text-anchor="middle" class="small">VLAN 100 frames</text>
+<path d="M720 545 H845" class="flow"/>
+<text x="782" y="528" text-anchor="middle" class="small">VLAN 200 frames</text>
+<path d="M1115 440 H1260" class="flow"/>
+<path d="M1115 555 H1260" class="flow"/>
+
+<text x="80" y="705" class="title">Key distinction</text>
+<text x="80" y="745" class="txt">RADIUS decides the user's logical VLAN; in local-bridge mode the AP emits the user's Ethernet frames on the wired uplink with that 802.1Q tag.</text>
+<text x="80" y="780" class="txt">The switch path must carry that VLAN end-to-end. In tunnel mode, client data is carried toward the FortiGate rather than locally bridged at the AP.</text>
+<text x="80" y="825" class="small">Control plane (dashed): 802.1X/EAP + RADIUS. Data plane (solid): post-authentication client traffic.</text>
+</svg>
