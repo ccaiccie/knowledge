@@ -651,31 +651,76 @@ OIDC is an application-layer protocol carried predominantly over HTTPS.
 
 ### Front channel
 
-Browser-visible redirects:
+Before reading the flow, define the two OIDC roles:
+
+- **RP — Relying Party:** the application that wants to sign the user in. In this guide, the RP is the web application at `https://app.example.com`.
+- **OP — OpenID Provider:** the identity provider that authenticates the user and issues the OIDC tokens. Examples include Microsoft Entra ID, Okta, Auth0, Google Identity, Ping Identity, or another standards-compliant OIDC provider.
+
+A simple way to remember the relationship is:
+
+```text
+RP = "I rely on another system to tell me who this user is."
+OP = "I am the identity provider that authenticates the user."
+```
+
+The **front channel** is the part of the OIDC flow that goes through the user's browser. The browser is redirected between the RP and the OP, so these requests and redirects are visible in browser developer tools.
 
 ```text
 Browser -> RP
+    The user opens the application or clicks Sign in.
+
 RP -> Browser: 302 to OP /authorize
+    The RP tells the browser to go to the OpenID Provider's authorization endpoint.
+
 Browser -> OP /authorize
+    The browser follows the redirect and sends the authorization request to the OP.
+
 OP -> Browser: authentication UI
+    The OP presents its login, MFA, passkey, or other authentication experience.
+
 OP -> Browser: 302 to RP callback?code=...&state=...
+    After successful authentication, the OP redirects the browser back to the RP.
+    The response normally contains a short-lived authorization code and the original state value.
+
 Browser -> RP callback
+    The browser follows the redirect back to the RP's registered callback URI.
 ```
+
+In this sequence, the browser never needs to know the RP's client secret. With Authorization Code Flow, the browser carries the authorization request and authorization code, while the token exchange happens separately over the back channel.
 
 ### Back channel
 
-Server-to-server exchanges:
+The **back channel** is direct server-to-server communication. The user's browser does not carry these requests.
 
 ```text
-RP -> OP token endpoint: authorization code + verifier
+RP -> OP token endpoint: authorization code + code_verifier
+    The RP redeems the authorization code at the OP's token endpoint.
+    With PKCE, it also supplies the matching code_verifier.
+
 OP -> RP: ID Token + access token (+ optional refresh token)
+    The OP returns tokens directly to the RP over HTTPS.
 
 RP -> OP JWKS URI: GET public keys
+    The RP retrieves the OP's published JSON Web Key Set when it needs signing keys.
+
 OP -> RP: JWKS
+    The OP returns public keys that the RP can use to validate the ID Token signature.
 
 RP -> API: Authorization: Bearer <access_token>
+    The RP uses the access token when calling the protected API.
+
 API -> RP: protected data
+    The API validates the access token and, if authorized, returns the requested resource.
 ```
+
+The most important distinction is:
+
+```text
+Front channel = Browser participates in the exchange.
+Back channel  = RP talks directly to the OP or API over HTTPS.
+```
+
+The RP trusts the OP for the authentication result only after validating the ID Token's signature and claims such as `iss`, `aud`, `exp`, and, where applicable, `nonce`.
 
 ### NAT and firewalls
 
