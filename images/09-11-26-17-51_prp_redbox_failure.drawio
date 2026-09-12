@@ -1,0 +1,10 @@
+<mxfile host="app.diagrams.net"><diagram name="Page-1"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900"><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="2" value="SAN → PRP RedBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eef7;strokeColor=#2d4f76;fontSize=18;" vertex="1" parent="1"><mxGeometry x="120" y="260" width="260" height="100" as="geometry"/></mxCell>
+<mxCell id="3" value="LAN A — FAILED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdeceb;strokeColor=#b83b32;fontSize=18;" vertex="1" parent="1"><mxGeometry x="610" y="120" width="330" height="120" as="geometry"/></mxCell>
+<mxCell id="4" value="LAN B — healthy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf2fc;strokeColor=#2c6db2;fontSize=18;" vertex="1" parent="1"><mxGeometry x="610" y="430" width="330" height="120" as="geometry"/></mxCell>
+<mxCell id="5" value="Destination / PRP peer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eef7;strokeColor=#2d4f76;fontSize=18;" vertex="1" parent="1"><mxGeometry x="1120" y="260" width="260" height="100" as="geometry"/></mxCell>
+<mxCell id="6" value="A" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b83b32;strokeWidth=3;endArrow=block;" edge="1" parent="1" source="2" target="3"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="7" value="B" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2c6db2;strokeWidth=3;endArrow=block;" edge="1" parent="1" source="2" target="4"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b83b32;strokeWidth=3;endArrow=block;" edge="1" parent="1" source="3" target="5"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2c6db2;strokeWidth=3;endArrow=block;" edge="1" parent="1" source="4" target="5"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>
