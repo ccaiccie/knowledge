@@ -4,6 +4,9 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
+### [OpenID Connect (OIDC) — Comprehensive Authentication, Token, PKCE, JWKS, and Troubleshooting Study Guide](09-11-26-19-26_OIDC_OpenID_Connect_Comprehensive_Study_Guide.md)
+Deep dive into OIDC as the OAuth 2.0 identity layer. Covers RP/OP roles, Authorization Code Flow with PKCE, ID Token vs access token, scopes and claims, Discovery, JWKS and key rotation, state/nonce/PKCE distinctions, confidential/public/SPA/native clients, UserInfo, logout/session behavior, reverse-proxy and load-balancer considerations, secure token validation, verification, common mistakes, and symptom-based troubleshooting, with matching SVG/editable draw.io diagrams.
+
 ### [Perimeter Design Engineer Interview Study Guide](09-10-26-07-33_Perimeter_Design_Engineer_Interview_Study_Guide.md)
 Interview-focused perimeter architecture guide covering FortiGate/FortiManager/FortiAnalyzer/Security Fabric, Check Point R82/ClusterXL, Arista CloudVision, BGP/OSPF, SD-WAN coexistence, DMZ design, Zero Trust, HLD/LLD ownership, change governance, packet/session flow, HA convergence, verification, troubleshooting, and three matching SVG/editable draw.io diagrams.
 
