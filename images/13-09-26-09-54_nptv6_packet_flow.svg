@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780">
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#334155"/></marker>
+<style>text{font-family:Arial,sans-serif;fill:#0f172a}.title{font-size:28px;font-weight:700}.h{font-size:20px;font-weight:700}.b{font-size:17px}.s{font-size:15px}.box{rx:18;stroke-width:2}.f{fill:none;stroke:#334155;stroke-width:3;marker-end:url(#a)}</style></defs>
+<rect width="1400" height="780" fill="#fff"/>
+<text x="700" y="44" text-anchor="middle" class="title">NPTv6 — Stateless 1:1 IPv6 Prefix Translation</text>
+<rect x="70" y="115" width="310" height="160" class="box" fill="#dbeafe" stroke="#2563eb"/>
+<text x="225" y="150" text-anchor="middle" class="h">Inside IPv6 network</text>
+<text x="225" y="188" text-anchor="middle" class="b">Internal prefix: fd00:10::/48</text>
+<text x="225" y="225" text-anchor="middle" class="b">Host: fd00:10:20::1234</text>
+<rect x="540" y="115" width="320" height="160" class="box" fill="#fef3c7" stroke="#d97706"/>
+<text x="700" y="150" text-anchor="middle" class="h">NPTv6 translator</text>
+<text x="700" y="188" text-anchor="middle" class="b">Algorithmic, checksum-neutral</text>
+<text x="700" y="225" text-anchor="middle" class="b">No port translation / no NAT binding</text>
+<rect x="1020" y="115" width="310" height="160" class="box" fill="#dcfce7" stroke="#16a34a"/>
+<text x="1175" y="150" text-anchor="middle" class="h">External IPv6 network</text>
+<text x="1175" y="188" text-anchor="middle" class="b">Provider prefix: 2001:db8:100::/48</text>
+<text x="1175" y="225" text-anchor="middle" class="b">Globally routed representation</text>
+
+<path class="f" d="M380 365 H540"/><text x="460" y="346" text-anchor="middle" class="b">1. Outbound IPv6</text>
+<text x="460" y="391" text-anchor="middle" class="s">src fd00:10:20::1234</text>
+<path class="f" d="M860 365 H1020"/><text x="940" y="346" text-anchor="middle" class="b">2. Prefix translated</text>
+<text x="940" y="391" text-anchor="middle" class="s">src 2001:db8:100:…::1234*</text>
+<path class="f" d="M1020 505 H860"/><text x="940" y="486" text-anchor="middle" class="b">3. Inbound return</text>
+<text x="940" y="531" text-anchor="middle" class="s">dst external mapped IPv6</text>
+<path class="f" d="M540 505 H380"/><text x="460" y="486" text-anchor="middle" class="b">4. Reverse algorithm</text>
+<text x="460" y="531" text-anchor="middle" class="s">dst fd00:10:20::1234</text>
+
+<rect x="330" y="600" width="740" height="125" class="box" fill="#f8fafc" stroke="#64748b"/>
+<text x="700" y="635" text-anchor="middle" class="h">Mental model</text>
+<text x="700" y="670" text-anchor="middle" class="b">NAT64 changes address family (IPv6 ↔ IPv4) and usually keeps state.</text>
+<text x="700" y="700" text-anchor="middle" class="b">NPTv6 stays IPv6 ↔ IPv6, preserves 1:1 reachability, and is stateless.</text>
+<text x="700" y="752" text-anchor="middle" class="s">*RFC 6296 checksum-neutral adjustment can alter bits outside the translated routing prefix; do not assume literal prefix substitution in every address.</text>
+</svg>
