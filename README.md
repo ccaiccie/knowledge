@@ -4,6 +4,9 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
+### [DNS64 and NAT64 Across Fortinet, Palo Alto Networks, and Cisco — Deep Dive](09-13-26-10-00_DNS64_NAT64_Fortinet_Palo_Alto_Cisco_Comparison_Deep_Dive.md)
+Cross-vendor IPv6-transition guide explaining DNS64 synthesis versus NAT64 packet translation, FortiGate native DNS64 + NAT64, Palo Alto external-DNS64 + PAN-OS NAT64, Cisco IOS XE separate-DNS64 prerequisite + Stateful NAT64, prefix coordination, packet flow, operational caveats, verification, troubleshooting, and two matching SVG/editable draw.io diagrams.
+
 ### [OpenID Connect (OIDC) — Comprehensive Authentication, Token, PKCE, JWKS, and Troubleshooting Study Guide](09-11-26-19-26_OIDC_OpenID_Connect_Comprehensive_Study_Guide.md)
 Deep dive into OIDC as the OAuth 2.0 identity layer. Covers RP/OP roles, Authorization Code Flow with PKCE, ID Token vs access token, scopes and claims, Discovery, JWKS and key rotation, state/nonce/PKCE distinctions, confidential/public/SPA/native clients, UserInfo, logout/session behavior, reverse-proxy and load-balancer considerations, secure token validation, verification, common mistakes, and symptom-based troubleshooting, with matching SVG/editable draw.io diagrams.
 
