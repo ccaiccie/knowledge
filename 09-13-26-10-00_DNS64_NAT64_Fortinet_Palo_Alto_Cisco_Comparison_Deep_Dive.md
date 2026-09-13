@@ -1,5 +1,67 @@
 # DNS64 and NAT64 Across Fortinet, Palo Alto Networks, and Cisco — Deep Dive
 
+## COPY/PASTE — Palo Alto Set Commands
+
+### NPTv6 — complete set block
+
+```cli
+configure
+
+set address NPTV6-INSIDE ip-netmask fd00:10:10::/64
+set address NPTV6-OUTSIDE ip-netmask 2001:db8:100:10::/64
+
+set rulebase nat rules NPTV6-OUT nat-type nptv6
+set rulebase nat rules NPTV6-OUT from Trust-v6
+set rulebase nat rules NPTV6-OUT to Untrust-v6
+set rulebase nat rules NPTV6-OUT source NPTV6-INSIDE
+set rulebase nat rules NPTV6-OUT destination any
+set rulebase nat rules NPTV6-OUT service any
+set rulebase nat rules NPTV6-OUT source-translation static-ip translated-address NPTV6-OUTSIDE
+set rulebase nat rules NPTV6-OUT source-translation static-ip bi-directional yes
+
+set rulebase security rules NPTV6-OUT-ALLOW from Trust-v6
+set rulebase security rules NPTV6-OUT-ALLOW to Untrust-v6
+set rulebase security rules NPTV6-OUT-ALLOW source NPTV6-INSIDE
+set rulebase security rules NPTV6-OUT-ALLOW destination any
+set rulebase security rules NPTV6-OUT-ALLOW application any
+set rulebase security rules NPTV6-OUT-ALLOW service application-default
+set rulebase security rules NPTV6-OUT-ALLOW action allow
+
+commit
+```
+
+### NAT64 — complete set block
+
+```cli
+configure
+
+set address IPV6-CLIENTS ip-netmask 2001:db8:10::/64
+set address NAT64-PREFIX ip-netmask 64:ff9b::/96
+set address NAT64-IPV4-SNAT ip-netmask 203.0.113.10/32
+
+set rulebase nat rules NAT64-V6-OUT nat-type nat64
+set rulebase nat rules NAT64-V6-OUT from Trust-v6
+set rulebase nat rules NAT64-V6-OUT to Untrust-v4
+set rulebase nat rules NAT64-V6-OUT source IPV6-CLIENTS
+set rulebase nat rules NAT64-V6-OUT destination NAT64-PREFIX
+set rulebase nat rules NAT64-V6-OUT service any
+set rulebase nat rules NAT64-V6-OUT source-translation dynamic-ip-and-port translated-address NAT64-IPV4-SNAT
+
+set rulebase security rules NAT64-V6-OUT-ALLOW from Trust-v6
+set rulebase security rules NAT64-V6-OUT-ALLOW to Untrust-v4
+set rulebase security rules NAT64-V6-OUT-ALLOW source IPV6-CLIENTS
+set rulebase security rules NAT64-V6-OUT-ALLOW destination NAT64-PREFIX
+set rulebase security rules NAT64-V6-OUT-ALLOW application any
+set rulebase security rules NAT64-V6-OUT-ALLOW service application-default
+set rulebase security rules NAT64-V6-OUT-ALLOW action allow
+
+commit
+```
+
+> **PAN-OS version note:** These are PAN-OS 11.2-style local firewall CLI commands. Validate the exact hierarchy on your target release before pasting, especially PAN-OS 12.1 and later.
+
+---
+
 ## Source URLs
 
 - Fortinet FortiGate — NAT64 policy and DNS64 (DNS proxy)  
