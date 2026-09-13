@@ -678,3 +678,286 @@ Verify:
 
 5. Cisco IOS XE 17.x — Stateful Network Address Translation 64  
    https://www.cisco.com/c/en/us/td/docs/routers/ios/config/17-x/ip-addressing/b-ip-addressing/m_iadnat-stateful-nat64.html
+
+---
+
+## 12. Expanded NAT64 and NPTv6 vendor implementation
+
+This section consolidates the unique technical material from the former standalone NAT64/NPTv6 and Palo Alto CLI articles so this file remains the single canonical guide.
+
+### 12.1 NAT64 vs NPTv6 mental model
+
+| Property | NAT64 | NPTv6 |
+|---|---|---|
+| Address families | IPv6 ↔ IPv4 | IPv6 ↔ IPv6 |
+| Primary use | IPv6-only ↔ IPv4-only interoperability | Provider-prefix independence, renumbering, multihoming |
+| Typical state | Stateful in common enterprise implementations | Stateless by design |
+| Port translation | Often yes with PAT/DIPP | No |
+| DNS dependency | DNS64 commonly required for name-based IPv6→IPv4 access | None inherent |
+| Address mapping | Many IPv6 clients can share one/few IPv4 addresses | Algorithmic 1:1 |
+| Security function | No | No |
+
+> **Mnemonic:** NAT64 changes the address family. NPTv6 keeps IPv6 and changes the prefix.
+
+### 12.2 NAT64 packet-flow example
+
+![NAT64 packet flow](images/13-09-26-09-54_nat64_packet_flow.svg)
+
+[Editable draw.io source](images/13-09-26-09-54_nat64_packet_flow.drawio)
+
+**What this image shows:** an IPv6-only client resolves an IPv4-only server through DNS64, sends to an IPv4-embedded IPv6 destination, and the NAT64 device creates the corresponding IPv4 flow.
+
+**What matters:** an address such as `64:ff9b::c000:250` encodes IPv4 `192.0.2.80`; it is not an IPv6 address configured on the IPv4 server.
+
+**What to verify:** route the NAT64 prefix toward the translator, keep the DNS64 and NAT64 prefixes identical, and ensure the translated IPv4 source pool is routable back to the translator.
+
+Example:
+
+```text
+IPv6 client:       2001:db8:10::10
+IPv4 server:       192.0.2.80:443
+NAT64 prefix:      64:ff9b::/96
+NAT64 IPv4 pool:   198.51.100.10
+```
+
+Forward translation:
+
+```text
+Before
+2001:db8:10::10:51500 -> 64:ff9b::c000:250:443
+
+After
+198.51.100.10:40001 -> 192.0.2.80:443
+```
+
+The return packet is matched against the existing NAT64 state and translated back to the original IPv6 client.
+
+### 12.3 NPTv6 packet flow and checksum neutrality
+
+![NPTv6 packet flow](images/13-09-26-09-54_nptv6_packet_flow.svg)
+
+[Editable draw.io source](images/13-09-26-09-54_nptv6_packet_flow.drawio)
+
+**What this image shows:** an inside IPv6 prefix is algorithmically represented by an outside IPv6 prefix.
+
+**What matters:** NPTv6 is deterministic and 1:1; it does not create a many-to-one port mapping.
+
+**What to verify:** upstream routing must return the translated external prefix to the NPTv6 device.
+
+RFC 6296 requires checksum-neutral translation. TCP and UDP checksums include an IPv6 pseudo-header containing source and destination addresses, so the translation algorithm must preserve the checksum contribution. As a result, the mapped address is not always a simplistic visible prefix replacement; a compensating 16-bit adjustment can occur.
+
+Because the mapping is algorithmic and stateless, multiple translators configured with the same inside/outside prefixes can independently calculate the same address mapping. A stateful firewall can still keep **firewall session state**; “stateless NPTv6” refers to the translation mapping itself.
+
+### 12.4 Cisco IOS XE implementation
+
+#### Stateful NAT64
+
+Cisco IOS XE documents Stateful NAT64 with a stateful prefix, an IPv4 pool, and optional overload/PAT.
+
+```cli
+ipv6 unicast-routing
+!
+interface GigabitEthernet0/0/0
+ description IPv6-facing
+ ipv6 enable
+ ipv6 address 2001:DB8:10::1/64
+ nat64 enable
+!
+interface GigabitEthernet0/0/1
+ description IPv4-facing
+ ip address 198.51.100.1 255.255.255.0
+ nat64 enable
+!
+ipv6 access-list NAT64-V6
+ permit ipv6 2001:DB8:10::/64 any
+!
+nat64 prefix stateful 64:FF9B::/96
+nat64 v4 pool V4POOL 198.51.100.10 198.51.100.10
+nat64 v6v4 list NAT64-V6 pool V4POOL overload
+```
+
+Verification:
+
+```cli
+show nat64 translations
+show nat64 pools
+show nat64 prefix stateful global
+show nat64 statistics
+show nat64 timeouts
+show ipv6 route 64:FF9B::/96
+show ip route 198.51.100.10
+```
+
+Cisco documents a separate working DNS64 installation as a prerequisite for DNS-based Stateful NAT64.
+
+#### Cisco NPTv6
+
+Cisco exposes NPTv6 through **NAT66** CLI terminology:
+
+```cli
+interface GigabitEthernet0/0/0
+ nat66 inside
+!
+interface GigabitEthernet0/0/1
+ nat66 outside
+!
+nat66 prefix inside 2001:DB8:10::/48 outside 2001:DB8:200::/48
+```
+
+Verification:
+
+```cli
+show nat66 prefix
+show nat66 statistics
+show platform hardware qfp active feature nat66 datapath prefix
+show platform hardware qfp active feature nat66 datapath statistics
+```
+
+### 12.5 Palo Alto Networks implementation
+
+The complete PAN-OS NPTv6 and NAT64 `set` command blocks are already consolidated earlier in this guide under **COPY/PASTE — Palo Alto Set Commands** and the detailed Palo Alto configuration section.
+
+Additional operational points from the former standalone article are retained here:
+
+- PAN-OS NAT64 is stateful for IPv6-initiated communication.
+- PAN-OS requires a third-party/other DNS64 solution for the common IPv6-initiated DNS-based workflow.
+- Security policy is separate from NAT.
+- Security policy matches the **original/pre-NAT addresses** while using the **post-NAT destination zone**.
+- PAN-OS NPTv6 is stateless translation even though the firewall itself can maintain session state.
+- NPTv6 policy fields support IPv6 prefix lengths documented from **/32 through /112**.
+- Beginning with PAN-OS 11.1.5, Palo Alto documents source NPTv6 using dynamically assigned IPv6 prefixes from DHCPv6, PPPoEv6, or cellular/5G interfaces.
+- NDP Proxy may be required when the translated prefix must be represented as on-link.
+- Palo Alto documents the `test nptv6` CLI for applicable checksum-neutral mapping validation scenarios.
+
+Useful verification:
+
+```cli
+show session all filter source <ipv6-address>
+show session all filter destination <ipv6-address>
+show routing route
+show neighbor interface all
+```
+
+### 12.6 FortiGate implementation
+
+#### NAT64 + DNS64
+
+FortiGate can provide both the DNS64/DNS-proxy function and NAT64 packet translation.
+
+Example objects from Fortinet documentation:
+
+```cli
+config system dns-server
+    edit "port10"
+        set mode forward-only
+    next
+end
+
+config firewall vip6
+    edit "vip6"
+        set extip 64:ff9b::-64:ff9b::ffff:ffff
+        set embedded-ipv4-address enable
+    next
+end
+
+config firewall address6
+    edit "internal-net6"
+        set ip6 2001:db8:1::/48
+    next
+end
+```
+
+With Central NAT, Fortinet documents a two-stage policy evaluation around the NAT64 processing path. Address matching must therefore be designed carefully to avoid unintended policy hits.
+
+Verification:
+
+```cli
+get router info6 routing-table all
+get router info routing-table all
+diagnose sys session filter clear
+diagnose sys session list
+diagnose debug flow filter clear
+diagnose debug flow show function-name enable
+diagnose debug enable
+diagnose debug flow trace start 20
+```
+
+Stop debug after collection:
+
+```cli
+diagnose debug disable
+```
+
+#### FortiGate NPTv6
+
+Fortinet added documented partial RFC 6296 NPTv6 support in FortiOS 7.6.0.
+
+```cli
+config firewall ippool6
+    edit "NPTV6-POOL"
+        set type nptv6
+        set internal-prefix 2001:db8:10::/64
+        set external-prefix 2001:db8:200::/64
+    next
+end
+```
+
+Verification:
+
+```cli
+show firewall ippool6
+show firewall policy
+diagnose sys session list
+diagnose debug flow filter addr6 <ipv6-address>
+diagnose debug flow show function-name enable
+diagnose debug enable
+diagnose debug flow trace start 20
+```
+
+### 12.7 Routing, HA, and design implications
+
+**NAT64 routing:** the IPv6 side must route the NAT64 prefix to the translator, and the IPv4 side must route the translated source pool/address back to it.
+
+**NPTv6 routing:** the external translated prefix must be routed toward the NPTv6 device. NPTv6 does not advertise that prefix automatically.
+
+**HA:** Stateful NAT64 may require session/binding synchronization for hitless failover. NPTv6 translation mappings themselves are algorithmic and do not require per-flow translation state, though firewall session state may still need HA synchronization.
+
+**MTU/PMTUD:** preserve ICMPv6 Packet Too Big and the relevant translated ICMP behavior; otherwise an apparent application problem can actually be Path MTU Discovery failure.
+
+### 12.8 Additional common mistakes
+
+1. Calling NPTv6 “NAT64 for IPv6.”
+2. Assuming DNS64 translates packets.
+3. Routing `64:ff9b::/96` toward the public Internet instead of toward the NAT64 translator.
+4. Expecting dynamic NAT64 PAT to accept unsolicited IPv4-initiated connections without static bindings.
+5. Assuming NPTv6 translates ports.
+6. Treating NPTv6 or NAT64 as a security policy.
+7. Ignoring return routing for the translated NPTv6 prefix.
+8. Assuming checksum-neutral NPTv6 is always a literal textual prefix swap.
+9. Assuming “stateless NPTv6” means a firewall keeps no sessions.
+10. Skipping platform/release validation.
+
+### 12.9 Additional source URLs
+
+#### IETF
+
+- https://www.rfc-editor.org/rfc/rfc6052.html
+- https://www.rfc-editor.org/rfc/rfc6146.html
+- https://www.rfc-editor.org/rfc/rfc6296.html
+
+#### Cisco
+
+- https://www.cisco.com/c/en/us/td/docs/routers/ios/config/17-x/ip-addressing/b-ip-addressing/m_iadnat-stateful-nat64.html
+- https://www.cisco.com/c/en/us/td/docs/routers/ios/config/17-x/ip-addressing/b-ip-addressing/m_iadnat-asr1k-nptv6.html
+
+#### Palo Alto Networks
+
+- https://docs.paloaltonetworks.com/ngfw/networking/nat64
+- https://docs.paloaltonetworks.com/ngfw/networking/nat64/configure-nat64-for-ipv6-initiated-communication
+- https://docs.paloaltonetworks.com/ngfw/networking/nptv6/how-nptv6-works
+- https://docs.paloaltonetworks.com/ngfw/networking/nptv6/create-an-nptv6-policy
+
+#### Fortinet
+
+- https://docs.fortinet.com/document/fortigate/latest/administration-guide/443324/nat64-policy-and-dns64-dns-proxy
+- https://docs.fortinet.com/document/fortigate/7.6.0/new-features/625228/nptv6-protocol-for-ipv6-address-translation
