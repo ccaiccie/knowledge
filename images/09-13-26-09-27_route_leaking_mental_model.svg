@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="600" y="38" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700" fill="#111827">Mental Model: Leak the Route, Not the Packet</text>
+  <text x="600" y="66" text-anchor="middle" font-family="Arial" font-size="16" fill="#4b5563">Each VRF owns a separate RIB/FIB. Route leaking copies selected reachability into another routing table.</text>
+  
+  <g>
+    <rect x="70" y="150" width="290" height="200" rx="18" ry="18" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+    <text x="215" y="182" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">Global VRF / Default RIB</text>
+    <text x="215" y="212" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">10.50.50.0/24 = connected</text><text x="215" y="236" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">0.0.0.0/0 = upstream</text><text x="215" y="260" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">No VRF-103 routes initially</text>
+  </g>
+  <g>
+    <rect x="455" y="120" width="290" height="260" rx="18" ry="18" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+    <text x="600" y="152" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">IOS XE Router</text>
+    <text x="600" y="182" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">route-replicate selects prefixes</text><text x="600" y="206" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Destination RIB installs replica</text><text x="600" y="230" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">RIB decides forwarding</text><text x="600" y="254" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Redistribution is separate</text>
+  </g>
+  <g>
+    <rect x="840" y="150" width="290" height="200" rx="18" ry="18" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+    <text x="985" y="182" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">VRF 103 RIB</text>
+    <text x="985" y="212" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">10.10.10.0/24 = connected</text><text x="985" y="236" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">No global routes initially</text><text x="985" y="260" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Leaked route appears with +</text>
+  </g>
+  <g>
+    <rect x="455" y="455" width="290" height="120" rx="18" ry="18" fill="#f3e8ff" stroke="#9333ea" stroke-width="3"/>
+    <text x="600" y="487" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">Routing Neighbor</text>
+    <text x="600" y="517" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">BGP / OSPF / EIGRP</text><text x="600" y="541" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Learns only after redistribution</text>
+  </g>
+  
+  <path d="M360 215 C410 215 410 200 455 200" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow0)"/>
+  <defs><marker id="arrow0" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#2563eb"/></marker></defs>
+  <text x="408" y="185" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#2563eb">1. replicate selected route</text>
+  <path d="M745 250 C795 250 795 250 840 250" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow1)"/>
+  <defs><marker id="arrow1" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#16a34a"/></marker></defs>
+  <text x="792" y="230" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#16a34a">2. install in destination RIB</text>
+  <path d="M600 380 C600 420 600 420 600 455" fill="none" stroke="#9333ea" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow2)"/>
+  <defs><marker id="arrow2" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#9333ea"/></marker></defs>
+  <text x="600" y="420" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#9333ea">3. redistribute if neighbor must learn it</text>
+</svg>
