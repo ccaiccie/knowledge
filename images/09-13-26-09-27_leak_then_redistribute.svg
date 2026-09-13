@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="600" y="38" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700" fill="#111827">Example 2: Route Leaking vs Redistribution</text>
+  <text x="600" y="66" text-anchor="middle" font-family="Arial" font-size="16" fill="#4b5563">Leaking changes which RIB knows the route. Redistribution changes which routing protocol advertises the route.</text>
+  
+  <g>
+    <rect x="45" y="205" width="245" height="150" rx="18" ry="18" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+    <text x="167.5" y="237" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">Global BGP</text>
+    <text x="167.5" y="267" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Learns 172.16.20.0/24</text><text x="167.5" y="291" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Source protocol = BGP 65000</text>
+  </g>
+  <g>
+    <rect x="385" y="150" width="255" height="260" rx="18" ry="18" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+    <text x="512.5" y="182" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">VRF 103 RIB</text>
+    <text x="512.5" y="212" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">route-replicate from global</text><text x="512.5" y="236" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Installs replicated prefix</text><text x="512.5" y="260" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Route can forward locally</text><text x="512.5" y="284" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Neighbor still knows nothing</text>
+  </g>
+  <g>
+    <rect x="735" y="205" width="200" height="150" rx="18" ry="18" fill="#f3e8ff" stroke="#9333ea" stroke-width="3"/>
+    <text x="835" y="237" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">VRF 103 OSPF</text>
+    <text x="835" y="267" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">redistribute vrf global bgp 65000</text><text x="835" y="291" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Injects route into OSPF</text>
+  </g>
+  <g>
+    <rect x="1020" y="205" width="150" height="150" rx="18" ry="18" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+    <text x="1095" y="237" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">OSPF CE</text>
+    <text x="1095" y="267" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Receives external route</text><text x="1095" y="291" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Can reach 172.16.20.0/24</text>
+  </g>
+  
+  <path d="M290 280 C330 280 345 250 385 250" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow0)"/>
+  <defs><marker id="arrow0" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#2563eb"/></marker></defs>
+  <text x="338" y="235" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#2563eb">A  RIB route replication</text>
+  <path d="M640 280 C675 280 700 280 735 280" fill="none" stroke="#9333ea" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow1)"/>
+  <defs><marker id="arrow1" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#9333ea"/></marker></defs>
+  <text x="687" y="260" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#9333ea">B  redistribution</text>
+  <path d="M935 280 C965 280 990 280 1020 280" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow2)"/>
+  <defs><marker id="arrow2" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#16a34a"/></marker></defs>
+  <text x="978" y="260" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#16a34a">C  OSPF advertisement</text>
+</svg>
