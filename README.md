@@ -4,9 +4,6 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
-### [Palo Alto Networks NPTv6 and NAT64 — Set-CLI Configuration Deep Dive](09-13-26-10-35_Palo_Alto_NPTv6_NAT64_Set_CLI_Configuration_Deep_Dive.md)
-PAN-OS-focused lab guide with PAN-OS 11.2-style `set` configuration for NPTv6 prefix translation and IPv6-initiated NAT64, security-policy rules, pre-/post-NAT packet examples, DNS64 integration, verification, PAN-OS 12.1 CLI caveat, and matching editable draw.io/SVG diagrams.
-
 ### [DNS64 and NAT64 Across Fortinet, Palo Alto Networks, and Cisco — Deep Dive](09-13-26-10-00_DNS64_NAT64_Fortinet_Palo_Alto_Cisco_Comparison_Deep_Dive.md)
 Cross-vendor IPv6-transition guide explaining DNS64 synthesis versus NAT64 packet translation, FortiGate native DNS64 + NAT64, Palo Alto external-DNS64 + PAN-OS NAT64, Cisco IOS XE separate-DNS64 prerequisite + Stateful NAT64, prefix coordination, packet flow, operational caveats, verification, troubleshooting, and two matching SVG/editable draw.io diagrams.
 
@@ -30,9 +27,6 @@ Deep dive into FortiAP/FortiWiFi dynamic user VLAN assignment for enterprise WLA
 
 
 ## IPv6 / Translation
-
-### [NAT64 and NPTv6 — Concepts, Packet Flow, and Cisco / Palo Alto / Fortinet Implementation](13-09-26-09-54_NAT64_NPTv6_Cisco_Palo_Alto_Fortinet_Deep_Dive.md)
-Comparative deep dive into IPv6-to-IPv4 NAT64 versus IPv6-to-IPv6 NPTv6. Covers DNS64, RFC 6052 IPv4-embedded addressing, stateful translation and PAT, RFC 6296 checksum-neutral stateless prefix translation, routing and HA implications, Cisco IOS XE NAT64/NAT66 configuration and verification, PAN-OS NAT64/NPTv6 workflows, FortiGate DNS64/NAT64 and FortiOS 7.6 NPTv6, packet-flow diagrams, limitations, common mistakes, and symptom-based troubleshooting.
 
 ## Cisco Routing
 
