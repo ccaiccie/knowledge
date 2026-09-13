@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="600" y="38" text-anchor="middle" font-family="Arial" font-size="28" font-weight="700" fill="#111827">Example 1: VRF 103 Reaches a Shared Service in the Global VRF</text>
+  <text x="600" y="66" text-anchor="middle" font-family="Arial" font-size="16" fill="#4b5563">Bidirectional route leaking is required so both the forward and return destinations exist in the correct RIB.</text>
+  
+  <g>
+    <rect x="55" y="205" width="250" height="155" rx="18" ry="18" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+    <text x="180" y="237" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">Branch LAN — VRF 103</text>
+    <text x="180" y="267" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Host 10.10.10.10</text><text x="180" y="291" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Gateway 10.10.10.1</text><text x="180" y="315" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">VRF route: 10.50.50.0/24 +</text>
+  </g>
+  <g>
+    <rect x="445" y="140" width="310" height="285" rx="18" ry="18" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+    <text x="600" y="172" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">IOS XE Edge Router</text>
+    <text x="600" y="202" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">VRF 103 RIB ↔ Global RIB</text><text x="600" y="226" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Leak global connected route → VRF</text><text x="600" y="250" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Leak VRF connected route → global</text><text x="600" y="274" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">No NAT in this example</text>
+  </g>
+  <g>
+    <rect x="900" y="205" width="250" height="155" rx="18" ry="18" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+    <text x="1025" y="237" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#111827">Shared DNS — Global VRF</text>
+    <text x="1025" y="267" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Server 10.50.50.53</text><text x="1025" y="291" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Subnet 10.50.50.0/24</text><text x="1025" y="315" text-anchor="middle" font-family="Arial" font-size="16" fill="#1f2937">Global route: 10.10.10.0/24 +</text>
+  </g>
+  
+  <path d="M305 245 C360 245 390 215 445 215" fill="none" stroke="#dc2626" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow0)"/>
+  <defs><marker id="arrow0" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#dc2626"/></marker></defs>
+  <text x="375" y="196" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#dc2626">1  DNS query 10.10.10.10 → 10.50.50.53:53</text>
+  <path d="M755 215 C810 215 845 245 900 245" fill="none" stroke="#dc2626" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow1)"/>
+  <defs><marker id="arrow1" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#dc2626"/></marker></defs>
+  <text x="827" y="195" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#dc2626">2  Global RIB forwards to shared service</text>
+  <path d="M900 325 C840 325 815 370 755 370" fill="none" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow2)"/>
+  <defs><marker id="arrow2" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#7c3aed"/></marker></defs>
+  <text x="827" y="390" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#7c3aed">3  Reply 10.50.50.53 → 10.10.10.10</text>
+  <path d="M445 370 C385 370 365 325 305 325" fill="none" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow3)"/>
+  <defs><marker id="arrow3" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#7c3aed"/></marker></defs>
+  <text x="375" y="390" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="#7c3aed">4  Global RIB uses leaked 10.10.10.0/24</text>
+</svg>
