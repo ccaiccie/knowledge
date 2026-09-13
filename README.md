@@ -22,6 +22,12 @@ Deep dive into IEC 62439-3 Parallel Redundancy Protocol for zero-recovery-time i
 ### [FortiAP Dynamic User VLAN Assignment — Deep Dive](09-11-26-18-23_FortiAP_Dynamic_User_VLAN_Assignment_Deep_Dive.md)
 Deep dive into FortiAP/FortiWiFi dynamic user VLAN assignment for enterprise WLANs. Covers RADIUS IETF 64/65/81 attributes, default-VLAN fallback, Name Tag mappings, FortiAP-group location-based VLAN assignment, tunnel-mode VLAN pooling, bridge-versus-tunnel data paths, AP uplink trunk requirements, DHCP/routing/firewall/NAT behavior, exact authentication and packet flows, verification, roaming implications, common mistakes, and symptom-based troubleshooting, with matching SVG/editable draw.io architecture.
 
+
+## IPv6 / Translation
+
+### [NAT64 and NPTv6 — Concepts, Packet Flow, and Cisco / Palo Alto / Fortinet Implementation](13-09-26-09-54_NAT64_NPTv6_Cisco_Palo_Alto_Fortinet_Deep_Dive.md)
+Comparative deep dive into IPv6-to-IPv4 NAT64 versus IPv6-to-IPv6 NPTv6. Covers DNS64, RFC 6052 IPv4-embedded addressing, stateful translation and PAT, RFC 6296 checksum-neutral stateless prefix translation, routing and HA implications, Cisco IOS XE NAT64/NAT66 configuration and verification, PAN-OS NAT64/NPTv6 workflows, FortiGate DNS64/NAT64 and FortiOS 7.6 NPTv6, packet-flow diagrams, limitations, common mistakes, and symptom-based troubleshooting.
+
 ## Cisco Routing
 
 ### [Cisco IOS XE Route Leaking and Redistribution — Visual Deep Dive](09-13-26-09-27_Cisco_IOS_XE_Route_Leaking_Redistribution_Visual_Deep_Dive.md)
