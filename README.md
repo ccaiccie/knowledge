@@ -4,6 +4,9 @@ A browsable index of the technical study guides and labs in this repository. Eac
 
 ## Network Security
 
+### [Palo Alto Networks NPTv6 and NAT64 — Set-CLI Configuration Deep Dive](09-13-26-10-35_Palo_Alto_NPTv6_NAT64_Set_CLI_Configuration_Deep_Dive.md)
+PAN-OS-focused lab guide with PAN-OS 11.2-style `set` configuration for NPTv6 prefix translation and IPv6-initiated NAT64, security-policy rules, pre-/post-NAT packet examples, DNS64 integration, verification, PAN-OS 12.1 CLI caveat, and matching editable draw.io/SVG diagrams.
+
 ### [DNS64 and NAT64 Across Fortinet, Palo Alto Networks, and Cisco — Deep Dive](09-13-26-10-00_DNS64_NAT64_Fortinet_Palo_Alto_Cisco_Comparison_Deep_Dive.md)
 Cross-vendor IPv6-transition guide explaining DNS64 synthesis versus NAT64 packet translation, FortiGate native DNS64 + NAT64, Palo Alto external-DNS64 + PAN-OS NAT64, Cisco IOS XE separate-DNS64 prerequisite + Stateful NAT64, prefix coordination, packet flow, operational caveats, verification, troubleshooting, and two matching SVG/editable draw.io diagrams.
 
