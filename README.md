@@ -22,6 +22,11 @@ Deep dive into IEC 62439-3 Parallel Redundancy Protocol for zero-recovery-time i
 ### [FortiAP Dynamic User VLAN Assignment — Deep Dive](09-11-26-18-23_FortiAP_Dynamic_User_VLAN_Assignment_Deep_Dive.md)
 Deep dive into FortiAP/FortiWiFi dynamic user VLAN assignment for enterprise WLANs. Covers RADIUS IETF 64/65/81 attributes, default-VLAN fallback, Name Tag mappings, FortiAP-group location-based VLAN assignment, tunnel-mode VLAN pooling, bridge-versus-tunnel data paths, AP uplink trunk requirements, DHCP/routing/firewall/NAT behavior, exact authentication and packet flows, verification, roaming implications, common mistakes, and symptom-based troubleshooting, with matching SVG/editable draw.io architecture.
 
+## Cisco Routing
+
+### [Cisco IOS XE Route Leaking and Redistribution — Visual Deep Dive](09-13-26-09-27_Cisco_IOS_XE_Route_Leaking_Redistribution_Visual_Deep_Dive.md)
+Visual, example-driven guide to IOS XE VRF route leaking and redistribution. Explains separate VRF RIB/FIB domains, `route-replicate` versus protocol redistribution, bidirectional shared-service routing, one-way return-path failures, selective route policies, route preference, loop prevention, supported protocols/releases/restrictions, verification, troubleshooting, and four matching SVG/editable draw.io diagrams.
+
 ## GCP Networking
 
 ### [GCP Firewall Insertion Summary](09-07-26_GCP_Firewall_Insertion_Summary.md)
