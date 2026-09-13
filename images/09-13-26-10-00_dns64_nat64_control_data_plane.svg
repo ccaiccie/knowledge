@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="700" y="42" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700">DNS64 + NAT64: Control Plane vs Data Plane</text>
+<text x="700" y="72" text-anchor="middle" font-family="Arial" font-size="17" fill="#4b5563">DNS64 synthesizes an IPv6 destination; NAT64 translates the actual packet flow.</text>
+
+<rect x="60" y="150" width="260" height="160" rx="18" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+<text x="190" y="190" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">IPv6-only Client</text>
+<text x="190" y="230" text-anchor="middle" font-family="Arial" font-size="18">2001:db8:10::100</text>
+<text x="190" y="262" text-anchor="middle" font-family="Arial" font-size="17">AAAA query</text>
+
+<rect x="515" y="135" width="360" height="190" rx="18" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+<text x="695" y="178" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">DNS64 Resolver</text>
+<text x="695" y="218" text-anchor="middle" font-family="Arial" font-size="17">Authoritative DNS has only:</text>
+<text x="695" y="248" text-anchor="middle" font-family="Arial" font-size="17">A = 192.0.2.25</text>
+<text x="695" y="282" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Synthesizes 64:ff9b::c000:219</text>
+
+<rect x="1045" y="150" width="280" height="160" rx="18" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+<text x="1185" y="190" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">IPv4-only Server</text>
+<text x="1185" y="230" text-anchor="middle" font-family="Arial" font-size="18">192.0.2.25</text>
+<text x="1185" y="262" text-anchor="middle" font-family="Arial" font-size="17">No IPv6 address</text>
+
+<defs>
+<marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#2563eb"/></marker>
+<marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#16a34a"/></marker>
+<marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#9333ea"/></marker>
+</defs>
+
+<path d="M320 200 H515" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#a1)"/>
+<text x="417" y="180" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#1d4ed8">1. AAAA query</text>
+<path d="M515 270 H320" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#a1)"/>
+<text x="417" y="300" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#1d4ed8">2. Synthesized AAAA</text>
+
+<rect x="490" y="455" width="410" height="180" rx="18" fill="#f3e8ff" stroke="#9333ea" stroke-width="3"/>
+<text x="695" y="500" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">NAT64 Translator</text>
+<text x="695" y="540" text-anchor="middle" font-family="Arial" font-size="17">IPv6 destination: 64:ff9b::c000:219</text>
+<text x="695" y="572" text-anchor="middle" font-family="Arial" font-size="17">Extract IPv4: 192.0.2.25</text>
+<text x="695" y="604" text-anchor="middle" font-family="Arial" font-size="17">Create state and translate IPv6 ↔ IPv4</text>
+
+<path d="M190 310 C190 445 360 545 490 545" stroke="#9333ea" stroke-width="2.2" fill="none" marker-end="url(#a3)"/>
+<text x="300" y="430" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#7e22ce">3. IPv6 packet</text>
+<path d="M900 545 C1040 545 1185 440 1185 310" stroke="#16a34a" stroke-width="2.2" fill="none" marker-end="url(#a2)"/>
+<text x="1080" y="430" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#15803d">4. IPv4 packet</text>
+</svg>
