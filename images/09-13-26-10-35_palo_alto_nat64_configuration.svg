@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="800" viewBox="0 0 1500 800">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="750" y="42" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700">Palo Alto NAT64 — IPv6-Initiated Access to IPv4</text>
+<text x="750" y="76" text-anchor="middle" font-family="Arial" font-size="17" fill="#4b5563">External DNS64 synthesizes the IPv6 destination; PAN-OS performs stateful IPv6-to-IPv4 translation.</text>
+
+<rect x="55" y="225" width="280" height="180" rx="18" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+<text x="195" y="265" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">IPv6 Client</text>
+<text x="195" y="305" text-anchor="middle" font-family="Arial" font-size="18">2001:db8:10::100</text>
+<text x="195" y="338" text-anchor="middle" font-family="Arial" font-size="18">Trust-v6</text>
+
+<rect x="440" y="105" width="310" height="150" rx="18" fill="#f3e8ff" stroke="#9333ea" stroke-width="3"/>
+<text x="595" y="146" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">External DNS64</text>
+<text x="595" y="184" text-anchor="middle" font-family="Arial" font-size="17">A = 192.0.2.25</text>
+<text x="595" y="215" text-anchor="middle" font-family="Arial" font-size="17">AAAA = 64:ff9b::c000:219</text>
+
+<rect x="550" y="325" width="400" height="280" rx="20" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+<text x="750" y="366" text-anchor="middle" font-family="Arial" font-size="23" font-weight="700">Palo Alto NGFW</text>
+<text x="750" y="405" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700">NAT Type = nat64</text>
+<text x="750" y="443" text-anchor="middle" font-family="Arial" font-size="17">Match destination 64:ff9b::/96</text>
+<text x="750" y="478" text-anchor="middle" font-family="Arial" font-size="17">SNAT IPv6 client → 203.0.113.10</text>
+<text x="750" y="513" text-anchor="middle" font-family="Arial" font-size="17">Extract embedded IPv4 destination</text>
+<text x="750" y="548" text-anchor="middle" font-family="Arial" font-size="17">64:ff9b::c000:219 → 192.0.2.25</text>
+
+<rect x="1165" y="225" width="280" height="180" rx="18" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+<text x="1305" y="265" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">IPv4 Server</text>
+<text x="1305" y="305" text-anchor="middle" font-family="Arial" font-size="18">192.0.2.25</text>
+<text x="1305" y="338" text-anchor="middle" font-family="Arial" font-size="18">Untrust-v4</text>
+
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#16a34a"/></marker><marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#9333ea"/></marker></defs>
+<path d="M335 270 C390 270 410 180 440 180" fill="none" stroke="#9333ea" stroke-width="2.2" marker-end="url(#p)"/>
+<path d="M440 220 C400 220 380 340 335 340" fill="none" stroke="#9333ea" stroke-width="2.2" marker-end="url(#p)"/>
+<path d="M335 370 C430 370 470 465 550 465" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#b)"/>
+<path d="M950 465 C1040 465 1090 370 1165 370" fill="none" stroke="#16a34a" stroke-width="2.2" marker-end="url(#g)"/>
+
+<rect x="90" y="485" width="375" height="55" rx="12" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="278" y="519" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#1d4ed8">IPv6 packet to 64:ff9b::c000:219</text>
+<rect x="1040" y="485" width="365" height="55" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="1223" y="519" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#15803d">IPv4 packet to 192.0.2.25</text>
+
+<rect x="305" y="670" width="890" height="92" rx="14" fill="#fafafa" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="750" y="705" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">Before NAT64: 2001:db8:10::100 → 64:ff9b::c000:219</text>
+<text x="750" y="738" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">After NAT64: 203.0.113.10 → 192.0.2.25</text>
+</svg>
