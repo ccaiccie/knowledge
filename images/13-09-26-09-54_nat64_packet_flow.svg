@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+<defs>
+ <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#334155"/></marker>
+ <style>
+ text{font-family:Arial,sans-serif;fill:#0f172a}.title{font-size:28px;font-weight:700}.h{font-size:20px;font-weight:700}.b{font-size:17px}.small{font-size:15px}.box{rx:18;stroke-width:2}.flow{fill:none;stroke:#334155;stroke-width:3;marker-end:url(#arrow)}
+ </style>
+</defs>
+<rect width="1400" height="760" fill="#ffffff"/>
+<text x="700" y="44" text-anchor="middle" class="title">Stateful NAT64 + DNS64 — IPv6 Client to IPv4 Server</text>
+<rect x="70" y="120" width="250" height="145" class="box" fill="#dbeafe" stroke="#2563eb"/>
+<text x="195" y="155" text-anchor="middle" class="h">IPv6-only client</text>
+<text x="195" y="190" text-anchor="middle" class="b">2001:db8:10::10</text>
+<text x="195" y="224" text-anchor="middle" class="small">No native IPv4 address</text>
+<rect x="420" y="120" width="250" height="145" class="box" fill="#ede9fe" stroke="#7c3aed"/>
+<text x="545" y="155" text-anchor="middle" class="h">DNS64 resolver</text>
+<text x="545" y="190" text-anchor="middle" class="b">Synthesizes AAAA</text>
+<text x="545" y="224" text-anchor="middle" class="small">A 192.0.2.80 → 64:ff9b::c000:250</text>
+<rect x="785" y="120" width="260" height="145" class="box" fill="#fef3c7" stroke="#d97706"/>
+<text x="915" y="155" text-anchor="middle" class="h">NAT64 translator</text>
+<text x="915" y="190" text-anchor="middle" class="b">Prefix 64:ff9b::/96</text>
+<text x="915" y="224" text-anchor="middle" class="small">IPv4 pool 198.51.100.10</text>
+<rect x="1135" y="120" width="200" height="145" class="box" fill="#dcfce7" stroke="#16a34a"/>
+<text x="1235" y="155" text-anchor="middle" class="h">IPv4 server</text>
+<text x="1235" y="190" text-anchor="middle" class="b">192.0.2.80:443</text>
+<text x="1235" y="224" text-anchor="middle" class="small">IPv4 only</text>
+
+<path class="flow" d="M320 165 H420"/><text x="370" y="146" text-anchor="middle" class="b">1. AAAA query</text>
+<path class="flow" d="M670 220 H720 V300 H350 V220 H320"/><text x="520" y="325" text-anchor="middle" class="b">2. Synthetic AAAA = 64:ff9b::192.0.2.80</text>
+<path class="flow" d="M320 390 H785"/><text x="555" y="372" text-anchor="middle" class="b">3. IPv6 TCP SYN: 2001:db8:10::10:51500 → 64:ff9b::c000:250:443</text>
+<path class="flow" d="M1045 390 H1135"/><text x="1090" y="370" text-anchor="middle" class="b">4. IPv4 SYN</text>
+<text x="1090" y="414" text-anchor="middle" class="small">198.51.100.10:40001 → 192.0.2.80:443</text>
+<path class="flow" d="M1135 500 H1045"/><text x="1090" y="482" text-anchor="middle" class="b">5. IPv4 return</text>
+<text x="1090" y="524" text-anchor="middle" class="small">192.0.2.80:443 → 198.51.100.10:40001</text>
+<path class="flow" d="M785 500 H320"/><text x="555" y="482" text-anchor="middle" class="b">6. Existing state reverses translation</text>
+<text x="555" y="524" text-anchor="middle" class="small">64:ff9b::c000:250:443 → 2001:db8:10::10:51500</text>
+<rect x="390" y="585" width="620" height="110" class="box" fill="#f8fafc" stroke="#64748b"/>
+<text x="700" y="620" text-anchor="middle" class="h">Key state entry</text>
+<text x="700" y="654" text-anchor="middle" class="b">IPv6 client tuple ↔ allocated IPv4 address/port</text>
+<text x="700" y="681" text-anchor="middle" class="small">Stateful NAT64 is not merely prefix replacement; it maintains per-flow/binding state.</text>
+</svg>
