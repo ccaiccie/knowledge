@@ -21,10 +21,11 @@
 4. [FortiGate](#4-fortigate)
 5. [Palo Alto Networks](#5-palo-alto-networks)
 6. [Cisco IOS XE](#6-cisco-ios-xe)
-7. [Operational caveats](#7-operational-caveats)
-8. [Verification and troubleshooting](#8-verification-and-troubleshooting)
-9. [Common mistakes](#9-common-mistakes)
-10. [Sources](#10-sources)
+7. [Palo Alto NPTv6 and NAT64 set-CLI examples](#7-palo-alto-nptv6-and-nat64-set-cli-examples)
+8. [Operational caveats](#8-operational-caveats)
+9. [Verification and troubleshooting](#9-verification-and-troubleshooting)
+10. [Common mistakes](#10-common-mistakes)
+11. [Sources](#11-sources)
 
 ---
 
@@ -297,7 +298,169 @@ Always check the exact platform's IOS XE configuration guide rather than assumin
 
 ---
 
-## 7. Operational caveats
+## 7. Palo Alto NPTv6 and NAT64 set-CLI examples
+
+> **Version note:** The examples below use PAN-OS 11.2-style local firewall `set` syntax. Palo Alto documents direct `set rulebase nat ...` commands in PAN-OS 11.2, while PAN-OS 12.1 lists that command family among removed set commands. Validate the command hierarchy on the target release before pasting.
+
+### 7.1 NPTv6 — IPv6 prefix-to-prefix translation
+
+Example goal:
+
+```text
+Internal ULA:       fd00:10:10::/64
+Translated GUA:     2001:db8:100:10::/64
+Internal host:      fd00:10:10::1234
+External identity:  2001:db8:100:10::1234
+```
+
+![Palo Alto NPTv6 configuration](images/09-13-26-10-35_palo_alto_nptv6_configuration.svg)
+
+[Editable draw.io](images/09-13-26-10-35_palo_alto_nptv6_configuration.drawio)
+
+**What this image shows:** PAN-OS translates the IPv6 network prefix while preserving the host/interface identifier.
+
+**What matters:** NPTv6 is IPv6-to-IPv6 and stateless; it does not perform IPv6-to-IPv4 translation.
+
+**What to verify:** the translated GUA prefix is routed back toward the firewall and an explicit Security policy allows the traffic.
+
+#### Address objects
+
+```cli
+configure
+
+set address NPTV6-INSIDE ip-netmask fd00:10:10::/64
+set address NPTV6-OUTSIDE ip-netmask 2001:db8:100:10::/64
+```
+
+#### NPTv6 NAT rule
+
+```cli
+set rulebase nat rules NPTV6-OUT nat-type nptv6
+set rulebase nat rules NPTV6-OUT from Trust-v6
+set rulebase nat rules NPTV6-OUT to Untrust-v6
+set rulebase nat rules NPTV6-OUT source NPTV6-INSIDE
+set rulebase nat rules NPTV6-OUT destination any
+set rulebase nat rules NPTV6-OUT service any
+set rulebase nat rules NPTV6-OUT source-translation static-ip translated-address NPTV6-OUTSIDE
+set rulebase nat rules NPTV6-OUT source-translation static-ip bi-directional yes
+```
+
+#### NPTv6 security rule
+
+```cli
+set rulebase security rules NPTV6-OUT-ALLOW from Trust-v6
+set rulebase security rules NPTV6-OUT-ALLOW to Untrust-v6
+set rulebase security rules NPTV6-OUT-ALLOW source NPTV6-INSIDE
+set rulebase security rules NPTV6-OUT-ALLOW destination any
+set rulebase security rules NPTV6-OUT-ALLOW application any
+set rulebase security rules NPTV6-OUT-ALLOW service application-default
+set rulebase security rules NPTV6-OUT-ALLOW action allow
+```
+
+Packet transformation:
+
+```text
+Before:
+SRC fd00:10:10::1234
+DST 2001:db8:ffff::80
+
+After:
+SRC 2001:db8:100:10::1234
+DST 2001:db8:ffff::80
+```
+
+### 7.2 NAT64 — IPv6 client to IPv4-only server
+
+Example goal:
+
+```text
+IPv6 client:            2001:db8:10::100
+NAT64 prefix:           64:ff9b::/96
+IPv4-only server:       192.0.2.25
+DNS64 synthesized AAAA: 64:ff9b::c000:219
+IPv4 SNAT address:      203.0.113.10
+```
+
+![Palo Alto NAT64 configuration](images/09-13-26-10-35_palo_alto_nat64_configuration.svg)
+
+[Editable draw.io](images/09-13-26-10-35_palo_alto_nat64_configuration.drawio)
+
+**What this image shows:** external DNS64 synthesizes the IPv6 destination and PAN-OS performs the stateful IPv6-to-IPv4 translation.
+
+**What matters:** for this IPv6-initiated workflow, PAN-OS extracts the embedded IPv4 destination from the NAT64 address; no destination-translation command is added to the NAT64 rule.
+
+**What to verify:** DNS64 synthesis prefix, NAT64 match prefix, IPv4 source translation, IPv4 routing, and return-path symmetry all agree.
+
+#### Address objects
+
+```cli
+configure
+
+set address IPV6-CLIENTS ip-netmask 2001:db8:10::/64
+set address NAT64-PREFIX ip-netmask 64:ff9b::/96
+set address NAT64-IPV4-SNAT ip-netmask 203.0.113.10/32
+```
+
+#### NAT64 NAT rule
+
+```cli
+set rulebase nat rules NAT64-V6-OUT nat-type nat64
+set rulebase nat rules NAT64-V6-OUT from Trust-v6
+set rulebase nat rules NAT64-V6-OUT to Untrust-v4
+set rulebase nat rules NAT64-V6-OUT source IPV6-CLIENTS
+set rulebase nat rules NAT64-V6-OUT destination NAT64-PREFIX
+set rulebase nat rules NAT64-V6-OUT service any
+set rulebase nat rules NAT64-V6-OUT source-translation dynamic-ip-and-port translated-address NAT64-IPV4-SNAT
+```
+
+#### NAT64 security rule
+
+Palo Alto security policy evaluates **pre-NAT source/destination IP addresses** but uses the **post-NAT destination zone**.
+
+```cli
+set rulebase security rules NAT64-V6-OUT-ALLOW from Trust-v6
+set rulebase security rules NAT64-V6-OUT-ALLOW to Untrust-v4
+set rulebase security rules NAT64-V6-OUT-ALLOW source IPV6-CLIENTS
+set rulebase security rules NAT64-V6-OUT-ALLOW destination NAT64-PREFIX
+set rulebase security rules NAT64-V6-OUT-ALLOW application any
+set rulebase security rules NAT64-V6-OUT-ALLOW service application-default
+set rulebase security rules NAT64-V6-OUT-ALLOW action allow
+```
+
+Packet transformation:
+
+```text
+Before NAT64:
+SRC 2001:db8:10::100
+DST 64:ff9b::c000:219
+
+After NAT64:
+SRC 203.0.113.10
+DST 192.0.2.25
+```
+
+#### Commit and verify
+
+```cli
+commit
+```
+
+```cli
+> set cli config-output-format set
+> configure
+# show rulebase nat
+```
+
+For NAT64 session verification:
+
+```cli
+> show session all filter source 2001:db8:10::100
+> show session id <session-id>
+```
+
+---
+
+## 8. Operational caveats
 
 ### 7.1 DNS64 and NAT64 prefixes must agree
 
@@ -347,7 +510,7 @@ Stateful NAT64 maintains connection state. Return traffic must reach the same tr
 
 ---
 
-## 8. Verification and troubleshooting
+## 9. Verification and troubleshooting
 
 ### Symptom: AAAA lookup returns no usable address
 
@@ -423,7 +586,7 @@ Verify:
 
 ---
 
-## 9. Common mistakes
+## 10. Common mistakes
 
 | Mistake | Correction |
 |---|---|
@@ -437,7 +600,7 @@ Verify:
 
 ---
 
-## 10. Sources
+## 11. Sources
 
 1. Fortinet — NAT64 policy and DNS64 (DNS proxy)  
    https://docs.fortinet.com/document/fortigate/latest/administration-guide/443324/nat64-policy-and-dns64-dns-proxy
