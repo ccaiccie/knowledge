@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="760" viewBox="0 0 1500 760">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="750" y="42" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700">Palo Alto NPTv6 — Prefix-to-Prefix Translation</text>
+<text x="750" y="76" text-anchor="middle" font-family="Arial" font-size="17" fill="#4b5563">Example: internal ULA fd00:10:10::/64 becomes provider-routable 2001:db8:100:10::/64; host bits and ports remain unchanged.</text>
+
+<rect x="70" y="235" width="300" height="180" rx="18" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+<text x="220" y="275" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">IPv6 LAN / Trust-v6</text>
+<text x="220" y="315" text-anchor="middle" font-family="Arial" font-size="18">Prefix: fd00:10:10::/64</text>
+<text x="220" y="350" text-anchor="middle" font-family="Arial" font-size="18">Host: fd00:10:10::1234</text>
+
+<rect x="565" y="180" width="370" height="300" rx="20" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+<text x="750" y="222" text-anchor="middle" font-family="Arial" font-size="23" font-weight="700">Palo Alto NGFW</text>
+<text x="750" y="262" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700">NAT Type = nptv6</text>
+<text x="750" y="300" text-anchor="middle" font-family="Arial" font-size="17">Match source prefix:</text>
+<text x="750" y="328" text-anchor="middle" font-family="Arial" font-size="17">fd00:10:10::/64</text>
+<text x="750" y="366" text-anchor="middle" font-family="Arial" font-size="17">Static translated prefix:</text>
+<text x="750" y="394" text-anchor="middle" font-family="Arial" font-size="17">2001:db8:100:10::/64</text>
+<text x="750" y="432" text-anchor="middle" font-family="Arial" font-size="17">Optional bi-directional = yes</text>
+
+<rect x="1130" y="235" width="300" height="180" rx="18" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+<text x="1280" y="275" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700">Internet / Untrust-v6</text>
+<text x="1280" y="315" text-anchor="middle" font-family="Arial" font-size="18">Advertised prefix:</text>
+<text x="1280" y="346" text-anchor="middle" font-family="Arial" font-size="18">2001:db8:100:10::/64</text>
+
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#16a34a"/></marker></defs>
+<path d="M370 325 H565" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#b)"/>
+<path d="M935 325 H1130" fill="none" stroke="#16a34a" stroke-width="2.2" marker-end="url(#g)"/>
+
+<rect x="380" y="145" width="370" height="54" rx="12" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="565" y="178" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#1d4ed8">1. Packet arrives with ULA source</text>
+<rect x="875" y="500" width="440" height="54" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="1095" y="533" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" fill="#15803d">2. Prefix translated; interface ID is preserved</text>
+
+<rect x="360" y="610" width="780" height="100" rx="14" fill="#fafafa" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="750" y="646" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">Before: fd00:10:10::1234 → 2001:db8:ffff::80</text>
+<text x="750" y="680" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">After: 2001:db8:100:10::1234 → 2001:db8:ffff::80</text>
+</svg>
