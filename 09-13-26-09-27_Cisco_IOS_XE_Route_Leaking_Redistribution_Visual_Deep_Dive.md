@@ -53,9 +53,9 @@ Think of it this way:
 
 Cisco states that the IOS XE feature in the supplied chapter performs route leaking through the **Routing Information Base (RIB)**. The route is replicated between the global VRF and a service VPN/VRF. Redistribution is then optional and is used when the leaked route must be advertised to routing neighbors.
 
-![Mental model](images/09-13-26-09-27_route_leaking_mental_model.svg)
+![Mental model](images/09-13-26-09-27_route_leaking_mental_model_v2.svg)
 
-[Editable draw.io source](images/09-13-26-09-27_route_leaking_mental_model.drawio)
+[Editable draw.io source](images/09-13-26-09-27_route_leaking_mental_model_v2.drawio)
 
 **What this image shows:** the difference between putting a route into another RIB and advertising that route through BGP/OSPF/EIGRP.
 
