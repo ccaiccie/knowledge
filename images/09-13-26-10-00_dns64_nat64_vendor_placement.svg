@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="720" viewBox="0 0 1400 720">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="700" y="42" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700">Vendor Placement of DNS64 and NAT64</text>
+<text x="700" y="72" text-anchor="middle" font-family="Arial" font-size="17" fill="#4b5563">FortiGate can host both functions; Palo Alto and Cisco require DNS64 elsewhere for IPv6-initiated DNS-based NAT64.</text>
+
+<rect x="70" y="150" width="360" height="430" rx="20" fill="#f0fdf4" stroke="#16a34a" stroke-width="3"/>
+<text x="250" y="195" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700">FortiGate</text>
+<rect x="125" y="245" width="250" height="90" rx="14" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+<text x="250" y="280" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700">DNS64 on-box</text>
+<text x="250" y="310" text-anchor="middle" font-family="Arial" font-size="17">config system dns64</text>
+<rect x="125" y="390" width="250" height="90" rx="14" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+<text x="250" y="425" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700">NAT64 on-box</text>
+<text x="250" y="455" text-anchor="middle" font-family="Arial" font-size="17">Firewall policy / NAT64</text>
+<text x="250" y="530" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Single-device option</text>
+
+<rect x="520" y="150" width="360" height="430" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/>
+<text x="700" y="195" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700">Palo Alto NGFW</text>
+<rect x="575" y="245" width="250" height="90" rx="14" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+<text x="700" y="280" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700">External DNS64</text>
+<text x="700" y="310" text-anchor="middle" font-family="Arial" font-size="17">Third-party / separate solution</text>
+<rect x="575" y="390" width="250" height="90" rx="14" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="700" y="425" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700">NAT64 on-box</text>
+<text x="700" y="455" text-anchor="middle" font-family="Arial" font-size="17">PAN-OS NAT64 policy</text>
+<text x="700" y="530" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Split DNS / translation roles</text>
+
+<rect x="970" y="150" width="360" height="430" rx="20" fill="#faf5ff" stroke="#9333ea" stroke-width="3"/>
+<text x="1150" y="195" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700">Cisco IOS XE</text>
+<rect x="1025" y="245" width="250" height="90" rx="14" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+<text x="1150" y="280" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700">Separate DNS64</text>
+<text x="1150" y="310" text-anchor="middle" font-family="Arial" font-size="17">Documented prerequisite</text>
+<rect x="1025" y="390" width="250" height="90" rx="14" fill="#f3e8ff" stroke="#9333ea" stroke-width="2"/>
+<text x="1150" y="425" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700">NAT64 on-box</text>
+<text x="1150" y="455" text-anchor="middle" font-family="Arial" font-size="17">Stateful NAT64</text>
+<text x="1150" y="530" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700">Split DNS / translation roles</text>
+</svg>
