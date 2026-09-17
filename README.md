@@ -2,6 +2,11 @@
 
 A browsable index of the technical study guides and labs in this repository. Each entry links directly to the Markdown article and summarizes the major concepts it covers.
 
+## Wireless Networking
+
+### [IEEE 802.11k, 802.11v, and 802.11r — Wi-Fi Roaming Deep Dive](09-16-26-18-03_IEEE_80211k_80211v_80211r_WiFi_Roaming_Deep_Dive.md)
+Comprehensive enterprise Wi-Fi roaming guide explaining 802.11k Radio Resource Measurement and Neighbor Reports, 802.11v BSS Transition Management, 802.11r Fast BSS Transition and key hierarchy, FT Over-the-Air versus Over-the-DS, 802.1X/PSK/SAE/PMKID/Adaptive 802.11r interactions, Catalyst 9800 configuration concepts, packet and management-frame walks, verification, common mistakes, symptom-based troubleshooting, and four matching SVG/editable draw.io diagrams.
+
 ## Network Security
 
 ### [DNS64 and NAT64 Across Fortinet, Palo Alto Networks, and Cisco — Deep Dive](09-13-26-10-00_DNS64_NAT64_Fortinet_Palo_Alto_Cisco_Comparison_Deep_Dive.md)
